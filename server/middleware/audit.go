@@ -1,0 +1,69 @@
+package middleware
+
+import (
+	"github.com/mageg-x/boulder/internal/logger"
+	"net/http"
+	"time"
+
+	"github.com/gorilla/mux"
+)
+
+func AuditMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		// 创建响应写入器以捕获状态码
+		rw := &responseWriter{ResponseWriter: w}
+
+		// 处理请求
+		next.ServeHTTP(rw, r)
+
+		// 获取请求上下文中的 Request ID
+		requestID := GetRequestID(r.Context())
+
+		// 获取当前路由信息
+		route := mux.CurrentRoute(r)
+		var apiName, apiPattern string
+
+		if route != nil {
+			// 获取路由名称
+			apiName = route.GetName()
+
+			// 获取路由模式（如 "/{bucket}/{key}"）
+			if pattern, err := route.GetPathTemplate(); err == nil {
+				apiPattern = pattern
+			}
+		}
+
+		// 获取路径变量（bucket 和 key）
+		vars := mux.Vars(r)
+		bucket := vars["bucket"]
+		key := vars["key"]
+
+		// 记录日志
+		logger.GetLogger("audit").WithFields(map[string]interface{}{
+			"amz_request_id": requestID,
+			"api_name":       apiName,    // API 名称（如 "PutObject"）
+			"api_pattern":    apiPattern, // API 模式（如 "/{bucket}/{key}"）
+			"method":         r.Method,
+			"path":           r.URL.Path,
+			"status":         rw.status,
+			"duration":       time.Since(start).String(),
+			"remote_addr":    r.RemoteAddr,
+			"user_agent":     r.UserAgent(),
+			"bucket":         bucket,
+			"key":            key,
+		}).Info("S3 request processed")
+	})
+}
+
+// 自定义 ResponseWriter 以捕获状态码
+type responseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (rw *responseWriter) WriteHeader(status int) {
+	rw.status = status
+	rw.ResponseWriter.WriteHeader(status)
+}
