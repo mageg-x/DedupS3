@@ -45,6 +45,8 @@ type Config struct {
 	IdleTimeout         time.Duration `yaml:"idle_timeout" json:"idleTimeout" env:"BOULDER_IDLE_TIMEOUT"`
 	ReadHeaderTimeout   time.Duration `yaml:"read_header_timeout" json:"readHeaderTimeout" env:"BOULDER_READ_HEADER_TIMEOUT"`
 	ConnUserTimeout     time.Duration `yaml:"conn_user_timeout" json:"connUserTimeout" env:"BOULDER_CONN_USER_TIMEOUT"`
+	ReadTimeout         time.Duration `yaml:"read_timeout" json:"readTimeout" env:"BOULDER_READ_TIMEOUT"`
+	WriteTimeout        time.Duration `yaml:"write_timeout" json:"writeTimeout" env:"BOULDER_WRITE_TIMEOUT"`
 	Interface           string        `yaml:"interface" json:"interface" env:"BOULDER_INTERFACE"`
 	MaxIdleConnsPerHost int           `yaml:"max_idle_conns_per_host" json:"maxIdleConnsPerHost" env:"BOULDER_MAX_IDLE_CONNS_PER_HOST"`
 	Memlimit            string        `yaml:"memlimit" json:"memlimit" env:"BOULDER_MEMLIMIT"`
@@ -68,6 +70,8 @@ func DefaultConfig() *Config {
 		IdleTimeout:         30 * time.Second,
 		ReadHeaderTimeout:   30 * time.Second,
 		ConnUserTimeout:     10 * time.Minute,
+		ReadTimeout:         10 * time.Second,
+		WriteTimeout:        10 * time.Second,
 		MaxIdleConnsPerHost: 2048,
 		SendBufSize:         4 * 1024 * 1024, // 4MB
 		RecvBufSize:         4 * 1024 * 1024,

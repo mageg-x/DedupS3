@@ -88,8 +88,13 @@ func WriteAWSError(w http.ResponseWriter, r *http.Request, code, message string,
 	w.Write(jsonData)
 }
 
-// WriteAWSSuccess 写入成功响应
-func WriteAWSSuccess(w http.ResponseWriter, r *http.Request, data interface{}) {
+func WriteAWSErr(w http.ResponseWriter, r *http.Request, code APIErrorCode) {
+	apiErr := ToApiErr(code)
+	WriteAWSError(w, r, apiErr.Code, apiErr.Description, apiErr.HTTPStatusCode)
+}
+
+// WriteAWSSuc 写入成功响应
+func WriteAWSSuc(w http.ResponseWriter, r *http.Request, data interface{}) {
 	// 获取请求ID
 	requestID := GetRequestID(r.Context())
 	// 创建成功响应

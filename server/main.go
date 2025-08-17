@@ -21,7 +21,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/mageg-x/boulder/internal/storage/block"
-	"github.com/mageg-x/boulder/service/iam"
+	"github.com/mageg-x/boulder/web"
 	"go.uber.org/zap"
 	"math/rand"
 	"os"
@@ -107,17 +107,10 @@ func main() {
 		panic(err)
 	}
 
-	//a, err := iam.GetIAMService().CreateAccount("admin", "Root@12345678")
-	_, err = iam.GetIAMService().CreateUser("339431372551", "stevenrao", "Root@12345678", "/")
-	//k, err := iam.GetIAMService().CreateAccessKey("339431372551", "stevenrao", time.Now().AddDate(1, 0, 0))
-
-	//logger.GetLogger("boulder").Infof("user : %+v, access key: %+v", u, k)
 	// 1. 创建路由处理器
 	mux := router.SetupRouter()
 
 	// 2. 创建服务器实例（监听 3000 端口）
-	srv := xhttp.NewServer([]string{cfg.Address}) // 注意：NewServer 应接受 []string
-
 	tcpOpt := xhttp.TCPOptions{
 		DriveOPTimeout: func() time.Duration {
 			return 5 * time.Second
@@ -131,33 +124,41 @@ func main() {
 		},
 		UserTimeout: int(cfg.ConnUserTimeout.Milliseconds()),
 	}
-
-	// 3. 配置服务器参数
-	srv.UseHandler(mux) // 设置路由处理器
-	srv.UseIdleTimeout(30 * time.Second).UseReadTimeout(10 * time.Second).UseWriteTimeout(10 * time.Second)
-	srv.UseTCPOptions(tcpOpt).UseBaseContext(context.Background())
-
-	// 4. 初始化服务器
 	listenCtx := context.Background()
 	listenErrCallback := func(addr string, err error) {
 		if err != nil {
 			logger.GetLogger("boulder").Fatalf("list %s failed: %v", addr, err)
 		}
 	}
+	// 创建多个服务器实例
+	servers := make([]*xhttp.Server, cfg.Listeners)
+	serveFuncs := make([]func() error, cfg.Listeners)
+	for i := 0; i < cfg.Listeners; i++ {
+		servers[i] = xhttp.NewServer([]string{cfg.Address})
+		// 配置服务器参数
+		servers[i].UseHandler(mux).UseIdleTimeout(cfg.IdleTimeout).UseReadTimeout(cfg.ReadTimeout).UseWriteTimeout(cfg.WriteTimeout)
+		servers[i].UseTCPOptions(tcpOpt).UseBaseContext(context.Background())
 
-	serveFunc, err := srv.Init(listenCtx, listenErrCallback)
-	if err != nil {
-		logger.GetLogger("boulder").Fatalf("init server failed: %v", err)
-	}
-	logger.GetLogger("boulder").Infof("server started at %s", srv.Addrs)
-	// 5. 启动服务器（在协程中运行）
-	go func() {
-		if err := serveFunc(); err != nil {
-			logger.GetLogger("boulder").Errorf("server running failed: %v", err)
+		// 初始化服务器
+		serveFunc, err := servers[i].Init(listenCtx, listenErrCallback)
+		if err != nil {
+			logger.GetLogger("boulder").Fatalf("init server failed: %v", err)
 		}
-	}()
+		serveFuncs[i] = serveFunc
+	}
+	logger.GetLogger("boulder").Infof("server starting")
+	// 启动所有服务器（在不同协程中）
+	for i := 0; i < cfg.Listeners; i++ {
+		go func(idx int) {
+			if err := serveFuncs[idx](); err != nil {
+				logger.GetLogger("boulder").Errorf("server %d running failed: %v", idx, err)
+			}
+		}(i)
+	}
 
-	// 6. 实现优雅关机
+	// 启动console服务
+	web.Start()
+
 	// 创建一个通道来接收操作系统的中断信号
 	quit := make(chan os.Signal, 1)
 	// 注册中断信号
@@ -166,9 +167,16 @@ func main() {
 	<-quit
 
 	// 执行优雅关机
-	logger.GetLogger("boulder").Infof("stop server ...")
-	if err := srv.Shutdown(); err != nil {
-		logger.GetLogger("boulder").Errorf("stop server failed: %v", err)
+	logger.GetLogger("boulder").Infof("stop servers ...")
+
+	// 关闭console 服务
+	web.Close()
+
+	// 关闭主服务器
+	for _, srv := range servers {
+		if err := srv.Shutdown(); err != nil {
+			logger.GetLogger("boulder").Errorf("stop server failed: %v", err)
+		}
 	}
 	logger.GetLogger("boulder").Infof("server ended")
 }
