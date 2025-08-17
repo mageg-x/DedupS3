@@ -186,6 +186,7 @@ func GetLogger(name string) *Logger {
 	logger.SetFormatter(&logrus.TextFormatter{
 		ForceColors:     true,
 		FullTimestamp:   true,
+		PadLevelText:    false,
 		TimestampFormat: "2006-01-02 15:04:05",
 	})
 

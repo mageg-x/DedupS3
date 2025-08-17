@@ -22,9 +22,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	Rand "math/rand"
 	"strings"
 	"time"
+
+	"github.com/mageg-x/boulder/internal/logger"
+	Rand "math/rand"
 )
 
 // IAMAccount 表示完整的 IAM 系统
@@ -37,9 +39,10 @@ type IAMAccount struct {
 }
 
 // CreateAccount 创建新的 IAM 系统
-func CreateAccount(accountID string) *IAMAccount {
+func CreateAccount() *IAMAccount {
+
 	return &IAMAccount{
-		AccountID: accountID,
+		AccountID: generateAccountID(),
 		Users:     make(map[string]*IAMUser),
 		Groups:    make(map[string]*IAMGroup),
 		Roles:     make(map[string]*IAMRole),
@@ -71,6 +74,9 @@ type AccessKey struct {
 	SecretAccessKey string    `json:"secretAccessKey"`
 	Status          string    `json:"status"` // Active | Inactive
 	CreatedAt       time.Time `json:"createdAt"`
+	ExpiredAt       time.Time `json:"expiredAt"`
+	AccountID       string    `json:"accountId"`
+	Username        string    `json:"username"` // 用户名
 }
 
 // MFADevice 表示 MFA 设备
@@ -157,21 +163,30 @@ func normalizePath(path string) string {
 // ============================== 根用户操作 ==============================
 
 // CreateRootUser 创建根用户（账户所有者）
-func (a *IAMAccount) CreateRootUser() (*IAMUser, error) {
+func (a *IAMAccount) CreateRootUser(username, password string) (*IAMUser, error) {
 	// 检查是否已存在根用户
 	if _, exists := a.Users["root"]; exists {
+		logger.GetLogger("boulder").Errorf("root user already exists")
 		return nil, errors.New("root user already exists")
 	}
 
-	// 创建根用户
-	rootUser := &IAMUser{
-		ID:        generateCanonicalUserID(),
-		ARN:       formatRootARN(a.AccountID),
-		Username:  "root",
-		IsRoot:    true,
-		CreatedAt: time.Now().UTC(),
+	rootUser, err := a.CreateUser(username, password, "/")
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to create root user: %v", err)
+		return nil, err
 	}
-
+	rootUser.IsRoot = true
+	accessKey := generateAccessKeyID()
+	secretAccessKey := generateSecretAccessKey()
+	rootUser.AccessKeys = append(rootUser.AccessKeys, AccessKey{
+		AccessKeyID:     accessKey,
+		SecretAccessKey: secretAccessKey,
+		Status:          "Active",
+		CreatedAt:       time.Now().UTC(),
+		ExpiredAt:       time.Now().AddDate(100, 0, 0).UTC(),
+		AccountID:       a.AccountID,
+		Username:        username,
+	})
 	a.Users["root"] = rootUser
 	return rootUser, nil
 }
@@ -179,15 +194,26 @@ func (a *IAMAccount) CreateRootUser() (*IAMUser, error) {
 // ============================== 用户操作 ==============================
 
 // CreateUser 创建新用户
-func (a *IAMAccount) CreateUser(username, path string) (*IAMUser, error) {
-	if _, exists := a.Users[username]; exists {
+func (a *IAMAccount) CreateUser(username, password, path string) (*IAMUser, error) {
+	if u, err := a.GetUser(username); err == nil || u != nil {
+		logger.GetLogger("boulder").Errorf("user %s already exists", username)
 		return nil, errors.New("user already exists")
+	}
+	if err := ValidateUsername(username); err != nil {
+		logger.GetLogger("boulder").Errorf("username %s is invalid format", username)
+		return nil, errors.New("username is invalid format")
+	}
+
+	if err := ValidatePassword(password, username); err != nil {
+		logger.GetLogger("boulder").Errorf("password for user %s is invalid: %v", username, err)
+		return nil, fmt.Errorf("password is invalid: %w", err)
 	}
 
 	user := &IAMUser{
 		ID:         generateCanonicalUserID(),
 		ARN:        formatUserARN(a.AccountID, path, username),
 		Username:   username,
+		Password:   password,
 		Path:       normalizePath(path),
 		CreatedAt:  time.Now().UTC(),
 		AccessKeys: make([]AccessKey, 0),
@@ -196,8 +222,38 @@ func (a *IAMAccount) CreateUser(username, path string) (*IAMUser, error) {
 		Tags:       make(map[string]string),
 	}
 
-	a.Users[username] = user
 	return user, nil
+}
+
+// 根据 用户名获取用户信息，包括root 用户
+func (a *IAMAccount) GetUser(username string) (*IAMUser, error) {
+	user, uExists := a.Users[username]
+	if uExists {
+		return user, nil
+	}
+	rootUser, uExists := a.Users["root"]
+	if uExists && rootUser != nil && rootUser.Username == username {
+		return rootUser, nil
+	}
+	return nil, errors.New("user not found")
+}
+
+func (a *IAMAccount) GetAllUsers() []*IAMUser {
+	users := make([]*IAMUser, 0, len(a.Users))
+	for _, user := range a.Users {
+		users = append(users, user)
+	}
+	return users
+}
+
+func (a *IAMAccount) GetAllAccessKeys() []*AccessKey {
+	keys := make([]*AccessKey, 0)
+	for _, user := range a.Users {
+		for i := range user.AccessKeys {
+			keys = append(keys, &user.AccessKeys[i])
+		}
+	}
+	return keys
 }
 
 // AddRoleToUser 让用户可以担任某个角色
@@ -207,6 +263,9 @@ func (a *IAMAccount) AddRoleToUser(username, roleName string) error {
 
 	if !uExists || !rExists {
 		return errors.New("user or role not found")
+	}
+	if user.IsRoot {
+		return errors.New("root user cannot be added to a role")
 	}
 
 	// 检查用户是否已担任该角色
@@ -220,11 +279,52 @@ func (a *IAMAccount) AddRoleToUser(username, roleName string) error {
 	return nil
 }
 
+// DeleteUser 删除用户
+func (a *IAMAccount) DeleteUser(username string) error {
+	// 检查用户是否存在
+	user, exists := a.Users[username]
+	if !exists {
+		return errors.New("user not found")
+	}
+
+	// 检查是否是根用户
+	if user.IsRoot {
+		return errors.New("cannot delete root user")
+	}
+
+	// 从所有组中移除该用户
+	for _, groupName := range user.Groups {
+		group, gExists := a.Groups[groupName]
+		if gExists {
+			// 从组中移除用户
+			newUsers := make([]string, 0, len(group.Users)-1)
+			for _, u := range group.Users {
+				if u != username {
+					newUsers = append(newUsers, u)
+				}
+			}
+			group.Users = newUsers
+		}
+	}
+
+	// 删除用户
+	delete(a.Users, username)
+	return nil
+}
+
 // CreateAccessKey 为用户创建访问密钥
-func (a *IAMAccount) CreateAccessKey(username string) (*AccessKey, error) {
+func (a *IAMAccount) CreateAccessKey(username string, expiredAt time.Time) (*AccessKey, error) {
 	user, exists := a.Users[username]
 	if !exists {
 		return nil, errors.New("user not found")
+	}
+
+	if user.IsRoot {
+		return nil, errors.New("root user cannot be added access keys")
+	}
+
+	if expiredAt.Before(time.Now()) {
+		return nil, errors.New("expired time cannot be before current time")
 	}
 
 	accessKey := AccessKey{
@@ -232,6 +332,9 @@ func (a *IAMAccount) CreateAccessKey(username string) (*AccessKey, error) {
 		SecretAccessKey: generateSecretAccessKey(),
 		Status:          "Active",
 		CreatedAt:       time.Now().UTC(),
+		ExpiredAt:       expiredAt,
+		Username:        username,
+		AccountID:       a.AccountID,
 	}
 
 	user.AccessKeys = append(user.AccessKeys, accessKey)
@@ -260,6 +363,33 @@ func (a *IAMAccount) CreateGroup(caller *IAMUser, name, path string) (*IAMGroup,
 	return group, nil
 }
 
+// DeleteGroup 删除用户组
+func (a *IAMAccount) DeleteGroup(groupName string) error {
+	// 检查组是否存在
+	group, exists := a.Groups[groupName]
+	if !exists {
+		return errors.New("group not found")
+	}
+
+	// 从组成员的用户中移除该组
+	for _, username := range group.Users {
+		user, uExists := a.Users[username]
+		if uExists {
+			newGroups := make([]string, 0, len(user.Groups)-1)
+			for _, g := range user.Groups {
+				if g != groupName {
+					newGroups = append(newGroups, g)
+				}
+			}
+			user.Groups = newGroups
+		}
+	}
+
+	// 删除组
+	delete(a.Groups, groupName)
+	return nil
+}
+
 // AddUserToGroup 添加用户到组
 func (a *IAMAccount) AddUserToGroup(username, groupName string) error {
 	user, uExists := a.Users[username]
@@ -267,6 +397,10 @@ func (a *IAMAccount) AddUserToGroup(username, groupName string) error {
 
 	if !uExists || !gExists {
 		return errors.New("user or group not found")
+	}
+
+	if user.IsRoot {
+		return errors.New("root user cannot be added to a group")
 	}
 
 	// 检查用户是否已在组中
@@ -310,6 +444,52 @@ func (a *IAMAccount) CreatePolicy(caller *IAMUser, name, description, document s
 	return policy, nil
 }
 
+// DeletePolicy 删除策略
+func (a *IAMAccount) DeletePolicy(policyName string) error {
+	// 检查策略是否存在
+	_, exists := a.Policies[policyName]
+	if !exists {
+		return errors.New("policy not found")
+	}
+
+	// 从所有用户中移除该策略
+	for _, user := range a.Users {
+		newPolicies := make([]string, 0, len(user.AttachedPolicies))
+		for _, p := range user.AttachedPolicies {
+			if p != policyName {
+				newPolicies = append(newPolicies, p)
+			}
+		}
+		user.AttachedPolicies = newPolicies
+	}
+
+	// 从所有组中移除该策略
+	for _, group := range a.Groups {
+		newPolicies := make([]string, 0, len(group.AttachedPolicies))
+		for _, p := range group.AttachedPolicies {
+			if p != policyName {
+				newPolicies = append(newPolicies, p)
+			}
+		}
+		group.AttachedPolicies = newPolicies
+	}
+
+	// 从所有角色中移除该策略
+	for _, role := range a.Roles {
+		newPolicies := make([]string, 0, len(role.AttachedPolicies))
+		for _, p := range role.AttachedPolicies {
+			if p != policyName {
+				newPolicies = append(newPolicies, p)
+			}
+		}
+		role.AttachedPolicies = newPolicies
+	}
+
+	// 删除策略
+	delete(a.Policies, policyName)
+	return nil
+}
+
 // AttachPolicyToUser 附加策略到用户
 func (a *IAMAccount) AttachPolicyToUser(caller *IAMUser, username, policyName string) error {
 	// 检查特定 IAM 权限
@@ -321,6 +501,10 @@ func (a *IAMAccount) AttachPolicyToUser(caller *IAMUser, username, policyName st
 	user, exists := a.Users[username]
 	if !exists {
 		return errors.New("user not found")
+	}
+
+	if user.IsRoot {
+		return errors.New("cannot attach policies to root user")
 	}
 
 	// 检查策略是否存在
@@ -428,6 +612,30 @@ func (a *IAMAccount) ListAttachedRolePolicies(roleName string) ([]string, error)
 	return role.AttachedPolicies, nil
 }
 
+// DeleteRole 删除角色
+func (a *IAMAccount) DeleteRole(roleName string) error {
+	// 检查角色是否存在
+	_, exists := a.Roles[roleName]
+	if !exists {
+		return errors.New("role not found")
+	}
+
+	// 从所有用户中移除该角色
+	for _, user := range a.Users {
+		newRoles := make([]string, 0, len(user.Roles))
+		for _, r := range user.Roles {
+			if r != roleName {
+				newRoles = append(newRoles, r)
+			}
+		}
+		user.Roles = newRoles
+	}
+
+	// 删除角色
+	delete(a.Roles, roleName)
+	return nil
+}
+
 // DetachPolicyFromRole 从角色分离策略
 func (a *IAMAccount) DetachPolicyFromRole(roleName, policyName string) error {
 	role, exists := a.Roles[roleName]
@@ -478,7 +686,7 @@ func (a *IAMAccount) CheckPermission(username, action, resource string) (bool, e
 	}
 
 	// 2. 收集用户所有策略（直接附加+通过组附加）
-	allPolicies := a.getAllUserPolicies(user)
+	allPolicies := a.getUserAllPolicies(user)
 
 	// 3. 检查权限边界（如果设置了）
 	if user.PermissionsBoundary != "" {
@@ -523,7 +731,7 @@ func (a *IAMAccount) CheckPermission(username, action, resource string) (bool, e
 }
 
 // 获取用户所有策略（直接附加+通过组附加）
-func (a *IAMAccount) getAllUserPolicies(user *IAMUser) []*IAMPolicy {
+func (a *IAMAccount) getUserAllPolicies(user *IAMUser) []*IAMPolicy {
 	var policies []*IAMPolicy
 
 	// 直接附加的策略
@@ -621,7 +829,7 @@ func (a *IAMAccount) ListUserPermissions(username string) ([]string, error) {
 	}
 
 	permissions := make(map[string]struct{})
-	allPolicies := a.getAllUserPolicies(user)
+	allPolicies := a.getUserAllPolicies(user)
 
 	for _, policy := range allPolicies {
 		var doc PolicyDocument
@@ -728,6 +936,159 @@ func generateCanonicalUserID() string {
 	bytes := make([]byte, 32)
 	rand.Read(bytes)
 	return hex.EncodeToString(bytes)
+}
+
+// ValidateAccountID 验证账户ID是否符合AWS规范 (12位数字)
+func ValidateAccountID(accountID string) error {
+	if len(accountID) != 12 {
+		return errors.New("account ID must be 12 digits")
+	}
+
+	for _, c := range accountID {
+		if c < '0' || c > '9' {
+			return errors.New("account ID must contain only digits")
+		}
+	}
+
+	return nil
+}
+
+// ValidateUsername 验证用户名是否符合AWS IAM规范
+// 用户名规则:
+// 1. 长度在1-64字符之间
+// 2. 只能包含字母、数字、下划线(_)、点(.)和连字符(-)
+// 3. 不能以点(.)或连字符(-)开头或结尾
+// 4. 不能连续使用点(.)或连字符(-)
+func ValidateUsername(username string) error {
+	if len(username) == 0 || len(username) > 64 || username == "root" {
+		return errors.New("username length must be between 1 and 64 characters")
+	}
+
+	// 检查首字符和尾字符
+	firstChar := username[0]
+	lastChar := username[len(username)-1]
+	if firstChar == '.' || firstChar == '-' || lastChar == '.' || lastChar == '-' {
+		return errors.New("username cannot start or end with '.' or '-'")
+	}
+
+	// 检查字符是否合法以及是否有连续的点或连字符
+	for i := 0; i < len(username)-1; i++ {
+		current := username[i]
+		next := username[i+1]
+
+		// 检查字符是否合法
+		if !((current >= 'a' && current <= 'z') ||
+			(current >= 'A' && current <= 'Z') ||
+			(current >= '0' && current <= '9') ||
+			current == '_' || current == '.' || current == '-') {
+			return errors.New("username can only contain letters, numbers, '_', '.' and '-' ")
+		}
+
+		// 检查是否有连续的点或连字符
+		if (current == '.' && next == '.') || (current == '-' && next == '-') {
+			return errors.New("username cannot contain consecutive '.' or '-'")
+		}
+	}
+
+	// 检查最后一个字符是否合法
+	lastChar = username[len(username)-1]
+	if !((lastChar >= 'a' && lastChar <= 'z') ||
+		(lastChar >= 'A' && lastChar <= 'Z') ||
+		(lastChar >= '0' && lastChar <= '9') ||
+		lastChar == '_' || lastChar == '.' || lastChar == '-') {
+		return errors.New("username can only contain letters, numbers, '_', '.' and '-' ")
+	}
+
+	return nil
+}
+
+// ValidatePassword 验证密码是否符合AWS IAM规范
+// 密码规则:
+// 1. 长度至少为8个字符
+// 2. 包含至少一个大写字母
+// 3. 包含至少一个小写字母
+// 4. 包含至少一个数字
+// 5. 包含至少一个特殊字符 (!@#$%^&*()_+-=[]{}|;:,.<>?/)
+// 6. 不能包含用户名
+func ValidatePassword(password, username string) error {
+	// 检查长度
+	if len(password) < 8 {
+		return errors.New("password must be at least 8 characters long")
+	}
+
+	// 检查是否包含大写字母
+	hasUpperCase := false
+	// 检查是否包含小写字母
+	hasLowerCase := false
+	// 检查是否包含数字
+	hasDigit := false
+	// 检查是否包含特殊字符
+	hasSpecialChar := false
+	// 特殊字符集
+	specialChars := "!@#$%^&*()_+-=[]{}|;:,.<>?/"
+
+	for _, c := range password {
+		if c >= 'A' && c <= 'Z' {
+			hasUpperCase = true
+		} else if c >= 'a' && c <= 'z' {
+			hasLowerCase = true
+		} else if c >= '0' && c <= '9' {
+			hasDigit = true
+		} else if strings.ContainsRune(specialChars, c) {
+			hasSpecialChar = true
+		}
+	}
+
+	if !hasUpperCase {
+		return errors.New("password must contain at least one uppercase letter")
+	}
+
+	if !hasLowerCase {
+		return errors.New("password must contain at least one lowercase letter")
+	}
+
+	if !hasDigit {
+		return errors.New("password must contain at least one digit")
+	}
+
+	if !hasSpecialChar {
+		return errors.New("password must contain at least one special character (!@#$%^&*()_+-=[]{}|;:,.<>?/)")
+	}
+
+	// 检查是否包含用户名
+	if strings.Contains(strings.ToLower(password), strings.ToLower(username)) {
+		return errors.New("password cannot contain username")
+	}
+
+	return nil
+}
+
+func ValidatePath(path string) bool {
+	// 空路径是有效的
+	if path == "" {
+		return true
+	}
+
+	// 路径必须以/开头和结尾
+	if !strings.HasPrefix(path, "/") || !strings.HasSuffix(path, "/") {
+		return false
+	}
+
+	// 检查路径中的字符是否有效
+	for _, c := range path {
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+			c == '/' || c == '.' || c == '-' || c == '_' {
+			continue
+		}
+		return false
+	}
+
+	// 检查是否包含连续的/
+	if strings.Contains(path, "//") {
+		return false
+	}
+
+	return true
 }
 
 // 生成访问密钥ID (20字符)

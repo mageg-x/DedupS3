@@ -1,14 +1,28 @@
-// /home/steven/work/boulder/server/middleware/request_id.go
+/*
+ * Copyright (C) 2025-2025 raochaoxun <raochaoxun@gmail.com>.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 package middleware
 
 import (
 	"context"
 	"github.com/google/uuid"
+	xhttp "github.com/mageg-x/boulder/internal/http"
 	"net/http"
 )
-
-// RequestIDKey 用于上下文存储
-type RequestIDKey struct{}
 
 // RequestIDMiddleware 为所有请求生成唯一ID
 func RequestIDMiddleware(next http.Handler) http.Handler {
@@ -21,17 +35,9 @@ func RequestIDMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("x-amz-request-id", requestID)
 
 		// 将Request ID添加到请求上下文
-		ctx := context.WithValue(r.Context(), RequestIDKey{}, requestID)
+		ctx := context.WithValue(r.Context(), xhttp.AWSRequestID{}, requestID)
 
 		// 继续处理请求
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
-}
-
-// GetRequestID 从上下文中获取 Request ID
-func GetRequestID(ctx context.Context) string {
-	if id, ok := ctx.Value(RequestIDKey{}).(string); ok {
-		return id
-	}
-	return ""
 }

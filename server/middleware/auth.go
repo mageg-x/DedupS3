@@ -6,7 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
+	xhttp "github.com/mageg-x/boulder/internal/http"
 	"io"
 	"net/http"
 	"regexp"
@@ -16,7 +16,7 @@ import (
 
 	"github.com/mageg-x/boulder/internal/logger"
 	"github.com/mageg-x/boulder/internal/utils"
-	"github.com/mageg-x/boulder/meta"
+	"github.com/mageg-x/boulder/service/iam"
 )
 
 // 错误定义
@@ -29,20 +29,21 @@ var (
 // AWS4SigningMiddleware 提供AWS4签名验证的中间件
 func AWS4SigningMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 获取请求上下文中的 Request ID
-		requestID := GetRequestID(r.Context())
-
+		// 确保Host头存在
+		if r.Header.Get("Host") == "" {
+			r.Header.Set("Host", r.Host)
+		}
 		// 1. 从请求头中提取签名信息
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			awsError(w, r, "MissingAuthenticationToken", "Missing Authorization header", http.StatusUnauthorized)
+			xhttp.WriteAWSError(w, r, "MissingAuthenticationToken", "Missing Authorization header", http.StatusUnauthorized)
 			return
 		}
 
 		// 解析Authorization头
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || parts[0] != "AWS4-HMAC-SHA256" {
-			awsError(w, r, "InvalidAuthentication", "Authorization header must start with AWS4-HMAC-SHA256", http.StatusUnauthorized)
+			xhttp.WriteAWSError(w, r, "InvalidAuthentication", "Authorization header must start with AWS4-HMAC-SHA256", http.StatusUnauthorized)
 			return
 		}
 
@@ -59,14 +60,14 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 		}
 
 		if credential == "" || signedHeadersStr == "" || signature == "" {
-			awsError(w, r, "InvalidArgument", "Authorization header missing required components", http.StatusBadRequest)
+			xhttp.WriteAWSError(w, r, "InvalidArgument", "Authorization header missing required components", http.StatusBadRequest)
 			return
 		}
 
 		// 提取访问密钥ID
 		credentialParts := strings.Split(credential, "/")
 		if len(credentialParts) < 5 {
-			awsError(w, r, "InvalidArgument", "Credential format error", http.StatusBadRequest)
+			xhttp.WriteAWSError(w, r, "InvalidArgument", "Credential format error", http.StatusBadRequest)
 			return
 		}
 
@@ -75,33 +76,22 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 		region := credentialParts[2]
 		service := credentialParts[3]
 
-		// 2. 查找对应的用户
-		user, err := findUserByAccessKeyID(iamSystem, accessKeyID)
-		if err != nil {
-			if errors.Is(err, ErrAccessKeyNotFound) {
-				awsError(w, r, "InvalidAccessKeyId", "The access key ID provided does not exist", http.StatusForbidden)
-			} else {
-				awsError(w, r, "InternalError", "Internal server error", http.StatusInternalServerError)
-			}
-			return
-		}
-
 		// 3. 检查时间有效性
 		amzDate := r.Header.Get("X-Amz-Date")
 		if amzDate == "" {
-			awsError(w, r, "MissingDateHeader", "X-Amz-Date header is required", http.StatusBadRequest)
+			xhttp.WriteAWSError(w, r, "MissingDateHeader", "X-Amz-Date header is required", http.StatusBadRequest)
 			return
 		}
 
 		// 验证时间格式
 		if len(amzDate) != 16 {
-			awsError(w, r, "MalformedDate", "Invalid X-Amz-Date format", http.StatusBadRequest)
+			xhttp.WriteAWSError(w, r, "MalformedDate", "Invalid X-Amz-Date format", http.StatusBadRequest)
 			return
 		}
 
 		parsedTime, err := time.Parse("20060102T150405Z", amzDate)
 		if err != nil {
-			awsError(w, r, "MalformedDate", "Invalid X-Amz-Date format", http.StatusBadRequest)
+			xhttp.WriteAWSError(w, r, "MalformedDate", "Invalid X-Amz-Date format", http.StatusBadRequest)
 			return
 		}
 
@@ -109,7 +99,7 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 		timeWindow := 15 * time.Minute
 		now := time.Now().UTC()
 		if diff := now.Sub(parsedTime); diff < -timeWindow || diff > timeWindow {
-			awsError(w, r, "RequestExpired", "Request has expired", http.StatusForbidden)
+			xhttp.WriteAWSError(w, r, "RequestExpired", "Request has expired", http.StatusForbidden)
 			return
 		}
 
@@ -117,7 +107,7 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 		canonicalRequest, payloadHash, err := buildCanonicalRequest(r, signedHeadersStr)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("Failed to build canonical request: %v", err)
-			awsError(w, r, "InternalError", "Internal server error", http.StatusInternalServerError)
+			xhttp.WriteAWSError(w, r, "InternalError", "Internal server error", http.StatusInternalServerError)
 			return
 		}
 
@@ -126,30 +116,26 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 
 		// 6. 计算签名
 		// 获取秘密访问密钥
-		secretAccessKey := ""
-		for _, key := range user.AccessKeys {
-			if key.AccessKeyID == accessKeyID && key.Status == "Active" {
-				secretAccessKey = key.SecretAccessKey
-				break
-			}
+		ak, err := iam.GetIAMService().GetAccessKey(accessKeyID)
+		if ak == nil || err != nil {
+			logger.GetLogger("boulder").Errorf("get access key failed: %v", err)
+			xhttp.WriteAWSError(w, r, "InvalidAccessKeyId.NotFound", ErrAccessKeyNotFound.Error(), http.StatusForbidden)
+			return
 		}
 
-		if secretAccessKey == "" {
-			awsError(w, r, "InvalidAccessKeyId", "The access key ID provided is inactive", http.StatusForbidden)
+		if ak.Status != "Active" || ak.ExpiredAt.Before(time.Now()) {
+			logger.GetLogger("boulder").Errorf("access key is inactive: %v", err)
+			xhttp.WriteAWSError(w, r, "InvalidAccessKeyId", "access key is inactive", http.StatusForbidden)
 			return
 		}
 
 		// 计算签名
-		computedSignature := calculateSignature(secretAccessKey, date, region, service, stringToSign)
+		computedSignature := calculateSignature(ak.SecretAccessKey, date, region, service, stringToSign)
 
 		// 在错误响应中使用 Request ID
 		if !hmac.Equal([]byte(computedSignature), []byte(signature)) {
-			logger.GetLogger("boulder").WithFields(map[string]interface{}{
-				"access_key_id": accessKeyID,
-				"request_id":    requestID,
-			}).Warn("Signature mismatch")
-
-			awsError(w, r, "SignatureDoesNotMatch", "The request signature we calculated does not match the signature you provided", http.StatusForbidden)
+			logger.GetLogger("boulder").Warnf("signature mismatch %s : %s with ak %v ", computedSignature, signature, ak)
+			xhttp.WriteAWSError(w, r, "SignatureDoesNotMatch", "The request signature we calculated does not match the signature you provided", http.StatusForbidden)
 			return
 		}
 
@@ -158,7 +144,7 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 			// 重新计算请求体哈希进行验证
 			bodyBytes, err := io.ReadAll(r.Body)
 			if err != nil {
-				awsError(w, r, "InternalError", "Failed to read request body", http.StatusInternalServerError)
+				xhttp.WriteAWSError(w, r, "InternalError", "Failed to read request body", http.StatusInternalServerError)
 				return
 			}
 			r.Body.Close()
@@ -168,7 +154,7 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 			calculatedHash := hex.EncodeToString(hash[:])
 
 			if calculatedHash != payloadHash {
-				awsError(w, r, "InvalidContentHash", "The provided content hash does not match the calculated content hash", http.StatusBadRequest)
+				xhttp.WriteAWSError(w, r, "InvalidContentHash", "The provided content hash does not match the calculated content hash", http.StatusBadRequest)
 				return
 			}
 		}
@@ -176,18 +162,6 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 		// 签名验证成功，继续处理请求
 		next.ServeHTTP(w, r)
 	})
-}
-
-// 辅助函数：通过访问密钥ID查找用户
-func findUserByAccessKeyID(iamSystem *meta.IAMSystem, accessKeyID string) (*meta.IAMUser, error) {
-	for _, user := range iamSystem.Users {
-		for _, key := range user.AccessKeys {
-			if key.AccessKeyID == accessKeyID {
-				return user, nil
-			}
-		}
-	}
-	return nil, ErrAccessKeyNotFound
 }
 
 // 辅助函数：构建规范请求
@@ -250,7 +224,6 @@ func buildCanonicalRequest(r *http.Request, signedHeadersStr string) (string, st
 		canonicalURI,
 		canonicalQueryString,
 		canonicalHeaders,
-		"", // 空行在规范头后面
 		signedHeaders,
 		payloadHash,
 	}, "\n")
@@ -265,20 +238,17 @@ func buildCanonicalHeaders(r *http.Request, signedHeadersStr string) (string, er
 
 	var buf strings.Builder
 	for _, h := range signedHeaders {
-		// 获取原始头值
 		values := r.Header.Values(h)
 		if len(values) == 0 {
-			// 如果头不存在，使用空字符串
 			values = []string{""}
 		}
 
-		// 合并多个值为逗号分隔，并规范化空格
 		combined := ""
 		for i, v := range values {
 			if i > 0 {
 				combined += ","
 			}
-			// 去除前后空格并将连续空格替换为单个空格
+
 			v = strings.TrimSpace(v)
 			v = spaceRegex.ReplaceAllString(v, " ")
 			combined += v
@@ -297,10 +267,10 @@ func buildStringToSign(amzDate, date, region, service, canonicalRequest string) 
 	stringToSign := "AWS4-HMAC-SHA256\n" +
 		amzDate + "\n" +
 		date + "/" + region + "/" + service + "/aws4_request\n"
-
+	logger.GetLogger("boulder").Infof("CANONICAL REQUEST:\n%s", canonicalRequest)
 	hash := sha256.Sum256([]byte(canonicalRequest))
 	stringToSign += hex.EncodeToString(hash[:])
-
+	logger.GetLogger("boulder").Infof("STRING TO SIGN:\n%s", stringToSign)
 	return stringToSign
 }
 
@@ -321,39 +291,11 @@ func encodePath(path string) string {
 		return "/"
 	}
 
-	// 使用自定义EncodePath函数进行双重编码
-	encoded := utils.EncodePath(utils.EncodePath(path))
+	encoded := utils.EncodePath(path)
 
 	// 确保路径以斜杠开头
 	if !strings.HasPrefix(encoded, "/") {
 		encoded = "/" + encoded
 	}
 	return encoded
-}
-
-// 生成AWS风格错误响应
-func awsError(w http.ResponseWriter, r *http.Request, code, message string, status int) {
-	w.Header().Set("Content-Type", "application/xml")
-	w.WriteHeader(status)
-
-	// 尝试从上下文中获取 Request ID
-	requestID := GetRequestID(r.Context())
-	if requestID == "" {
-		// 如果没有设置，生成一个临时 ID
-		requestID = fmt.Sprintf("TMP-%d", time.Now().UnixNano())
-	}
-
-	// 设置响应头
-	w.Header().Set("x-amz-request-id", requestID)
-	response := fmt.Sprintf(
-		`<?xml version="1.0" encoding="UTF-8"?>
-		<Error>
-			<Code>%s</Code>
-			<Message>%s</Message>
-			<RequestId>%s</RequestId>
-		</Error>`,
-		code, message, requestID,
-	)
-
-	w.Write([]byte(response))
 }

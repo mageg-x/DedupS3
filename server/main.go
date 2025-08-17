@@ -21,7 +21,9 @@ import (
 	"flag"
 	"fmt"
 	"github.com/mageg-x/boulder/internal/storage/block"
+	"github.com/mageg-x/boulder/service/iam"
 	"go.uber.org/zap"
+	"math/rand"
 	"os"
 	"os/signal"
 	"syscall"
@@ -59,6 +61,8 @@ func ParseCLI() *CLI {
 }
 
 func main() {
+	rand.New(rand.NewSource(time.Now().UnixNano()))
+
 	cli := ParseCLI()
 	if cli.ShowHelp {
 		flag.Usage()
@@ -103,6 +107,11 @@ func main() {
 		panic(err)
 	}
 
+	//a, err := iam.GetIAMService().CreateAccount("admin", "Root@12345678")
+	_, err = iam.GetIAMService().CreateUser("339431372551", "stevenrao", "Root@12345678", "/")
+	//k, err := iam.GetIAMService().CreateAccessKey("339431372551", "stevenrao", time.Now().AddDate(1, 0, 0))
+
+	//logger.GetLogger("boulder").Infof("user : %+v, access key: %+v", u, k)
 	// 1. 创建路由处理器
 	mux := router.SetupRouter()
 

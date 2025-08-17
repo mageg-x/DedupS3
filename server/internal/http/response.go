@@ -17,43 +17,100 @@
 package http
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
-	"strconv"
+	"time"
+
+	"github.com/mageg-x/boulder/internal/logger"
 )
 
-type mimeType string
+// AWSErrorResponse AWS 错误响应结构
+type AWSErrorResponse struct {
+	Error     AWSError `json:"error"`
+	RequestID string   `json:"requestId"`
+}
 
-const (
-	// Means no response type.
-	mimeNone mimeType = ""
-	// Means response type is JSON.
-	mimeJSON mimeType = "application/json"
-	// Means response type is XML.
-	mimeXML mimeType = "application/xml"
-)
+// AWSError AWS 错误详情结构
+type AWSError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	// 可选字段
+	Resource string `json:"resource,omitempty"`
+	Field    string `json:"field,omitempty"`
+}
 
-func Response(w http.ResponseWriter, code int, data []byte, headers map[string]string, mType mimeType) {
-	w.Header().Set(ServerInfo, "Boulder")
-	w.Header().Set(AcceptRanges, "bytes")
-	w.Header().Del(AmzServerSideEncryptionCustomerKey)
-	w.Header().Del(AmzServerSideEncryptionCopyCustomerKey)
-	w.Header().Del(AmzMetaUnencryptedContentLength)
-	w.Header().Del(AmzMetaUnencryptedContentMD5)
+// AWSRequestID RequestIDKey 用于上下文存储
+type AWSRequestID struct{}
 
-	if mType != mimeNone {
-		w.Header().Set(ContentType, string(mType))
-	} else {
-		w.Header().Set(ContentType, "text/plain; charset=utf-8")
+// SuccessResponse 成功响应结构
+type SuccessResponse struct {
+	Data      interface{} `json:"data,omitempty"`
+	RequestID string      `json:"requestId"`
+	Timestamp time.Time   `json:"timestamp"`
+}
+
+// GetRequestID 从上下文中获取 Request ID
+func GetRequestID(ctx context.Context) string {
+	if id, ok := ctx.Value(AWSRequestID{}).(string); ok {
+		return id
 	}
-	if mType != mimeNone {
-		w.Header().Set(ContentType, string(mType))
+	return ""
+}
+
+// WriteAWSError 写入符合AWS规范的JSON错误响应
+func WriteAWSError(w http.ResponseWriter, r *http.Request, code, message string, status int) {
+	// 获取请求ID
+	requestID := GetRequestID(r.Context())
+
+	// 创建错误响应
+	errorResponse := AWSErrorResponse{
+		Error: AWSError{
+			Code:    code,
+			Message: message,
+		},
+		RequestID: requestID,
 	}
-	w.Header().Set(ContentLength, strconv.Itoa(len(data)))
-	for k, v := range headers {
-		w.Header().Set(k, v)
+
+	// 写入响应
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("x-amz-request-id", requestID)
+	w.WriteHeader(status)
+
+	// 序列化为JSON
+	jsonData, err := json.Marshal(errorResponse)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to marshal error response: %v", err)
+		w.Write([]byte(`{"error":{"code":"InternalError","message":"Failed to generate error response"},"requestId":"` + requestID + `"}`))
+		return
 	}
-	w.WriteHeader(code)
-	if data != nil {
-		w.Write(data)
+
+	w.Write(jsonData)
+}
+
+// WriteAWSSuccess 写入成功响应
+func WriteAWSSuccess(w http.ResponseWriter, r *http.Request, data interface{}) {
+	// 获取请求ID
+	requestID := GetRequestID(r.Context())
+	// 创建成功响应
+	successResponse := SuccessResponse{
+		Data:      data,
+		RequestID: requestID,
+		Timestamp: time.Now().UTC(),
 	}
+
+	// 写入响应
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("x-amz-request-id", requestID)
+	w.WriteHeader(http.StatusOK)
+
+	// 序列化为JSON
+	jsonData, err := json.Marshal(successResponse)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to marshal success response: %v", err)
+		WriteAWSError(w, r, "InternalError", "Failed to generate response", http.StatusInternalServerError)
+		return
+	}
+
+	w.Write(jsonData)
 }

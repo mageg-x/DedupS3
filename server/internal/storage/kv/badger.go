@@ -205,3 +205,76 @@ func (b *BadgerStore) Close() error {
 
 	return nil
 }
+
+// BeginTxn 开始一个新事务
+func (b *BadgerStore) BeginTxn(_ context.Context) (Txn, error) {
+	txn := b.db.NewTransaction(true)
+	return &BadgerTxn{txn: txn}, nil
+}
+
+// BadgerTxn 基于BadgerDB的事务实现
+type BadgerTxn struct {
+	txn *badger.Txn
+}
+
+// Put 在事务中存储键值对
+func (t *BadgerTxn) Put(key string, value interface{}) error {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("json marshal error: %w", err)
+	}
+
+	return t.txn.Set([]byte(key), data)
+}
+
+// Get 在事务中获取值
+func (t *BadgerTxn) Get(key string, value interface{}) (bool, error) {
+	data, exists, err := t.GetRaw(key)
+	if err != nil || !exists {
+		return exists, err
+	}
+
+	if err := json.Unmarshal(data, value); err != nil {
+		return true, fmt.Errorf("json unmarshal error: %w", err)
+	}
+	return true, nil
+}
+
+// GetRaw 在事务中获取原始字节数据
+func (t *BadgerTxn) GetRaw(key string) ([]byte, bool, error) {
+	var data []byte
+	var exists bool
+
+	item, err := t.txn.Get([]byte(key))
+	if err != nil {
+		if errors.Is(err, badger.ErrKeyNotFound) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+
+	exists = true
+	err = item.Value(func(val []byte) error {
+		data = make([]byte, len(val))
+		copy(data, val)
+		return nil
+	})
+
+	return data, exists, err
+}
+
+// Delete 在事务中删除键
+func (t *BadgerTxn) Delete(key string) error {
+	return t.txn.Delete([]byte(key))
+}
+
+// Commit 提交事务
+func (t *BadgerTxn) Commit(_ context.Context) error {
+	return t.txn.Commit()
+}
+
+// Rollback 回滚事务
+func (t *BadgerTxn) Rollback(_ context.Context) error {
+	t.txn.Discard()
+	return nil
+}

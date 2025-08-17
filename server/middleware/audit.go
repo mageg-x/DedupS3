@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"encoding/json"
+	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/mageg-x/boulder/internal/logger"
 	"net/http"
 	"time"
@@ -19,7 +21,7 @@ func AuditMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(rw, r)
 
 		// 获取请求上下文中的 Request ID
-		requestID := GetRequestID(r.Context())
+		requestID := xhttp.GetRequestID(r.Context())
 
 		// 获取当前路由信息
 		route := mux.CurrentRoute(r)
@@ -41,7 +43,7 @@ func AuditMiddleware(next http.Handler) http.Handler {
 		key := vars["key"]
 
 		// 记录日志
-		logger.GetLogger("audit").WithFields(map[string]interface{}{
+		txt, _ := json.Marshal(map[string]interface{}{
 			"amz_request_id": requestID,
 			"api_name":       apiName,    // API 名称（如 "PutObject"）
 			"api_pattern":    apiPattern, // API 模式（如 "/{bucket}/{key}"）
@@ -53,7 +55,8 @@ func AuditMiddleware(next http.Handler) http.Handler {
 			"user_agent":     r.UserAgent(),
 			"bucket":         bucket,
 			"key":            key,
-		}).Info("S3 request processed")
+		})
+		logger.GetLogger("audit").Info(string(txt))
 	})
 }
 

@@ -21,9 +21,9 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/mageg-x/boulder/internal/logger"
-
 	"github.com/gorilla/mux"
+	xhttp "github.com/mageg-x/boulder/internal/http"
+	"github.com/mageg-x/boulder/internal/logger"
 	"golang.org/x/time/rate"
 )
 
@@ -60,7 +60,7 @@ func RateLimitMiddleware(config RateLimitConfig) mux.MiddlewareFunc {
 			// 检查是否允许请求
 			if !limiter.(*rate.Limiter).Allow() {
 				logger.GetLogger("boulder").Warnf("too many requests from %s", key)
-				http.Error(w, "request too frequent, please try again later.", http.StatusTooManyRequests)
+				xhttp.WriteAWSError(w, r, "TooManyRequests", "Request too frequent, please try again later.", http.StatusTooManyRequests)
 				return
 			}
 
@@ -69,7 +69,7 @@ func RateLimitMiddleware(config RateLimitConfig) mux.MiddlewareFunc {
 	}
 }
 
-// 辅助函数：按客户端IP限流
+// ByIP 辅助函数：按客户端IP限流
 func ByIP(r *http.Request) string {
 	// 获取真实IP（考虑代理情况）
 	ip := r.Header.Get("X-Forwarded-For")
@@ -82,12 +82,12 @@ func ByIP(r *http.Request) string {
 	return ip
 }
 
-// 辅助函数：按API路径限流
+// ByPath 辅助函数：按API路径限流
 func ByPath(r *http.Request) string {
 	return r.URL.Path
 }
 
-// 辅助函数：按用户限流
+// ByUser 辅助函数：按用户限流
 func ByUser(r *http.Request) string {
 	// 实际应用中从认证信息中获取用户ID
 	if userID := r.Header.Get("X-User-ID"); userID != "" {

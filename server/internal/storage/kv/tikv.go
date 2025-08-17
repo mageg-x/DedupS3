@@ -163,3 +163,104 @@ func (t *TiKVStore) scanInternal(ctx context.Context, prefix, startKey string, l
 func (t *TiKVStore) Close() error {
 	return t.client.Close()
 }
+
+// BeginTxn 开始一个新事务
+func (t *TiKVStore) BeginTxn(ctx context.Context) (Txn, error) {
+	// 对于TiKV，我们需要使用事务客户端而不是原始客户端
+	// 这里创建一个简单的事务封装
+	return &TiKVTxn{
+		client: t.client,
+		ctx:    ctx,
+		writes: make([]writeOperation, 0),
+	}, nil
+}
+
+// TiKVTxn 基于TiKV的事务实现
+type TiKVTxn struct {
+	client *rawkv.Client
+	ctx    context.Context
+	writes []writeOperation
+}
+
+// writeOperation 表示一个写操作
+type writeOperation struct {
+	key   string
+	value []byte
+	op    string // "put" 或 "delete"
+}
+
+// Put 在事务中存储键值对
+func (t *TiKVTxn) Put(key string, value interface{}) error {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("json marshal error: %w", err)
+	}
+
+	t.writes = append(t.writes, writeOperation{
+		key:   key,
+		value: data,
+		op:    "put",
+	})
+	return nil
+}
+
+// Get 在事务中获取值
+func (t *TiKVTxn) Get(key string, value interface{}) (bool, error) {
+	data, exists, err := t.GetRaw(key)
+	if err != nil || !exists {
+		return exists, err
+	}
+
+	if err := json.Unmarshal(data, value); err != nil {
+		return true, fmt.Errorf("json unmarshal error: %w", err)
+	}
+	return true, nil
+}
+
+// GetRaw 在事务中获取原始字节数据
+func (t *TiKVTxn) GetRaw(key string) ([]byte, bool, error) {
+	data, err := t.client.Get(t.ctx, []byte(key))
+	if err != nil {
+		return nil, false, err
+	}
+
+	if data == nil {
+		return nil, false, nil
+	}
+
+	return data, true, nil
+}
+
+// Delete 在事务中删除键
+func (t *TiKVTxn) Delete(key string) error {
+	t.writes = append(t.writes, writeOperation{
+		key: key,
+		op:  "delete",
+	})
+	return nil
+}
+
+// Commit 提交事务
+func (t *TiKVTxn) Commit(ctx context.Context) error {
+	// 对于rawkv客户端，我们只能模拟事务，这里使用简单的批量操作
+	// 注意：这不是真正的原子事务，只是批量操作
+	for _, op := range t.writes {
+		if op.op == "put" {
+			if err := t.client.Put(ctx, []byte(op.key), op.value); err != nil {
+				return err
+			}
+		} else if op.op == "delete" {
+			if err := t.client.Delete(ctx, []byte(op.key)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// Rollback 回滚事务
+func (t *TiKVTxn) Rollback(_ context.Context) error {
+	// 对于rawkv客户端，我们只需清除未提交的写操作
+	t.writes = nil
+	return nil
+}

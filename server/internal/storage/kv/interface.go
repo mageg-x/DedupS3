@@ -64,6 +64,26 @@ type KVStore interface {
 	ScanWithValues(ctx context.Context, prefix string) (map[string][]byte, error)
 	ScanPage(ctx context.Context, prefix, startKey string, limit int) ([]string, string, error)
 	Close() error
+
+	// BeginTxn 事务相关方法
+	// BeginTxn 开始一个新事务
+	BeginTxn(ctx context.Context) (Txn, error)
+}
+
+// Txn 事务接口
+type Txn interface {
+	// Put 在事务中存储键值对
+	Put(key string, value interface{}) error
+	// Get 在事务中获取值
+	Get(key string, value interface{}) (bool, error)
+	// GetRaw 在事务中获取原始字节数据
+	GetRaw(key string) ([]byte, bool, error)
+	// Delete 在事务中删除键
+	Delete(key string) error
+	// Commit 提交事务
+	Commit(ctx context.Context) error
+	// Rollback 回滚事务
+	Rollback(ctx context.Context) error
 }
 
 // StorageType 存储类型
