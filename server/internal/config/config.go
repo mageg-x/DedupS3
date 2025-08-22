@@ -38,10 +38,10 @@ type KVConfig struct {
 type S3Config struct {
 	AccessKey    string `yaml:"access_key" json:"accessKey" env:"BOULDER_BLOCK_S3_ACCESS_KEY"`
 	SecretKey    string `yaml:"secret_key" json:"secretKey" env:"BOULDER_BLOCK_S3_SECRET_KEY"`
-	Region       string `yaml:"region" json:"region" env:"BOULDER_BLOCK_S3_REGION"`
+	Region       string `yaml:"region" json:"region" env:"BOULDER_BLOCK_S3_REGION" default:"us-east-1"`
 	Endpoint     string `yaml:"endpoint" json:"endpoint" env:"BOULDER_BLOCK_S3_ENDPOINT"`
-	Bucket       string `yaml:"bucket" json:"bucket" env:"BOULDER_BLOCK_S3_BUCKET"`
-	UsePathStyle bool   `yaml:"usePathStyle" json:"usePathStyle" env:"BOULDER_BLOCK_S3_USE_PATH_STYLE"`
+	Bucket       string `yaml:"bucket" json:"bucket" env:"BOULDER_BLOCK_S3_BUCKET" default:"blocks"`
+	UsePathStyle bool   `yaml:"usePathStyle" json:"usePathStyle" env:"BOULDER_BLOCK_S3_USE_PATH_STYLE" default:"true"`
 }
 
 type DiskConfig struct {

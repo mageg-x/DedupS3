@@ -14,14 +14,19 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package block
 
-// BlockStore  存储后端接口
-type BlockStore interface {
-	Type() string
-	WriteBlock(blockID string, data []byte) error
-	ReadBlock(blockID string, offset, length int64) ([]byte, error)
-	DeleteBlock(blockID string) error
-	Location(blockID string) string
-	BlockExists(blockID string) (bool, error)
+package meta
+
+import (
+	"github.com/mageg-x/boulder/internal/config"
+	"github.com/mageg-x/boulder/internal/storage/block"
+)
+
+// Storage 表示单个存储实例的元数据
+type Storage struct {
+	ID       string             `json:"id" msgpack:"id"`       // 唯一标识符
+	Class    string             `json:"class" msgpack:"class"` // 存储类型 (标准， 低频， 归档存储)
+	Type     string             `json:"type" msgpack:"type"`   // 存储类别 (s3, disk, etc.)
+	Conf     config.BlockConfig `json:"conf" msgpack:"conf"`   // 存储配置
+	Instance block.BlockStore   `json:"-" msgpack:"-"`         // 实际读写实例
 }

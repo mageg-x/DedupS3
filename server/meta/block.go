@@ -20,7 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"github.com/google/uuid"
 	"time"
 
 	"github.com/mageg-x/boulder/internal/storage/block"
@@ -50,7 +50,7 @@ type Block struct {
 // NewBlock 创建新块
 func NewBlock(storageID string) *Block {
 	return &Block{
-		ID:        generateUUID(),
+		ID:        uuid.New().String(),
 		StorageID: storageID,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
@@ -169,10 +169,4 @@ func (b *Block) LoadMeta(kv kv.KVStore, blockID string) error {
 // BlockMetaKey 生成块元数据键
 func BlockMetaKey(blockID string) string {
 	return "block:" + blockID
-}
-
-// generateUUID 生成唯一ID
-func generateUUID() string {
-	// 实际实现中应使用真实的UUID生成
-	return fmt.Sprintf("%x", time.Now().UnixNano())
 }

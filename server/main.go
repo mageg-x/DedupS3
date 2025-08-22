@@ -33,7 +33,6 @@ import (
 	"github.com/mageg-x/boulder/internal/config"
 	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/mageg-x/boulder/internal/logger"
-	"github.com/mageg-x/boulder/internal/storage/block"
 	"github.com/mageg-x/boulder/internal/storage/cache"
 	"github.com/mageg-x/boulder/internal/storage/kv"
 	"github.com/mageg-x/boulder/router"
@@ -96,13 +95,6 @@ func main() {
 	_, err := kv.GetKvStore()
 	if err != nil {
 		logger.GetLogger("boulder").Error("failed to init kv store", zap.Error(err))
-		panic(err)
-	}
-
-	// 初始block 存放对象数据块地方
-	_, err = block.GetBlockStore()
-	if err != nil {
-		logger.GetLogger("boulder").Error("failed to init block store", zap.Error(err))
 		panic(err)
 	}
 

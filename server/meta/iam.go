@@ -40,7 +40,6 @@ type IAMAccount struct {
 
 // CreateAccount 创建新的 IAM 系统
 func CreateAccount() *IAMAccount {
-
 	return &IAMAccount{
 		AccountID: generateAccountID(),
 		Users:     make(map[string]*IAMUser),
