@@ -48,12 +48,6 @@ type DiskConfig struct {
 	Path string `yaml:"path" json:"path" env:"BOULDER_BLOCK_DISK_PATH" default:"./data/block"`
 }
 
-// BlockConfig 存储Block相关配置
-type BlockConfig struct {
-	S3   *S3Config  `yaml:"s3" json:"s3"`
-	Disk DiskConfig `yaml:"disk" json:"disk"`
-}
-
 // RedisConfig Redis集群配置
 type RedisConfig struct {
 	Addrs    []string `yaml:"addrs" json:"addrs" env:"BOULDER_CACHE_REDIS_ADDRS"`
@@ -99,7 +93,6 @@ type Config struct {
 	Server ServerConfig `yaml:"server" json:"server"`
 	Log    LogConfig    `yaml:"log" json:"log"`
 	KV     KVConfig     `yaml:"kv" json:"kv"`
-	Block  BlockConfig  `yaml:"block" json:"block"`
 	Cache  CacheConfig  `yaml:"cache" json:"cache"`
 }
 

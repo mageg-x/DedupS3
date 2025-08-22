@@ -1,4 +1,20 @@
-// Package cache /*
+/*
+ * Copyright (C) 2025-2025 raochaoxun <raochaoxun@gmail.com>.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 package cache
 
 import (
@@ -7,200 +23,199 @@ import (
 	"errors"
 	"fmt"
 	"github.com/mageg-x/boulder/internal/config"
-	"github.com/mageg-x/boulder/internal/logger"
 	"time"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 )
 
-// RedisCache 实现基于Redis的缓存
-
-type RedisCache struct {
-	client *redis.Client
-	ctx    context.Context
+// Redis 基于 go-redis 的实现
+type Redis struct {
+	client *redis.ClusterClient
+	config *config.RedisConfig
 }
 
-// NewRedisCache 创建Redis缓存
-func NewRedisCache(c *config.CacheConfig) (*RedisCache, error) {
-	logger.GetLogger("boulder").Infof("Creating Redis cache with address: %s", c.Address)
-	if c == nil {
-		logger.GetLogger("boulder").Errorf("NewRedisCache: nil config")
-		return nil, fmt.Errorf("NewRedisCache: nil config")
-	}
-
-	ctx := context.Background()
-
-	// 创建Redis客户端
-	client := redis.NewClient(&redis.Options{
-		Addr:     c.Address,
-		Password: c.Password,
-		DB:       c.DB,
+// NewRedis 创建 Redis/Valkey 客户端
+func NewRedis(cfg *config.RedisConfig) (*Redis, error) {
+	client := redis.NewClusterClient(&redis.ClusterOptions{
+		Addrs: cfg.Addrs,
+		// 可选配置
+		Password: cfg.Password,
+		PoolSize: cfg.PoolSize,
 	})
 
-	// 测试连接
-	_, err := client.Ping(ctx).Result()
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to connect to Redis: %v", err)
-		return nil, fmt.Errorf("failed to connect to Redis: %w", err)
+	// 可选：测试连接
+	ctx := context.Background()
+	if err := client.Ping(ctx).Err(); err != nil {
+		return nil, fmt.Errorf("failed to connect to redis: %v", err)
 	}
 
-	logger.GetLogger("boulder").Infof("Redis cache initialized successfully")
-	return &RedisCache{
-		client: client,
-		ctx:    ctx,
-	}, nil
+	return &Redis{client: client}, nil
 }
 
-// Type 返回缓存类型
-func (r *RedisCache) Type() string {
-	return "redis"
-}
-
-// Set 设置缓存
-func (r *RedisCache) Set(key string, value interface{}, ttl time.Duration) error {
-	logger.GetLogger("boulder").Debugf("Setting cache for key: %s, ttl: %v", key, ttl)
-	// 序列化值
-	bytes, err := json.Marshal(value)
+// Set 设置值
+func (r *Redis) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
+	serialized, err := json.Marshal(value)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to marshal value for key %s: %v", key, err)
-		return fmt.Errorf("failed to marshal value: %w", err)
+		return fmt.Errorf("failed to serialize value: %v", err)
 	}
 
-	// 设置缓存
-	err = r.client.Set(r.ctx, key, bytes, ttl).Err()
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to set cache for key %s: %v", key, err)
-		return fmt.Errorf("failed to set cache: %w", err)
+	var e *redis.StatusCmd
+	if ttl > 0 {
+		e = r.client.Set(ctx, key, serialized, ttl)
+	} else {
+		e = r.client.Set(ctx, key, serialized, 0)
 	}
 
-	logger.GetLogger("boulder").Debugf("Cache set successfully for key: %s", key)
+	if err := e.Err(); err != nil {
+		return fmt.Errorf("failed to set key: %v", err)
+	}
+
 	return nil
 }
 
-// Get 获取缓存
-func (r *RedisCache) Get(key string, value interface{}) (bool, error) {
-	logger.GetLogger("boulder").Debugf("Getting cache for key: %s", key)
-	// 获取缓存
-	bytes, err := r.client.Get(r.ctx, key).Bytes()
+// Get 获取值
+func (r *Redis) Get(ctx context.Context, key string) (interface{}, bool, error) {
+	val, err := r.client.Get(ctx, key).Result()
+	if err == redis.Nil {
+		return nil, false, nil
+	}
 	if err != nil {
-		if errors.Is(err, redis.Nil) {
-			logger.GetLogger("boulder").Debugf("Cache miss for key: %s", key)
-			return false, nil
-		}
-		logger.GetLogger("boulder").Errorf("Failed to get cache for key %s: %v", key, err)
-		return false, fmt.Errorf("failed to get cache: %w", err)
+		return nil, false, fmt.Errorf("failed to get key: %v", err)
 	}
 
-	// 反序列化值
-	err = json.Unmarshal(bytes, value)
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to unmarshal value for key %s: %v", key, err)
-		return false, fmt.Errorf("failed to unmarshal value: %w", err)
+	var value interface{}
+	if err := json.Unmarshal([]byte(val), &value); err != nil {
+		return nil, false, fmt.Errorf("failed to deserialize value: %v", err)
 	}
 
-	logger.GetLogger("boulder").Debugf("Cache hit for key: %s", key)
-	return true, nil
+	return value, true, nil
 }
 
-// Del 删除缓存
-func (r *RedisCache) Del(key string) error {
-	logger.GetLogger("boulder").Debugf("Deleting cache for key: %s", key)
-	err := r.client.Del(r.ctx, key).Err()
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to delete cache for key %s: %v", key, err)
-		return fmt.Errorf("failed to delete cache: %w", err)
+// Del 删除
+func (r *Redis) Del(ctx context.Context, key string) error {
+	if err := r.client.Del(ctx, key).Err(); err != nil {
+		return fmt.Errorf("failed to delete key: %v", err)
 	}
-	logger.GetLogger("boulder").Debugf("Cache deleted successfully for key: %s", key)
 	return nil
 }
 
-// BatchSet 批量设置缓存
-func (r *RedisCache) BatchSet(items map[string]interface{}, ttl time.Duration) error {
-	logger.GetLogger("boulder").Debugf("Batch setting %d cache items with ttl: %v", len(items), ttl)
+func (r *Redis) BatchSet(ctx context.Context, items map[string]Item) error {
 	pipe := r.client.Pipeline()
 
-	for key, value := range items {
-		bytes, err := json.Marshal(value)
+	for key, item := range items {
+		serialized, err := json.Marshal(item.Value)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("Failed to marshal value for key %s in batch set: %v", key, err)
-			return fmt.Errorf("failed to marshal value for key %s: %w", key, err)
+			return fmt.Errorf("failed to serialize value for key %s: %v", key, err) // 删除 pipe.Close()
 		}
 
-		pipe.Set(r.ctx, key, bytes, ttl)
+		cmd := pipe.Set(ctx, key, serialized, item.TTL)
+		if cmd.Err() != nil {
+			return fmt.Errorf("pipeline set error for key %s: %v", key, cmd.Err())
+		}
 	}
 
-	_, err := pipe.Exec(r.ctx)
+	_, err := pipe.Exec(ctx)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to execute batch set: %v", err)
-		return fmt.Errorf("failed to execute batch set: %w", err)
+		return fmt.Errorf("failed to execute pipeline: %v", err)
 	}
 
-	logger.GetLogger("boulder").Debugf("Batch set %d cache items successfully", len(items))
-	return nil
+	return nil // ✅ 完美，无需 Close
 }
 
-// BatchDel 批量删除缓存
-func (r *RedisCache) BatchDel(keys []string) error {
-	logger.GetLogger("boulder").Debugf("Batch deleting %d cache keys", len(keys))
+// BatchGet 批量获取
+func (r *Redis) BatchGet(ctx context.Context, keys []string) (map[string]interface{}, error) {
 	if len(keys) == 0 {
-		logger.GetLogger("boulder").Debugf("No keys to delete in batch operation")
+		return map[string]interface{}{}, nil
+	}
+
+	vals, err := r.client.MGet(ctx, keys...).Result()
+	if err != nil {
+		return nil, fmt.Errorf("mget failed: %v", err)
+	}
+
+	values := make(map[string]interface{})
+	for i, v := range vals {
+		if v == nil {
+			continue
+		}
+		// v 是 string 类型
+		var value interface{}
+		if err := json.Unmarshal([]byte(v.(string)), &value); err != nil {
+			return nil, fmt.Errorf("unmarshal failed for key %s: %v", keys[i], err)
+		}
+		values[keys[i]] = value
+	}
+
+	return values, nil
+}
+
+// BatchDel 批量删除
+func (r *Redis) BatchDel(ctx context.Context, keys []string) error {
+	if len(keys) == 0 {
 		return nil
 	}
-
-	err := r.client.Del(r.ctx, keys...).Err()
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to batch delete cache keys: %v", err)
-		return fmt.Errorf("failed to batch delete cache keys: %w", err)
+	if err := r.client.Del(ctx, keys...).Err(); err != nil {
+		return fmt.Errorf("batch delete failed: %v", err)
 	}
-
-	logger.GetLogger("boulder").Debugf("Batch deleted %d cache keys successfully", len(keys))
 	return nil
 }
 
-// Keys 获取所有匹配pattern的键
-func (r *RedisCache) Keys(pattern string) ([]string, error) {
-	logger.GetLogger("boulder").Debugf("Getting keys with pattern: %s", pattern)
-	keys, err := r.client.Keys(r.ctx, pattern).Result()
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to get keys with pattern %s: %v", pattern, err)
-		return nil, fmt.Errorf("failed to get keys: %w", err)
+// Clear 清空当前 DB
+func (r *Redis) Clear(ctx context.Context) error {
+	if err := r.client.FlushDB(ctx).Err(); err != nil {
+		return fmt.Errorf("flushdb failed: %v", err)
 	}
-	logger.GetLogger("boulder").Debugf("Found %d keys matching pattern: %s", len(keys), pattern)
-	return keys, nil
-}
-
-// Clear 清理所有缓存
-func (r *RedisCache) Clear() error {
-	logger.GetLogger("boulder").Debugf("Clearing all cache")
-	keys, err := r.client.Keys(r.ctx, "*").Result()
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to get all keys for clearing: %v", err)
-		return fmt.Errorf("failed to get all keys: %w", err)
-	}
-
-	if len(keys) == 0 {
-		logger.GetLogger("boulder").Debugf("No cache keys to clear")
-		return nil
-	}
-
-	err = r.client.Del(r.ctx, keys...).Err()
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to clear cache: %v", err)
-		return fmt.Errorf("failed to clear cache: %w", err)
-	}
-
-	logger.GetLogger("boulder").Debugf("Cleared %d cache keys successfully", len(keys))
 	return nil
 }
 
-// Close 关闭Redis连接
-func (r *RedisCache) Close() error {
-	logger.GetLogger("boulder").Infof("Closing Redis cache connection")
-	err := r.client.Close()
+// Close 关闭连接
+func (r *Redis) Close() error {
+	return r.client.Close()
+}
+
+// Ping 健康检查
+func (r *Redis) Ping(ctx context.Context) error {
+	return r.client.Ping(ctx).Err()
+}
+
+// TTL 获取剩余时间
+func (r *Redis) TTL(ctx context.Context, key string) (time.Duration, error) {
+	ttl, err := r.client.TTL(ctx, key).Result()
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to close Redis connection: %v", err)
-		return fmt.Errorf("failed to close Redis connection: %w", err)
+		return 0, err
 	}
-	logger.GetLogger("boulder").Infof("Redis connection closed successfully")
-	return nil
+	if ttl == -1 {
+		return 0, nil // 永不过期
+	}
+	if ttl == -2 {
+		return 0, errors.New("key does not exist")
+	}
+	return ttl, nil
+}
+
+// Exists 检查是否存在
+func (r *Redis) Exists(ctx context.Context, key string) (bool, error) {
+	n, err := r.client.Exists(ctx, key).Result()
+	return n > 0, err
+}
+
+// Increment 递增
+func (r *Redis) Increment(ctx context.Context, key string, value int64) (int64, error) {
+	if value == 1 {
+		return r.client.Incr(ctx, key).Result()
+	}
+	return r.client.IncrBy(ctx, key, value).Result()
+}
+
+// Decrement 递减
+func (r *Redis) Decrement(ctx context.Context, key string, value int64) (int64, error) {
+	if value == 1 {
+		return r.client.Decr(ctx, key).Result()
+	}
+	return r.client.DecrBy(ctx, key, value).Result()
+}
+
+// Keys 模糊匹配
+func (r *Redis) Keys(ctx context.Context, pattern string) ([]string, error) {
+	return r.client.Keys(ctx, pattern).Result()
 }

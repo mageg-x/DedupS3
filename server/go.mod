@@ -20,6 +20,7 @@ require (
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/gorilla/mux v1.8.1
 	github.com/redis/go-redis/v9 v9.12.1
+	github.com/spf13/pflag v1.0.6
 	github.com/spf13/viper v1.20.1
 	github.com/tikv/client-go/v2 v2.0.7
 	github.com/vmihailenco/msgpack/v5 v5.4.1
@@ -38,7 +39,6 @@ require (
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.12.0 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
-	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241209162323-e6fa225c2576 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241223144023-3abc09e42ca8 // indirect

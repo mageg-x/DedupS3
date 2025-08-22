@@ -1,165 +1,235 @@
-// Package cache /*
+/*
+ * Copyright (C) 2025-2025 raochaoxun <raochaoxun@gmail.com>.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package cache
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"github.com/dgraph-io/ristretto"
-	"github.com/mageg-x/boulder/internal/config"
-	"github.com/mageg-x/boulder/internal/logger"
 	"time"
+
+	"github.com/dgraph-io/ristretto"
 )
 
-// RistrettoCache 实现基于Ristretto的内存缓存
-
-type RistrettoCache struct {
-	cache *ristretto.Cache
-	ctx   context.Context
+// Ristretto 基于Ristretto的缓存实现
+type Ristretto struct {
+	client *ristretto.Cache
+	config *ristretto.Config
 }
 
-// NewRistrettoCache 创建Ristretto缓存
-func NewRistrettoCache(c *config.CacheConfig) (*RistrettoCache, error) {
-	logger.GetLogger("boulder").Infof("Creating Ristretto cache with max size: %d", c.MaxSize)
-	if c == nil {
-		logger.GetLogger("boulder").Errorf("NewRistrettoCache: nil config")
-		return nil, fmt.Errorf("NewRistrettoCache: nil config")
+// NewRistretto 创建Ristretto缓存实例
+func NewRistretto() (Cache, error) {
+	// 创建Ristretto配置
+	conf := &ristretto.Config{
+		NumCounters: 1 << 26,
+		MaxCost:     1 << 30,
+		BufferItems: 64,
 	}
 
 	// 创建Ristretto缓存
-	cache, err := ristretto.NewCache(&ristretto.Config{
-		NumCounters: c.NumCounters, // 计数器数量
-		MaxCost:     c.MaxSize,     // 最大字节数
-		BufferItems: 64,            // 缓冲区大小
-	})
+	cache, err := ristretto.NewCache(conf)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to create Ristretto cache: %v", err)
-		return nil, fmt.Errorf("failed to create Ristretto cache: %w", err)
+		return nil, err
 	}
 
-	logger.GetLogger("boulder").Infof("Ristretto cache initialized successfully")
-	return &RistrettoCache{
-		cache: cache,
-		ctx:   context.Background(),
-	}, nil
+	return &Ristretto{
+			client: cache,
+			config: conf,
+		},
+		nil
 }
 
-// Type 返回缓存类型
-func (r *RistrettoCache) Type() string {
-	return "ristretto"
-}
-
-// Set 设置缓存
-func (r *RistrettoCache) Set(key string, value interface{}, ttl time.Duration) error {
-	logger.GetLogger("boulder").Debugf("Setting cache for key: %s, ttl: %v", key, ttl)
-	// 序列化值
-	bytes, err := json.Marshal(value)
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to marshal value for key %s: %v", key, err)
-		return fmt.Errorf("failed to marshal value: %w", err)
+// Set 设置键值对
+func (r *Ristretto) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
 
-	// 计算值的成本（字节数）
-	cost := int64(len(bytes))
+	// 对于Ristretto，我们将TTL转换为成本
+	// 这里简单使用1作为成本
+	cost := int64(1)
 
-	// 设置缓存
-	ok := r.cache.SetWithTTL(key, bytes, cost, ttl)
+	// 设置缓存项
+	ok := r.client.SetWithTTL(key, value, cost, ttl)
 	if !ok {
-		logger.GetLogger("boulder").Errorf("Failed to set cache for key %s: cache is full or invalid", key)
-		return fmt.Errorf("failed to set cache: cache is full or invalid")
+		return errors.New("failed to set cache item")
 	}
 
-	logger.GetLogger("boulder").Debugf("Cache set successfully for key: %s", key)
 	return nil
 }
 
-// Get 获取缓存
-func (r *RistrettoCache) Get(key string, value interface{}) (bool, error) {
-	logger.GetLogger("boulder").Debugf("Getting cache for key: %s", key)
-	// 获取缓存
-	val, found := r.cache.Get(key)
-	if !found {
-		logger.GetLogger("boulder").Debugf("Cache miss for key: %s", key)
-		return false, nil
+// Get 获取缓存值
+func (r *Ristretto) Get(ctx context.Context, key string) (interface{}, bool, error) {
+	if ctx.Err() != nil {
+		return nil, false, ctx.Err()
 	}
 
-	// 断言为[]byte类型
-	bytes, ok := val.([]byte)
-	if !ok {
-		logger.GetLogger("boulder").Errorf("Invalid type for cached value of key %s", key)
-		return false, fmt.Errorf("invalid type for cached value")
-	}
-
-	// 反序列化值
-	err := json.Unmarshal(bytes, value)
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to unmarshal value for key %s: %v", key, err)
-		return false, fmt.Errorf("failed to unmarshal value: %w", err)
-	}
-
-	logger.GetLogger("boulder").Debugf("Cache hit for key: %s", key)
-	return true, nil
+	value, found := r.client.Get(key)
+	return value, found, nil
 }
 
 // Del 删除缓存
-func (r *RistrettoCache) Del(key string) error {
-	logger.GetLogger("boulder").Debugf("Deleting cache for key: %s", key)
-	r.cache.Del(key)
-	logger.GetLogger("boulder").Debugf("Cache deleted successfully for key: %s", key)
+func (r *Ristretto) Del(ctx context.Context, key string) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
+	r.client.Del(key)
 	return nil
 }
 
-// BatchSet 批量设置缓存
-func (r *RistrettoCache) BatchSet(items map[string]interface{}, ttl time.Duration) error {
-	logger.GetLogger("boulder").Debugf("Batch setting %d cache items with ttl: %v", len(items), ttl)
-	for key, value := range items {
-		bytes, err := json.Marshal(value)
-		if err != nil {
-			logger.GetLogger("boulder").Errorf("Failed to marshal value for key %s in batch set: %v", key, err)
-			return fmt.Errorf("failed to marshal value for key %s: %w", key, err)
-		}
+// BatchSet 批量设置键值对
+func (r *Ristretto) BatchSet(ctx context.Context, items map[string]Item) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 
-		cost := int64(len(bytes))
-		ok := r.cache.SetWithTTL(key, bytes, cost, ttl)
-		if !ok {
-			logger.GetLogger("boulder").Errorf("Failed to set cache for key %s in batch set: cache is full or invalid", key)
-			return fmt.Errorf("failed to set cache for key %s: cache is full or invalid", key)
+	for key, item := range items {
+		cost := int64(1)
+		r.client.SetWithTTL(key, item.Value, cost, item.TTL)
+	}
+
+	return nil
+}
+
+// BatchGet 批量获取缓存值
+func (r *Ristretto) BatchGet(ctx context.Context, keys []string) (map[string]interface{}, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	result := make(map[string]interface{})
+
+	for _, key := range keys {
+		if value, found := r.client.Get(key); found {
+			result[key] = value
 		}
 	}
 
-	logger.GetLogger("boulder").Debugf("Batch set %d cache items successfully", len(items))
-	return nil
+	return result, nil
 }
 
 // BatchDel 批量删除缓存
-func (r *RistrettoCache) BatchDel(keys []string) error {
-	logger.GetLogger("boulder").Debugf("Batch deleting %d cache keys", len(keys))
-	for _, key := range keys {
-		r.cache.Del(key)
+func (r *Ristretto) BatchDel(ctx context.Context, keys []string) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
-	logger.GetLogger("boulder").Debugf("Batch deleted %d cache keys successfully", len(keys))
+
+	for _, key := range keys {
+		r.client.Del(key)
+	}
+
 	return nil
 }
 
-// Keys 获取所有匹配pattern的键
-func (r *RistrettoCache) Keys(pattern string) ([]string, error) {
-	logger.GetLogger("boulder").Errorf("Keys method not supported by Ristretto cache")
-	return nil, errors.New("Keys method not supported by Ristretto cache")
-}
+// Clear 清空缓存
+func (r *Ristretto) Clear(ctx context.Context) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 
-// Clear 清理所有缓存
-func (r *RistrettoCache) Clear() error {
-	logger.GetLogger("boulder").Debugf("Clearing all cache")
-	r.cache.Clear()
-	logger.GetLogger("boulder").Debugf("Cache cleared successfully")
+	// Ristretto不直接支持清空缓存
+	// 这里我们创建一个新的缓存实例来替代
+	newCache, err := ristretto.NewCache(&ristretto.Config{
+		NumCounters: r.config.NumCounters,
+		MaxCost:     r.config.MaxCost,
+		BufferItems: r.config.BufferItems,
+	})
+	if err != nil {
+		return err
+	}
+
+	r.client = newCache
 	return nil
 }
 
-// Close 关闭缓存
-func (r *RistrettoCache) Close() error {
-	logger.GetLogger("boulder").Infof("Closing Ristretto cache")
-	// Ristretto doesn't have a Close method
-	logger.GetLogger("boulder").Infof("Ristretto cache closed successfully")
+// Close 关闭缓存连接
+func (r *Ristretto) Close() error {
+	// Ristretto不需要关闭
 	return nil
+}
+
+// Ping 检查缓存连接
+func (r *Ristretto) Ping(ctx context.Context) error {
+	// Ristretto是内存缓存，不需要Ping
+	return nil
+}
+
+// TTL 获取键的过期时间
+func (r *Ristretto) TTL(ctx context.Context, key string) (time.Duration, error) {
+	// Ristretto不支持直接获取TTL
+	return 0, errors.New("ristretto does not support TTL retrieval")
+}
+
+// Exists 检查键是否存在
+func (r *Ristretto) Exists(ctx context.Context, key string) (bool, error) {
+	if ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+
+	_, found := r.client.Get(key)
+	return found, nil
+}
+
+// Increment 增加键的值
+func (r *Ristretto) Increment(ctx context.Context, key string, value int64) (int64, error) {
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
+
+	// Ristretto不直接支持原子增量
+	current, found := r.client.Get(key)
+	if !found {
+		current = int64(0)
+	}
+
+	currentInt, ok := current.(int64)
+	if !ok {
+		return 0, errors.New("value is not an int64")
+	}
+
+	newValue := currentInt + value
+	r.client.Set(key, newValue, 1)
+	return newValue, nil
+}
+
+// Decrement 减少键的值
+func (r *Ristretto) Decrement(ctx context.Context, key string, value int64) (int64, error) {
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
+
+	// Ristretto不直接支持原子减量
+	current, found := r.client.Get(key)
+	if !found {
+		current = int64(0)
+	}
+
+	currentInt, ok := current.(int64)
+	if !ok {
+		return 0, errors.New("value is not an int64")
+	}
+
+	newValue := currentInt - value
+	r.client.Set(key, newValue, 1)
+	return newValue, nil
+}
+
+// Keys 获取匹配模式的所有键
+func (r *Ristretto) Keys(ctx context.Context, pattern string) ([]string, error) {
+	// Ristretto不支持键模式匹配
+	return nil, errors.New("ristretto does not support key pattern matching")
 }

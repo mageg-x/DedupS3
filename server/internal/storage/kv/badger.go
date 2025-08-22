@@ -1,267 +1,281 @@
-// Package kv /*
+/*
+ *Copyright (C) 2025-2025 raochaoxun <raochaoxun@gmail.com>.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package kv
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/dgraph-io/badger/v4"
-	"github.com/mageg-x/boulder/internal/config"
-	"github.com/mageg-x/boulder/internal/logger"
-	"os"
-	"path/filepath"
-	"time"
+	xconf "github.com/mageg-x/boulder/internal/config"
 )
 
-// BadgerStore 实现基于BadgerDB的KV存储
+// BadgerStore 基于BadgerDB的KV存储实现
 type BadgerStore struct {
-	db     *badger.DB
-	ctx    context.Context
-	closed bool
+	db *badger.DB
 }
 
-// InitBadgerStore 初始化BadgerDB存储
-func InitBadgerStore(c *config.KVConfig) (*BadgerStore, error) {
-	logger.GetLogger("boulder").Infof("Initializing BadgerDB store at path: %s", c.Path)
-	if c == nil {
-		logger.GetLogger("boulder").Errorf("InitBadgerStore: nil config")
-		return nil, fmt.Errorf("InitBadgerStore: nil config")
-	}
+// InitBadgerStore 初始化Badger存储
+func InitBadgerStore(cfg xconf.BadgerConfig) (*BadgerStore, error) {
+	opts := badger.DefaultOptions(cfg.Path)
+	opts.Logger = nil // 禁用日志
 
-	// 确保数据目录存在
-	if err := os.MkdirAll(c.Path, 0755); err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to create BadgerDB directory: %v", err)
-		return nil, fmt.Errorf("failed to create BadgerDB directory: %w", err)
-	}
-
-	// 配置BadgerDB
-	opts := badger.DefaultOptions(c.Path)
-	if c.ReadOnly {
-		opts = opts.WithReadOnly(true)
-		logger.GetLogger("boulder").Debugf("BadgerDB opened in read-only mode")
-	}
-	if c.MemoryOnly {
-		opts = opts.WithInMemory(true)
-		logger.GetLogger("boulder").Debugf("BadgerDB opened in memory-only mode")
-	}
-
-	// 打开BadgerDB
 	db, err := badger.Open(opts)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to open BadgerDB: %v", err)
-		return nil, fmt.Errorf("failed to open BadgerDB: %w", err)
+		return nil, fmt.Errorf("failed to open badger db: %w", err)
 	}
 
-	logger.GetLogger("boulder").Infof("BadgerDB store initialized successfully")
-	return &BadgerStore{
-		db:     db,
-		ctx:    context.Background(),
-		closed: false,
-	}, nil
+	return &BadgerStore{db: db}, nil
 }
 
-// Type 返回存储类型
-func (b *BadgerStore) Type() string {
-	return "badger"
-}
-
-// Put 写入键值对
-func (b *BadgerStore) Put(key string, value interface{}) error {
-	logger.GetLogger("boulder").Debugf("Putting key: %s", key)
-	if b.closed {
-		logger.GetLogger("boulder").Errorf("Put operation on closed BadgerDB store")
-		return errors.New("badger store is closed")
-	}
-
-	// 序列化值
-	bytes, err := json.Marshal(value)
+// Put 存储键值对
+func (b *BadgerStore) Put(_ context.Context, key string, value interface{}) error {
+	data, err := json.Marshal(value)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to marshal value for key %s: %v", key, err)
-		return fmt.Errorf("failed to marshal value: %w", err)
+		return fmt.Errorf("json marshal error: %w", err)
 	}
 
-	// 写入数据库
-	err = b.db.Update(func(txn *badger.Txn) error {
-		return txn.Set([]byte(key), bytes)
+	return b.db.Update(func(txn *badger.Txn) error {
+		return txn.Set([]byte(key), data)
 	})
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to put key %s: %v", key, err)
-		return fmt.Errorf("failed to put key %s: %w", key, err)
-	}
-
-	logger.GetLogger("boulder").Debugf("Key %s put successfully", key)
-	return nil
 }
 
-// Get 读取键值对
-func (b *BadgerStore) Get(key string, value interface{}) (bool, error) {
-	logger.GetLogger("boulder").Debugf("Getting key: %s", key)
-	if b.closed {
-		logger.GetLogger("boulder").Errorf("Get operation on closed BadgerDB store")
-		return false, errors.New("badger store is closed")
+// Get 获取值并反序列化到指定结构
+func (b *BadgerStore) Get(ctx context.Context, key string, value interface{}) (bool, error) {
+	data, exists, err := b.GetRaw(ctx, key)
+	if err != nil || !exists {
+		return exists, err
 	}
 
-	var data []byte
-	err := b.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte(key))
-		if err != nil {
-			if err == badger.ErrKeyNotFound {
-				logger.GetLogger("boulder").Debugf("Key %s not found", key)
-				return nil
-			}
-			logger.GetLogger("boulder").Errorf("Failed to get key %s: %v", key, err)
-			return err
-		}
-
-		// 复制值
-		data, err = item.ValueCopy(nil)
-		if err != nil {
-			logger.GetLogger("boulder").Errorf("Failed to copy value for key %s: %v", key, err)
-			return err
-		}
-		return nil
-	})
-
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("Error during get operation for key %s: %v", key, err)
-		return false, fmt.Errorf("error during get operation: %w", err)
+	if err := json.Unmarshal(data, value); err != nil {
+		return true, fmt.Errorf("json unmarshal error: %w", err)
 	}
-
-	if data == nil {
-		logger.GetLogger("boulder").Debugf("Key %s not found in BadgerDB", key)
-		return false, nil
-	}
-
-	// 反序列化值
-	err = json.Unmarshal(data, value)
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to unmarshal value for key %s: %v", key, err)
-		return false, fmt.Errorf("failed to unmarshal value: %w", err)
-	}
-
-	logger.GetLogger("boulder").Debugf("Key %s retrieved successfully", key)
 	return true, nil
 }
 
-// Delete 删除键值对
-func (b *BadgerStore) Delete(key string) error {
-	logger.GetLogger("boulder").Debugf("Deleting key: %s", key)
-	if b.closed {
-		logger.GetLogger("boulder").Errorf("Delete operation on closed BadgerDB store")
-		return errors.New("badger store is closed")
-	}
+// GetRaw 获取原始字节数据
+func (b *BadgerStore) GetRaw(_ context.Context, key string) ([]byte, bool, error) {
+	var data []byte
+	var exists bool
 
-	err := b.db.Update(func(txn *badger.Txn) error {
+	err := b.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get([]byte(key))
+		if err != nil {
+			if errors.Is(err, badger.ErrKeyNotFound) {
+				return nil
+			}
+			return err
+		}
+
+		exists = true
+		return item.Value(func(val []byte) error {
+			data = make([]byte, len(val))
+			copy(data, val)
+			return nil
+		})
+	})
+
+	return data, exists, err
+}
+
+// Delete 删除键
+func (b *BadgerStore) Delete(_ context.Context, key string) error {
+	return b.db.Update(func(txn *badger.Txn) error {
 		return txn.Delete([]byte(key))
 	})
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to delete key %s: %v", key, err)
-		return fmt.Errorf("failed to delete key %s: %w", key, err)
-	}
-
-	logger.GetLogger("boulder").Debugf("Key %s deleted successfully", key)
-	return nil
 }
 
-// BatchPut 批量写入键值对
-func (b *BadgerStore) BatchPut(items map[string]interface{}) error {
-	logger.GetLogger("boulder").Debugf("Batch putting %d items", len(items))
-	if b.closed {
-		logger.GetLogger("boulder").Errorf("BatchPut operation on closed BadgerDB store")
-		return errors.New("badger store is closed")
-	}
+// Scan 扫描指定前缀的键
+func (b *BadgerStore) Scan(_ context.Context, prefix string) ([]string, string, error) {
+	return b.scanInternal(prefix, "", 0)
+}
 
-	err := b.db.Update(func(txn *badger.Txn) error {
-		for key, value := range items {
-			bytes, err := json.Marshal(value)
+// ScanWithValues 扫描指定前缀的键值对
+func (b *BadgerStore) ScanWithValues(_ context.Context, prefix string) (map[string][]byte, error) {
+	result := make(map[string][]byte)
+
+	err := b.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.Prefix = []byte(prefix)
+
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Rewind(); it.Valid(); it.Next() {
+			item := it.Item()
+			key := string(item.Key())
+
+			err := item.Value(func(val []byte) error {
+				value := make([]byte, len(val))
+				copy(value, val)
+				result[key] = value
+				return nil
+			})
+
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("Failed to marshal value for key %s in batch put: %v", key, err)
-				return fmt.Errorf("failed to marshal value for key %s: %w", key, err)
-			}
-
-			if err := txn.Set([]byte(key), bytes); err != nil {
-				logger.GetLogger("boulder").Errorf("Failed to put key %s in batch operation: %v", key, err)
-				return fmt.Errorf("failed to put key %s: %w", key, err)
+				return err
 			}
 		}
 		return nil
 	})
 
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("Batch put operation failed: %v", err)
-		return fmt.Errorf("batch put operation failed: %w", err)
-	}
-
-	logger.GetLogger("boulder").Debugf("Batch put %d items successfully", len(items))
-	return nil
+	return result, err
 }
 
-// BatchDelete 批量删除键值对
-func (b *BadgerStore) BatchDelete(keys []string) error {
-	logger.GetLogger("boulder").Debugf("Batch deleting %d keys", len(keys))
-	if b.closed {
-		logger.GetLogger("boulder").Errorf("BatchDelete operation on closed BadgerDB store")
-		return errors.New("badger store is closed")
-	}
+// ScanPage 分页扫描键
+func (b *BadgerStore) ScanPage(_ context.Context, prefix, startKey string, limit int) ([]string, string, error) {
+	return b.scanInternal(prefix, startKey, limit)
+}
 
-	err := b.db.Update(func(txn *badger.Txn) error {
-		for _, key := range keys {
-			if err := txn.Delete([]byte(key)); err != nil {
-				logger.GetLogger("boulder").Errorf("Failed to delete key %s in batch operation: %v", key, err)
-				return fmt.Errorf("failed to delete key %s: %w", key, err)
+// scanInternal 内部扫描实现
+func (b *BadgerStore) scanInternal(prefix, startKey string, limit int) ([]string, string, error) {
+	var keys []string
+	var nextKey string
+
+	err := b.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.Prefix = []byte(prefix)
+		opts.PrefetchValues = false // 只获取键
+
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		// 定位到起始键
+		if startKey != "" {
+			it.Seek([]byte(startKey))
+			if it.Valid() && string(it.Item().Key()) == startKey {
+				it.Next() // 跳过起始键本身
+			}
+		} else {
+			it.Rewind()
+		}
+
+		count := 0
+		for ; it.Valid(); it.Next() {
+			key := string(it.Item().Key())
+
+			// 检查是否超出前缀范围
+			if !strings.HasPrefix(key, prefix) {
+				break
+			}
+
+			keys = append(keys, key)
+			count++
+
+			// 如果设置了限制且达到限制，获取下一个键
+			if limit > 0 && count >= limit {
+				it.Next()
+				if it.Valid() {
+					nextKey = string(it.Item().Key())
+				}
+				break
 			}
 		}
 		return nil
 	})
 
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("Batch delete operation failed: %v", err)
-		return fmt.Errorf("batch delete operation failed: %w", err)
-	}
-
-	logger.GetLogger("boulder").Debugf("Batch deleted %d keys successfully", len(keys))
-	return nil
+	return keys, nextKey, err
 }
 
 // Close 关闭数据库
 func (b *BadgerStore) Close() error {
-	logger.GetLogger("boulder").Infof("Closing BadgerDB store")
-	if b.closed {
-		logger.GetLogger("boulder").Debugf("BadgerDB store already closed")
-		return nil
+	if b.db == nil {
+		return errors.New("database already closed")
 	}
 
-	err := b.db.Close()
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to close BadgerDB: %v", err)
-		return fmt.Errorf("failed to close BadgerDB: %w", err)
+	if err := b.db.Close(); err != nil {
+		return fmt.Errorf("failed to close badger db: %w", err)
 	}
 
-	b.closed = true
-	logger.GetLogger("boulder").Infof("BadgerDB store closed successfully")
 	return nil
 }
 
-// Compact 压缩数据库
-func (b *BadgerStore) Compact() error {
-	logger.GetLogger("boulder").Infof("Compacting BadgerDB store")
-	if b.closed {
-		logger.GetLogger("boulder").Errorf("Compact operation on closed BadgerDB store")
-		return errors.New("badger store is closed")
-	}
+// BeginTxn 开始一个新事务
+func (b *BadgerStore) BeginTxn(_ context.Context) (Txn, error) {
+	txn := b.db.NewTransaction(true)
+	return &BadgerTxn{txn: txn}, nil
+}
 
-	err := b.db.RunValueLogGC(0.5)
+// BadgerTxn 基于BadgerDB的事务实现
+type BadgerTxn struct {
+	txn *badger.Txn
+}
+
+// Put 在事务中存储键值对
+func (t *BadgerTxn) Put(key string, value interface{}) error {
+	data, err := json.Marshal(value)
 	if err != nil {
-		if err == badger.ErrNoRewrite {
-			logger.GetLogger("boulder").Debugf("No BadgerDB compaction needed")
-			return nil
-		}
-		logger.GetLogger("boulder").Errorf("Failed to compact BadgerDB: %v", err)
-		return fmt.Errorf("failed to compact BadgerDB: %w", err)
+		return fmt.Errorf("json marshal error: %w", err)
 	}
 
-	logger.GetLogger("boulder").Infof("BadgerDB compaction completed successfully")
+	return t.txn.Set([]byte(key), data)
+}
+
+// Get 在事务中获取值
+func (t *BadgerTxn) Get(key string, value interface{}) (bool, error) {
+	data, exists, err := t.GetRaw(key)
+	if err != nil || !exists {
+		return exists, err
+	}
+
+	if err := json.Unmarshal(data, value); err != nil {
+		return true, fmt.Errorf("json unmarshal error: %w", err)
+	}
+	return true, nil
+}
+
+// GetRaw 在事务中获取原始字节数据
+func (t *BadgerTxn) GetRaw(key string) ([]byte, bool, error) {
+	var data []byte
+	var exists bool
+
+	item, err := t.txn.Get([]byte(key))
+	if err != nil {
+		if errors.Is(err, badger.ErrKeyNotFound) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+
+	exists = true
+	err = item.Value(func(val []byte) error {
+		data = make([]byte, len(val))
+		copy(data, val)
+		return nil
+	})
+
+	return data, exists, err
+}
+
+// Delete 在事务中删除键
+func (t *BadgerTxn) Delete(key string) error {
+	return t.txn.Delete([]byte(key))
+}
+
+// Commit 提交事务
+func (t *BadgerTxn) Commit(_ context.Context) error {
+	return t.txn.Commit()
+}
+
+// Rollback 回滚事务
+func (t *BadgerTxn) Rollback(_ context.Context) error {
+	t.txn.Discard()
 	return nil
 }
