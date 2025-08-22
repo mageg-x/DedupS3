@@ -15,21 +15,21 @@ import (
 )
 
 var (
-	instance *IAMService = nil
+	instance *IamService = nil
 	mu                   = sync.Mutex{}
 )
 
-// IAMService 提供IAM账户管理功能
-type IAMService struct {
+// IamService 提供IAM账户管理功能
+type IamService struct {
 	mutex sync.RWMutex
 	iam   kv.KVStore
 }
 
-func GetIAMService() *IAMService {
+func GetIamService() *IamService {
 	mu.Lock()
 	defer mu.Unlock()
 	if instance == nil || instance.iam == nil {
-		instance = &IAMService{
+		instance = &IamService{
 			iam:   kv.GetKvStore(),
 			mutex: sync.RWMutex{},
 		}
@@ -43,7 +43,7 @@ func GetIAMService() *IAMService {
 
 // CreateAccount 创建新的IAM账户
 // 根据AWS标准，账户ID由系统自动生成，用户提供用户名和密码
-func (s *IAMService) CreateAccount(username, password string) (*meta.IAMAccount, error) {
+func (s *IamService) CreateAccount(username, password string) (*meta.IAMAccount, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := meta.ValidateUsername(username); err != nil {
@@ -125,7 +125,7 @@ func (s *IAMService) CreateAccount(username, password string) (*meta.IAMAccount,
 }
 
 // GetAccount 获取IAM账户
-func (s *IAMService) GetAccount(accountID string) (*meta.IAMAccount, error) {
+func (s *IamService) GetAccount(accountID string) (*meta.IAMAccount, error) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
@@ -150,7 +150,7 @@ func (s *IAMService) GetAccount(accountID string) (*meta.IAMAccount, error) {
 }
 
 // UpdateAccount 更新IAM账户
-func (s *IAMService) UpdateAccount(accountID string, updateFunc func(*meta.IAMAccount) error) (bool, error) {
+func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IAMAccount) error) (bool, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if meta.ValidateAccountID(accountID) != nil {
@@ -236,7 +236,7 @@ func (s *IAMService) UpdateAccount(accountID string, updateFunc func(*meta.IAMAc
 }
 
 // DeleteAccount 删除IAM账户
-func (s *IAMService) DeleteAccount(accountID string) error {
+func (s *IamService) DeleteAccount(accountID string) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -245,7 +245,7 @@ func (s *IAMService) DeleteAccount(accountID string) error {
 }
 
 // CreateUser 为指定账户添加新用户
-func (s *IAMService) CreateUser(accountID, username, password, path string) (*meta.IAMUser, error) {
+func (s *IamService) CreateUser(accountID, username, password, path string) (*meta.IAMUser, error) {
 	// 验证用户名和密码
 	if err := meta.ValidateUsername(username); err != nil {
 		logger.GetLogger("boulder").Errorf("username %s is invalid format", username)
@@ -292,7 +292,7 @@ func (s *IAMService) CreateUser(accountID, username, password, path string) (*me
 	return user, nil
 }
 
-func (s *IAMService) DeleteUser(accountID, username string) error {
+func (s *IamService) DeleteUser(accountID, username string) error {
 	ok, err := s.UpdateAccount(accountID, func(a *meta.IAMAccount) error {
 		if a == nil {
 			return fmt.Errorf("account %s not found", accountID)
@@ -306,7 +306,7 @@ func (s *IAMService) DeleteUser(accountID, username string) error {
 	return nil
 }
 
-func (s *IAMService) CreateAccessKey(accountID, username string, expiredAt time.Time) (*meta.AccessKey, error) {
+func (s *IamService) CreateAccessKey(accountID, username string, expiredAt time.Time) (*meta.AccessKey, error) {
 	var key *meta.AccessKey
 	ok, err := s.UpdateAccount(accountID, func(a *meta.IAMAccount) error {
 		if a == nil {
@@ -323,7 +323,7 @@ func (s *IAMService) CreateAccessKey(accountID, username string, expiredAt time.
 	return key, nil
 }
 
-func (s *IAMService) DeleteAccessKey(accountID, accessKeyID string) error {
+func (s *IamService) DeleteAccessKey(accountID, accessKeyID string) error {
 	ok, err := s.UpdateAccount(accountID, func(a *meta.IAMAccount) error {
 		if a == nil {
 			return fmt.Errorf("account %s not found", accountID)
@@ -346,7 +346,7 @@ func (s *IAMService) DeleteAccessKey(accountID, accessKeyID string) error {
 	return nil
 }
 
-func (s *IAMService) GetAccessKey(accessKeyID string) (*meta.AccessKey, error) {
+func (s *IamService) GetAccessKey(accessKeyID string) (*meta.AccessKey, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if accessKeyID == "" {

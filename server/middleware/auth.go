@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2025-2025 raochaoxun <raochaoxun@gmail.com>.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 package middleware
 
 import (
@@ -116,13 +133,13 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 
 		// 6. 计算签名
 		// 获取秘密访问密钥
-		if iam.GetIAMService() == nil {
+		if iam.GetIamService() == nil {
 			logger.GetLogger("boulder").Errorf("Failed to get IAM service")
 			xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 			return
 		}
 
-		ak, err := iam.GetIAMService().GetAccessKey(accessKeyID)
+		ak, err := iam.GetIamService().GetAccessKey(accessKeyID)
 		if ak == nil || err != nil {
 			logger.GetLogger("boulder").Errorf("get access key failed: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidAccessKeyID)

@@ -20,8 +20,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/mageg-x/boulder/internal/storage/block"
 	"github.com/mageg-x/boulder/web"
+	"github.com/sirupsen/logrus"
 	"go.uber.org/zap"
 	"math/rand"
 	"os"
@@ -30,32 +30,30 @@ import (
 	"time"
 
 	"github.com/mageg-x/boulder/internal/config"
+	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/mageg-x/boulder/internal/logger"
 	"github.com/mageg-x/boulder/internal/storage/kv"
 	"github.com/mageg-x/boulder/router"
-
-	xhttp "github.com/mageg-x/boulder/internal/http"
+	"github.com/spf13/pflag"
 )
 
 type CLI struct {
 	ConfigPath  string
 	ShowHelp    bool
 	ShowVersion bool
-	DebugMode   bool
+	Verbose     int
 }
 
 func ParseCLI() *CLI {
 	cli := &CLI{}
 
-	flag.StringVar(&cli.ConfigPath, "config", "", "Path to configuration file")
-	flag.StringVar(&cli.ConfigPath, "c", "", "Short form for config path")
-	flag.BoolVar(&cli.ShowHelp, "help", false, "Show help message")
-	flag.BoolVar(&cli.ShowHelp, "h", false, "Show help message")
-	flag.BoolVar(&cli.ShowVersion, "version", false, "Show version information")
-	flag.BoolVar(&cli.ShowVersion, "v", false, "Show version information")
-	flag.BoolVar(&cli.DebugMode, "debug", false, "Enable debug mode")
-
-	flag.Parse()
+	pflag.StringVar(&cli.ConfigPath, "config", "", "Path to configuration file")
+	pflag.StringVar(&cli.ConfigPath, "c", "", "Short form for config path")
+	pflag.BoolVar(&cli.ShowHelp, "help", false, "Show help message")
+	pflag.BoolVar(&cli.ShowHelp, "h", false, "Show help message")
+	pflag.BoolVar(&cli.ShowVersion, "version", false, "Show version information")
+	pflag.CountVarP(&cli.Verbose, "verbose", "v", "Increase verbosity: -v for INFO, -vv for DEBUG, -vvv for TRACE")
+	pflag.Parse()
 
 	return cli
 }
@@ -80,13 +78,16 @@ func main() {
 	cfg := config.Get()
 
 	logger.Init(&logger.Config{
-		LogDir:     cfg.LogDir,
-		MaxSize:    cfg.LogSize,
-		MaxBackups: cfg.LogMaxBackups,
-		MaxAge:     cfg.LogMaxAge,
-		Compress:   cfg.LogCompress,
+		LogDir:     cfg.Log.Dir,
+		MaxSize:    cfg.Log.Size,
+		MaxBackups: cfg.Log.MaxBackups,
+		MaxAge:     cfg.Log.MaxAge,
+		Compress:   cfg.Log.Compress,
 	})
 
+	logger.GetLogger("boulder").SetLevel(logrus.Level(int(logrus.InfoLevel) + cli.Verbose))
+
+	logger.GetLogger("boulder").Tracef("get config %v", cfg)
 	// kv 存放元数据
 	_, err := kv.InitKvStore(&kv.Config{
 		Type: kv.StorageBadger,
@@ -101,11 +102,11 @@ func main() {
 	}
 
 	// block 存放对象数据块
-	_, err = block.InitBlockStore("local-disk", "disk", "./data/block")
-	if err != nil {
-		logger.GetLogger("boulder").Error("failed to init block store", zap.Error(err))
-		panic(err)
-	}
+	//_, err = block.InitBlockStore("local-disk", "disk", "./data/block")
+	//if err != nil {
+	//	logger.GetLogger("boulder").Error("failed to init block store", zap.Error(err))
+	//	panic(err)
+	//}
 
 	// 1. 创建路由处理器
 	mux := router.SetupRouter()
@@ -115,14 +116,14 @@ func main() {
 		DriveOPTimeout: func() time.Duration {
 			return 5 * time.Second
 		},
-		IdleTimeout: cfg.IdleTimeout,
+		IdleTimeout: cfg.Server.IdleTimeout,
 		NoDelay:     true,
-		RecvBufSize: cfg.RecvBufSize,
-		SendBufSize: cfg.SendBufSize,
+		RecvBufSize: cfg.Server.RecvBufSize,
+		SendBufSize: cfg.Server.SendBufSize,
 		Trace: func(msg string) {
 			logger.GetLogger("boulder").Infof(msg)
 		},
-		UserTimeout: int(cfg.ConnUserTimeout.Milliseconds()),
+		UserTimeout: int(cfg.Server.ConnUserTimeout.Milliseconds()),
 	}
 	listenCtx := context.Background()
 	listenErrCallback := func(addr string, err error) {
@@ -131,12 +132,12 @@ func main() {
 		}
 	}
 	// 创建多个服务器实例
-	servers := make([]*xhttp.Server, cfg.Listeners)
-	serveFuncs := make([]func() error, cfg.Listeners)
-	for i := 0; i < cfg.Listeners; i++ {
-		servers[i] = xhttp.NewServer([]string{cfg.Address})
+	servers := make([]*xhttp.Server, cfg.Server.Listeners)
+	serveFuncs := make([]func() error, cfg.Server.Listeners)
+	for i := 0; i < cfg.Server.Listeners; i++ {
+		servers[i] = xhttp.NewServer([]string{cfg.Server.Address})
 		// 配置服务器参数
-		servers[i].UseHandler(mux).UseIdleTimeout(cfg.IdleTimeout).UseReadTimeout(cfg.ReadTimeout).UseWriteTimeout(cfg.WriteTimeout)
+		servers[i].UseHandler(mux).UseIdleTimeout(cfg.Server.IdleTimeout).UseReadTimeout(cfg.Server.ReadTimeout).UseWriteTimeout(cfg.Server.WriteTimeout)
 		servers[i].UseTCPOptions(tcpOpt).UseBaseContext(context.Background())
 
 		// 初始化服务器
@@ -148,7 +149,7 @@ func main() {
 	}
 	logger.GetLogger("boulder").Infof("server starting")
 	// 启动所有服务器（在不同协程中）
-	for i := 0; i < cfg.Listeners; i++ {
+	for i := 0; i < cfg.Server.Listeners; i++ {
 		go func(idx int) {
 			if err := serveFuncs[idx](); err != nil {
 				logger.GetLogger("boulder").Errorf("server %d running failed: %v", idx, err)

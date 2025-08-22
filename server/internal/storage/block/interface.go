@@ -17,55 +17,45 @@
 package block
 
 import (
-	"fmt"
 	"sync"
+
+	"github.com/mageg-x/boulder/internal/config"
 )
 
 var (
 	bsInstance BlockStore
-	blockOnce  sync.Once
 	blockMutex sync.RWMutex
 )
-
-func InitBlockStore(id, storageType, storagePath string) (BlockStore, error) {
-	var initErr error
-	blockOnce.Do(func() {
-		switch storageType {
-		case "disk":
-			bsInstance, initErr = InitDiskStore(id, storagePath)
-		case "s3":
-			bsInstance, initErr = InitS3Store(id, storagePath, "", "")
-		default:
-			initErr = fmt.Errorf("unknown storage type: %s", storageType)
-		}
-	})
-	if initErr != nil {
-		return nil, initErr
-	}
-	return bsInstance, nil
-}
 
 func GetBlockStore() BlockStore {
 	blockMutex.RLock()
 	defer blockMutex.RUnlock()
+	if bsInstance != nil {
+		return bsInstance
+	}
+
+	cfg := config.Get()
+	if cfg.Block.S3 == nil {
+		inst, err := NewDiskStore()
+		if err == nil && inst != nil {
+			bsInstance = inst
+		}
+	} else {
+		inst, err := NewS3Store()
+		if err == nil && inst != nil {
+			bsInstance = inst
+		}
+	}
+
 	return bsInstance
 }
 
 // BlockStore  存储后端接口
 type BlockStore interface {
-	ID() string
 	Type() string
 	WriteBlock(blockID string, data []byte) error
 	ReadBlock(blockID string, offset, length int64) ([]byte, error)
 	DeleteBlock(blockID string) error
 	Location(blockID string) string
-	Stats() StoreStats
-}
-
-// StoreStats 存储统计信息
-type StoreStats struct {
-	TotalSpace int64 `json:"total_space"`
-	UsedSpace  int64 `json:"used_space"`
-	FreeSpace  int64 `json:"free_space"`
-	BlockCount int   `json:"block_count"`
+	BlockExists(blockID string) (bool, error)
 }

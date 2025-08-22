@@ -65,7 +65,6 @@ type KVStore interface {
 	ScanPage(ctx context.Context, prefix, startKey string, limit int) ([]string, string, error)
 	Close() error
 
-	// BeginTxn 事务相关方法
 	// BeginTxn 开始一个新事务
 	BeginTxn(ctx context.Context) (Txn, error)
 }
@@ -105,13 +104,6 @@ type Config struct {
 // BadgerConfig Badger 存储配置
 type BadgerConfig struct {
 	Path string
-}
-
-// RedisConfig Redis 存储配置
-type RedisConfig struct {
-	Addr     string
-	Password string
-	DB       int
 }
 
 // TiKVConfig TiKV 存储配置

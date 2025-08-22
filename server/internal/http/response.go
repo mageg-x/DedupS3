@@ -18,37 +18,24 @@ package http
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/xml"
 	"net/http"
-	"time"
 
 	"github.com/mageg-x/boulder/internal/logger"
 )
 
-// AWSErrorResponse AWS 错误响应结构
+// AWSErrorResponse AWS 错误响应结构 (XML格式)
 type AWSErrorResponse struct {
-	Error     AWSError `json:"error"`
-	RequestID string   `json:"requestId"`
-}
-
-// AWSError AWS 错误详情结构
-type AWSError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	// 可选字段
-	Resource string `json:"resource,omitempty"`
-	Field    string `json:"field,omitempty"`
+	XMLName   xml.Name `xml:"Error"`
+	Code      string   `xml:"Code"`
+	Message   string   `xml:"Message"`
+	Resource  string   `xml:"Resource,omitempty"`
+	Field     string   `xml:"Field,omitempty"`
+	RequestID string   `xml:"RequestId"`
 }
 
 // AWSRequestID RequestIDKey 用于上下文存储
 type AWSRequestID struct{}
-
-// SuccessResponse 成功响应结构
-type SuccessResponse struct {
-	Data      interface{} `json:"data,omitempty"`
-	RequestID string      `json:"requestId"`
-	Timestamp time.Time   `json:"timestamp"`
-}
 
 // GetRequestID 从上下文中获取 Request ID
 func GetRequestID(ctx context.Context) string {
@@ -58,34 +45,39 @@ func GetRequestID(ctx context.Context) string {
 	return ""
 }
 
-// WriteAWSError 写入符合AWS规范的JSON错误响应
+// WriteAWSError 写入符合AWS规范的XML错误响应
 func WriteAWSError(w http.ResponseWriter, r *http.Request, code, message string, status int) {
 	// 获取请求ID
 	requestID := GetRequestID(r.Context())
 
 	// 创建错误响应
 	errorResponse := AWSErrorResponse{
-		Error: AWSError{
-			Code:    code,
-			Message: message,
-		},
+		Code:      code,
+		Message:   message,
 		RequestID: requestID,
 	}
 
 	// 写入响应
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/xml")
 	w.Header().Set("x-amz-request-id", requestID)
 	w.WriteHeader(status)
 
-	// 序列化为JSON
-	jsonData, err := json.Marshal(errorResponse)
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to marshal error response: %v", err)
-		w.Write([]byte(`{"error":{"code":"InternalError","message":"Failed to generate error response"},"requestId":"` + requestID + `"}`))
+	// 添加XML声明
+	xmlHeader := []byte(xml.Header)
+	if _, err := w.Write(xmlHeader); err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to write XML header: %v", err)
 		return
 	}
 
-	w.Write(jsonData)
+	// 序列化为XML
+	encoder := xml.NewEncoder(w)
+	encoder.Indent("", "  ") // 添加缩进提高可读性
+	if err := encoder.Encode(errorResponse); err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to marshal error response: %v", err)
+		// 尝试回退到简单错误响应
+		fallback := []byte(`<Error><Code>InternalError</Code><Message>Failed to generate error response</Message><RequestId>` + requestID + `</RequestId></Error>`)
+		w.Write(fallback)
+	}
 }
 
 func WriteAWSErr(w http.ResponseWriter, r *http.Request, code APIErrorCode) {
@@ -93,29 +85,30 @@ func WriteAWSErr(w http.ResponseWriter, r *http.Request, code APIErrorCode) {
 	WriteAWSError(w, r, apiErr.Code, apiErr.Description, apiErr.HTTPStatusCode)
 }
 
-// WriteAWSSuc 写入成功响应
+// WriteAWSSuc 写入XML成功响应
 func WriteAWSSuc(w http.ResponseWriter, r *http.Request, data interface{}) {
 	// 获取请求ID
 	requestID := GetRequestID(r.Context())
-	// 创建成功响应
-	successResponse := SuccessResponse{
-		Data:      data,
-		RequestID: requestID,
-		Timestamp: time.Now().UTC(),
-	}
 
-	// 写入响应
-	w.Header().Set("Content-Type", "application/json")
+	// 写入响应头
+	w.Header().Set("Content-Type", "application/xml")
 	w.Header().Set("x-amz-request-id", requestID)
 	w.WriteHeader(http.StatusOK)
 
-	// 序列化为JSON
-	jsonData, err := json.Marshal(successResponse)
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to marshal success response: %v", err)
-		WriteAWSError(w, r, "InternalError", "Failed to generate response", http.StatusInternalServerError)
+	// 添加XML声明
+	xmlHeader := []byte(xml.Header)
+	if _, err := w.Write(xmlHeader); err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to write XML header: %v", err)
 		return
 	}
 
-	w.Write(jsonData)
+	// 序列化数据为XML
+	encoder := xml.NewEncoder(w)
+	encoder.Indent("", "  ") // 添加缩进提高可读性
+	if err := encoder.Encode(data); err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to marshal success response: %v", err)
+		// 序列化失败时回退到错误响应
+		WriteAWSError(w, r, "InternalError", "Failed to generate response", http.StatusInternalServerError)
+		return
+	}
 }

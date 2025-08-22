@@ -17,7 +17,10 @@
 package handler
 
 import (
+	"github.com/gorilla/mux"
+	xhttp "github.com/mageg-x/boulder/internal/http"
 	"net/http"
+	"strings"
 
 	"github.com/mageg-x/boulder/internal/logger"
 )
@@ -289,7 +292,22 @@ func ResetBucketReplicationStartHandler(w http.ResponseWriter, r *http.Request) 
 // PutBucketHandler 处理 PUT Bucket (CreateBucket) 请求
 func PutBucketHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: PutBucketHandler")
+
+	vars := mux.Vars(r)
+	bucket := vars["bucket"]
+	objectLockEnabled := false
+	if vs := r.Header.Get(xhttp.AmzObjectLockEnabled); len(vs) > 0 {
+		v := strings.ToLower(vs)
+		switch v {
+		case "true", "false":
+			objectLockEnabled = v == "true"
+		default:
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidRequest)
+			return
+		}
+	}
+
+	logger.GetLogger("boulder").Infof("API called: PutBucketHandler %v", bucket, objectLockEnabled)
 	// TODO: 实现 PUT Bucket 逻辑
 	w.WriteHeader(http.StatusOK)
 }

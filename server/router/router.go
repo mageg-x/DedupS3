@@ -46,7 +46,7 @@ func SetupRouter() *mux.Router {
 
 	var routers []*mux.Router
 	cfg := config.Get()
-	for _, domain := range cfg.Domains {
+	for _, domain := range cfg.Server.Domains {
 		routers = append(routers, sr.Host("{bucket:.+}."+domain).Subrouter())
 	}
 	routers = append(routers, sr.PathPrefix("/{bucket}").Subrouter())

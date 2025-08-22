@@ -1,34 +1,18 @@
-/*
- * Copyright (C) 2025-2025 raochaoxun <raochaoxun@gmail.com>.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
+// Package config /*
 package config
 
 import (
-	"encoding/json"
+	"fmt"
+	"github.com/mageg-x/boulder/internal/logger"
 	"os"
 	"path/filepath"
-	"reflect"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/magiconair/properties"
-	"gopkg.in/yaml.v3"
+	"github.com/creasty/defaults"
+	"github.com/spf13/viper"
 )
 
 var (
@@ -36,224 +20,188 @@ var (
 	loadMutex    sync.Mutex
 )
 
-// Config 结构体定义所有配置项，字段直接设置默认值
-type Config struct {
-	Address             string        `yaml:"address" json:"address" env:"BOULDER_ADDRESS"`
-	Listeners           int           `yaml:"listeners" json:"listeners" env:"BOULDER_LISTENERS"`
-	ConsoleAddress      string        `yaml:"console_address" json:"consoleAddress" env:"BOULDER_CONSOLE_ADDRESS"`
-	ShutdownTimeout     time.Duration `yaml:"shutdown_timeout" json:"shutdownTimeout" env:"BOULDER_SHUTDOWN_TIMEOUT"`
-	IdleTimeout         time.Duration `yaml:"idle_timeout" json:"idleTimeout" env:"BOULDER_IDLE_TIMEOUT"`
-	ReadHeaderTimeout   time.Duration `yaml:"read_header_timeout" json:"readHeaderTimeout" env:"BOULDER_READ_HEADER_TIMEOUT"`
-	ConnUserTimeout     time.Duration `yaml:"conn_user_timeout" json:"connUserTimeout" env:"BOULDER_CONN_USER_TIMEOUT"`
-	ReadTimeout         time.Duration `yaml:"read_timeout" json:"readTimeout" env:"BOULDER_READ_TIMEOUT"`
-	WriteTimeout        time.Duration `yaml:"write_timeout" json:"writeTimeout" env:"BOULDER_WRITE_TIMEOUT"`
-	Interface           string        `yaml:"interface" json:"interface" env:"BOULDER_INTERFACE"`
-	MaxIdleConnsPerHost int           `yaml:"max_idle_conns_per_host" json:"maxIdleConnsPerHost" env:"BOULDER_MAX_IDLE_CONNS_PER_HOST"`
-	Memlimit            string        `yaml:"memlimit" json:"memlimit" env:"BOULDER_MEMLIMIT"`
-	SendBufSize         int           `yaml:"send_buf_size" json:"sendBufSize" env:"BOULDER_SEND_BUF_SIZE"`
-	RecvBufSize         int           `yaml:"recv_buf_size" json:"recvBufSize" env:"BOULDER_RECV_BUF_SIZE"`
-	LogDir              string        `yaml:"log_dir" json:"logDir" env:"BOULDER_LOG_DIR"`
-	LogSize             int           `yaml:"log_size" json:"logSize" env:"BOULDER_LOG_SIZE"`
-	LogMaxAge           int           `yaml:"log_max_age" json:"logMaxAge" env:"BOULDER_LOG_MAX_AGE"`
-	LogMaxBackups       int           `yaml:"log_max_backups" json:"logMaxBackups" env:"BOULDER_LOG_MAX_BACKUPS"`
-	LogCompress         bool          `yaml:"log_compress" json:"logCompress" env:"BOULDER_LOG_COMPRESS"`
-	Domains             []string      `yaml:"domains" json:"domains" env:"BOULDER_DOMAINS"`
+// TiKVConfig TiKV集群配置
+type TiKVConfig struct {
+	PDAddrs []string `yaml:"pd_addrs" json:"pdAddrs" env:"BOULDER_KV_TIKV_PD_ADDRS"`
+}
+type BadgerConfig struct {
+	Path string `yaml:"path" json:"path" env:"BOULDER_KV_BADGER_PATH" default:"./data/kv"`
 }
 
-// 创建带默认值的配置实例
+// KVConfig 存储KV相关配置
+type KVConfig struct {
+	TiKV   *TiKVConfig  `yaml:"tikv" json:"tikv"`
+	Badger BadgerConfig `yaml:"badger" json:"badger"`
+}
+
+// S3Config S3存储配置
+type S3Config struct {
+	AccessKey    string `yaml:"access_key" json:"accessKey" env:"BOULDER_BLOCK_S3_ACCESS_KEY"`
+	SecretKey    string `yaml:"secret_key" json:"secretKey" env:"BOULDER_BLOCK_S3_SECRET_KEY"`
+	Region       string `yaml:"region" json:"region" env:"BOULDER_BLOCK_S3_REGION"`
+	Endpoint     string `yaml:"endpoint" json:"endpoint" env:"BOULDER_BLOCK_S3_ENDPOINT"`
+	Bucket       string `yaml:"bucket" json:"bucket" env:"BOULDER_BLOCK_S3_BUCKET"`
+	UsePathStyle bool   `yaml:"usePathStyle" json:"usePathStyle" env:"BOULDER_BLOCK_S3_USE_PATH_STYLE"`
+}
+
+type DiskConfig struct {
+	Path string `yaml:"path" json:"path" env:"BOULDER_BLOCK_DISK_PATH" default:"./data/block"`
+}
+
+// BlockConfig 存储Block相关配置
+type BlockConfig struct {
+	S3   *S3Config  `yaml:"s3" json:"s3"`
+	Disk DiskConfig `yaml:"disk" json:"disk"`
+}
+
+// RedisConfig Redis集群配置
+type RedisConfig struct {
+	Addrs    []string `yaml:"addrs" json:"addrs" env:"BOULDER_CACHE_REDIS_ADDRS"`
+	Password string   `yaml:"password" json:"password" env:"BOULDER_CACHE_REDIS_PASSWORD"`
+	DB       int      `yaml:"db" json:"db" env:"BOULDER_CACHE_REDIS_DB"`
+	PoolSize int      `yaml:"pool_size" json:"poolSize" env:"BOULDER_CACHE_REDIS_POOL_SIZE"`
+}
+
+// CacheConfig 存储Cache相关配置
+type CacheConfig struct {
+	Redis *RedisConfig `yaml:"redis" json:"redis"`
+}
+
+// ServerConfig represents server configuration
+type ServerConfig struct {
+	Address             string        `yaml:"address" json:"address" env:"BOULDER_SERVER_ADDRESS" default:":3000"`
+	Listeners           int           `yaml:"listeners" json:"listeners" env:"BOULDER_SERVER_LISTENERS" default:"1"`
+	ConsoleAddress      string        `yaml:"console_address" json:"consoleAddress" env:"BOULDER_SERVER_CONSOLE_ADDRESS" default:":3002"`
+	ShutdownTimeout     time.Duration `yaml:"shutdown_timeout" json:"shutdownTimeout" env:"BOULDER_SERVER_SHUTDOWN_TIMEOUT" default:"30s"`
+	IdleTimeout         time.Duration `yaml:"idle_timeout" json:"idleTimeout" env:"BOULDER_SERVER_IDLE_TIMEOUT" default:"30s"`
+	ReadHeaderTimeout   time.Duration `yaml:"read_header_timeout" json:"readHeaderTimeout" env:"BOULDER_SERVER_READ_HEADER_TIMEOUT" default:"30s"`
+	ConnUserTimeout     time.Duration `yaml:"conn_user_timeout" json:"connUserTimeout" env:"BOULDER_SERVER_CONN_USER_TIMEOUT" default:"10m"`
+	ReadTimeout         time.Duration `yaml:"read_timeout" json:"readTimeout" env:"BOULDER_SERVER_READ_TIMEOUT" default:"10s"`
+	WriteTimeout        time.Duration `yaml:"write_timeout" json:"writeTimeout" env:"BOULDER_SERVER_WRITE_TIMEOUT" default:"10s"`
+	Interface           string        `yaml:"interface" json:"interface" env:"BOULDER_SERVER_INTERFACE" default:""`
+	MaxIdleConnsPerHost int           `yaml:"max_idle_conns_per_host" json:"maxIdleConnsPerHost" env:"BOULDER_SERVER_MAX_IDLE_CONNS_PER_HOST" default:"2048"`
+	Memlimit            string        `yaml:"memlimit" json:"memlimit" env:"BOULDER_SERVER_MEMLIMIT" default:"8589934592"`
+	SendBufSize         int           `yaml:"send_buf_size" json:"sendBufSize" env:"BOULDER_SERVER_SEND_BUF_SIZE" default:"4194304"`
+	RecvBufSize         int           `yaml:"recv_buf_size" json:"recvBufSize" env:"BOULDER_SERVER_RECV_BUF_SIZE" default:"4194304"`
+	Domains             []string      `yaml:"domains" json:"domains" env:"BOULDER_DOMAINS" `
+}
+
+// LogConfig represents log configuration
+type LogConfig struct {
+	Dir        string `yaml:"dir" json:"dir" env:"BOULDER_LOG_DIR" default:"./logs"`
+	Size       int    `yaml:"size" json:"size" env:"BOULDER_LOG_SIZE" default:"10485760"`
+	MaxAge     int    `yaml:"max_age" json:"maxAge" env:"BOULDER_LOG_MAX_AGE" default:"30"`
+	MaxBackups int    `yaml:"max_backups" json:"maxBackups" env:"BOULDER_LOG_MAX_BACKUPS" default:"7"`
+	Compress   bool   `yaml:"compress" json:"compress" env:"BOULDER_LOG_COMPRESS" default:"true"`
+}
+
+type Config struct {
+	Server ServerConfig `yaml:"server" json:"server"`
+	Log    LogConfig    `yaml:"log" json:"log"`
+	KV     KVConfig     `yaml:"kv" json:"kv"`
+	Block  BlockConfig  `yaml:"block" json:"block"`
+	Cache  CacheConfig  `yaml:"cache" json:"cache"`
+}
+
+// DefaultConfig 创建带默认值的配置实例
 func DefaultConfig() *Config {
-	return &Config{
-		Address:             ":3000",
-		Listeners:           1,
-		ConsoleAddress:      ":3002",
-		ShutdownTimeout:     30 * time.Second,
-		IdleTimeout:         30 * time.Second,
-		ReadHeaderTimeout:   30 * time.Second,
-		ConnUserTimeout:     10 * time.Minute,
-		ReadTimeout:         10 * time.Second,
-		WriteTimeout:        10 * time.Second,
-		MaxIdleConnsPerHost: 2048,
-		SendBufSize:         4 * 1024 * 1024, // 4MB
-		RecvBufSize:         4 * 1024 * 1024,
-		LogDir:              "./logs",
-		LogSize:             10 * 1024 * 1024, // 10MB
-		LogMaxAge:           30,
-		LogMaxBackups:       7,
-		LogCompress:         true,
-		Domains:             []string{"example.com", "example.org"},
+	cfg := &Config{}
+	if err := defaults.Set(cfg); err != nil {
+		panic("BUG: failed to set defaults on Config: " + err.Error())
 	}
+
+	// creasty/defaults 对数组支持不好，手动设置 slice,
+	cfg.Server.Domains = []string{"example.com", "example.org"}
+	return cfg
 }
 
 // Load 加载配置，支持多格式
-func load(filepath string) (*Config, error) {
-	cfg := DefaultConfig() // 创建带默认值的实例
+func load(path string) *Config {
+	_cfg := DefaultConfig()
 
-	// 从配置文件加载（如果提供了文件路径）
-	if filepath != "" {
-		if err := loadFromFile(cfg, filepath); err != nil {
-			return nil, err
-		}
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		logger.GetLogger("").Warnf("config file not found: %s, using default config", path)
+		return _cfg
+	} else if err != nil {
+		logger.GetLogger("").Errorf("failed to stat config file %s: %v", path, err)
+		return _cfg
 	}
 
-	// 从环境变量覆盖
-	loadFromEnv(cfg)
+	v := viper.New()
+	v.SetConfigFile(path)
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".yaml", ".yml":
+		v.SetConfigType("yaml")
+	case ".json":
+		v.SetConfigType("json")
+	case ".properties", ".props":
+		v.SetConfigType("properties")
+	default:
+		logger.GetLogger("").Errorf("unknown config file type: %s", ext)
+		return _cfg
+	}
+	v.AutomaticEnv()
+	if err := v.ReadInConfig(); err != nil {
+		logger.GetLogger("").Errorf("failed to read config file: %v", err)
+		return _cfg
+	}
+	// 解码到结构体
+	var cfg Config
+	if err := v.Unmarshal(&cfg); err != nil {
+		logger.GetLogger("").Errorf("failed to unmarshal config file %s: %s", path, err.Error())
+		return _cfg
+	}
 
-	return cfg, nil
+	// 设置 default 标签的值
+	if err := defaults.Set(&cfg); err != nil {
+		logger.GetLogger("").Errorf("failed to set defaults for config file %s: %s", path, err.Error())
+		return _cfg
+	}
+
+	return &cfg
 }
 
-// 重新加载配置（支持热更新）
+// Load 重新加载配置（支持热更新）
 func Load(configPath string) error {
 	if configPath == "" {
-		return nil
+		defaultCfg := DefaultConfig()
+		globalConfig.Store(defaultCfg)
+		return nil // 明确表示“成功加载了默认配置”
 	}
 
-	loadMutex.Lock()
-	defer loadMutex.Unlock()
-
-	cfg, err := load(configPath)
-	if err != nil {
-		return err
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		defaultCfg := DefaultConfig()
+		globalConfig.Store(defaultCfg)
+		logger.GetLogger("").Warnf("config file %s not found, using default config", configPath)
+		return nil // 成功使用默认值
 	}
 
+	// ... 正常加载
+	cfg := load(configPath)
+	if cfg == nil {
+		return fmt.Errorf("failed to load config from %s", configPath)
+	}
 	globalConfig.Store(cfg)
 	return nil
 }
 
-// 获取全局配置实例（线程安全）
+// Get 获取全局配置实例（线程安全）
 func Get() Config {
-	if cfg := globalConfig.Load(); cfg != nil {
-		return *cfg.(*Config)
+	if c, ok := globalConfig.Load().(*Config); ok && c != nil {
+		return *c
 	}
 
-	// 尝试自动初始化默认配置
 	loadMutex.Lock()
 	defer loadMutex.Unlock()
 
-	if cfg := globalConfig.Load(); cfg != nil {
-		return *cfg.(*Config)
+	// 只需再查一次，避免重复初始化
+	if c, ok := globalConfig.Load().(*Config); ok && c != nil {
+		return *c
 	}
 
-	// 创建默认配置
-	defaultCfg := DefaultConfig()
-	globalConfig.Store(defaultCfg)
-	return *defaultCfg
-}
-
-// 根据文件扩展名自动选择解析器
-func loadFromFile(cfg *Config, path string) error {
-	file, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-
-	ext := strings.ToLower(filepath.Ext(path))
-	switch ext {
-	case ".yaml", ".yml":
-		return yaml.Unmarshal(file, cfg)
-	case ".json":
-		return json.Unmarshal(file, cfg)
-	case ".properties", ".props", ".conf":
-		return loadProperties(file, cfg)
-	default:
-		// 尝试自动检测格式
-		if err := yaml.Unmarshal(file, cfg); err == nil {
-			return nil
-		}
-		if err := json.Unmarshal(file, cfg); err == nil {
-			return nil
-		}
-		return loadProperties(file, cfg)
-	}
-}
-
-// 解析 properties 格式
-func loadProperties(data []byte, cfg *Config) error {
-	props, err := properties.Load(data, properties.UTF8)
-	if err != nil {
-		return err
-	}
-
-	v := reflect.ValueOf(cfg).Elem()
-	t := v.Type()
-
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		fieldVal := v.Field(i)
-
-		// 获取可能的标签名
-		tags := []string{
-			field.Tag.Get("yaml"),
-			field.Tag.Get("json"),
-			strings.ToLower(field.Name),
-		}
-
-		// 查找存在的属性键
-		var propKey string
-		for _, tag := range tags {
-			if tag != "" && props.GetString(tag, "") != "" {
-				propKey = tag
-				break
-			}
-		}
-		if propKey == "" {
-			continue
-		}
-
-		propValue := props.GetString(propKey, "")
-		if propValue == "" {
-			continue
-		}
-
-		setFieldValue(fieldVal, propValue)
-	}
-	return nil
-}
-
-// 从环境变量加载
-func loadFromEnv(cfg *Config) {
-	t := reflect.TypeOf(*cfg)
-	v := reflect.ValueOf(cfg).Elem()
-
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		envTag := field.Tag.Get("env")
-		if envTag == "" {
-			continue
-		}
-
-		envValue := os.Getenv(envTag)
-		if envValue == "" {
-			continue
-		}
-
-		fieldVal := v.Field(i)
-		setFieldValue(fieldVal, envValue)
-	}
-}
-
-// 通用字段值设置方法
-func setFieldValue(field reflect.Value, value string) {
-	switch field.Kind() {
-	case reflect.String:
-		field.SetString(value)
-	case reflect.Int, reflect.Int64:
-		if intVal, err := strconv.ParseInt(value, 10, 64); err == nil {
-			field.SetInt(intVal)
-		}
-	case reflect.Bool:
-		if boolVal, err := strconv.ParseBool(value); err == nil {
-			field.SetBool(boolVal)
-		}
-	case reflect.Float64:
-		if floatVal, err := strconv.ParseFloat(value, 64); err == nil {
-			field.SetFloat(floatVal)
-		}
-	case reflect.Struct:
-		// 特别处理 time.Duration 类型
-		if field.Type().String() == "time.Duration" {
-			if d, err := time.ParseDuration(value); err == nil {
-				field.Set(reflect.ValueOf(d))
-			}
-		}
-	}
+	// 第一次访问，初始化默认配置
+	cfg := DefaultConfig()
+	globalConfig.Store(cfg)
+	return *cfg
 }

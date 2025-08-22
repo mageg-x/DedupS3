@@ -1,68 +1,67 @@
-/*
- * Copyright (C) 2025-2025 raochaoxun <raochaoxun@gmail.com>.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
+// Package block /*
 package block
 
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"io"
-	"path/filepath"
-	"sync"
+	"path"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	xconf "github.com/mageg-x/boulder/internal/config"
 )
 
 // S3Store 实现基于S3的存储后端
 type S3Store struct {
-	Id       string
-	Bucket   string
-	Prefix   string
-	client   *s3.Client
-	region   string
-	stats    StoreStats
-	mu       sync.RWMutex
-	lastStat time.Time
+	client *s3.Client
+	conf   *xconf.S3Config
+	ctx    context.Context
 }
 
-// NewS3Storage 创建新的S3存储后端
-func InitS3Store(id, bucket, prefix, region string) (*S3Store, error) {
-	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
-	if err != nil {
-		return nil, err
+// NewS3Store NewS3Storage 创建新的S3存储后端
+func NewS3Store() (*S3Store, error) {
+	conf := xconf.Get()
+	ctx := context.Background()
+
+	c := conf.Block.S3
+	if c.AccessKey == "" || c.SecretKey == "" {
+		return nil, fmt.Errorf("missing AWS credentials")
 	}
 
-	client := s3.NewFromConfig(cfg)
+	// 创建凭证
+	credentialProvider := credentials.NewStaticCredentialsProvider(c.AccessKey, c.SecretKey, "")
+
+	// 加载配置，并指定凭证提供者
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithRegion(c.Region),
+		config.WithCredentialsProvider(credentialProvider),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load SDK configuration: %v", err)
+	}
+
+	// 创建 S3 客户端（对接 MinIO 等私有服务需加选项）
+	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+		// 如果配置了自定义端点，设置自定义端点
+		if c.Endpoint != "" {
+			o.BaseEndpoint = aws.String(c.Endpoint)
+		}
+		// 对接 MinIO/OSS/COS 等需要PathStyle的情况
+		o.UsePathStyle = c.UsePathStyle
+	})
 
 	return &S3Store{
-		Id:     id,
-		Bucket: bucket,
-		Prefix: prefix,
 		client: client,
-		region: region,
+		conf:   c,
+		ctx:    ctx,
 	}, nil
-}
-
-// ID 返回存储ID
-func (s *S3Store) ID() string {
-	return s.Id
 }
 
 // Type 返回存储类型
@@ -72,28 +71,26 @@ func (s *S3Store) Type() string {
 
 // WriteBlock 写入块到S3
 func (s *S3Store) WriteBlock(blockID string, data []byte) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
+	defer cancel()
 
 	key := s.blockKey(blockID)
-	_, err := s.client.PutObject(context.TODO(), &s3.PutObjectInput{
-		Bucket: aws.String(s.Bucket),
+	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(s.conf.Bucket),
 		Key:    aws.String(key),
 		Body:   bytes.NewReader(data),
 	})
 
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to write block %s to S3: %w", blockID, err)
 	}
-
-	s.updateStats()
 	return nil
 }
 
 // ReadBlock 从S3读取块
 func (s *S3Store) ReadBlock(blockID string, offset, length int64) ([]byte, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
+	defer cancel()
 
 	key := s.blockKey(blockID)
 
@@ -104,7 +101,7 @@ func (s *S3Store) ReadBlock(blockID string, offset, length int64) ([]byte, error
 	}
 
 	input := &s3.GetObjectInput{
-		Bucket: aws.String(s.Bucket),
+		Bucket: aws.String(s.conf.Bucket),
 		Key:    aws.String(key),
 	}
 
@@ -112,82 +109,85 @@ func (s *S3Store) ReadBlock(blockID string, offset, length int64) ([]byte, error
 		input.Range = aws.String(rangeHeader)
 	}
 
-	resp, err := s.client.GetObject(context.TODO(), input)
+	resp, err := s.client.GetObject(ctx, input)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read block %s from S3: %w", blockID, err)
 	}
 	defer resp.Body.Close()
 
-	return io.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body for block %s: %w", blockID, err)
+	}
+
+	return data, nil
 }
 
 // DeleteBlock 删除S3块
 func (s *S3Store) DeleteBlock(blockID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
+	defer cancel()
 
 	key := s.blockKey(blockID)
-	_, err := s.client.DeleteObject(context.TODO(), &s3.DeleteObjectInput{
-		Bucket: aws.String(s.Bucket),
+	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(s.conf.Bucket),
 		Key:    aws.String(key),
 	})
 
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to delete block %s from S3: %w", blockID, err)
 	}
+	return nil
+}
 
-	s.updateStats()
+// BlockExists 检查块是否存在
+func (s *S3Store) BlockExists(blockID string) (bool, error) {
+	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
+	defer cancel()
+
+	key := s.blockKey(blockID)
+	_, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(s.conf.Bucket),
+		Key:    aws.String(key),
+	})
+
+	if err != nil {
+		var nsk *types.NoSuchKey
+		if errors.As(err, &nsk) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to check if block %s exists: %w", blockID, err)
+	}
+	return true, nil
+}
+
+// HealthCheck 检查S3连接是否正常
+func (s *S3Store) HealthCheck() error {
+	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
+	defer cancel()
+
+	_, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{
+		Bucket: aws.String(s.conf.Bucket),
+	})
+	if err != nil {
+		return fmt.Errorf("S3 health check failed: %w", err)
+	}
 	return nil
 }
 
 // Location 获取块位置
 func (s *S3Store) Location(blockID string) string {
-	return fmt.Sprintf("s3://%s/%s", s.Bucket, s.blockKey(blockID))
-}
-
-// Stats 获取存储统计信息
-func (s *S3Store) Stats() StoreStats {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// 如果统计信息超过5分钟未更新，则更新
-	if time.Since(s.lastStat) > 5*time.Minute {
-		go s.updateStats()
-	}
-
-	return s.stats
+	return fmt.Sprintf("s3://%s/%s", s.conf.Bucket, s.blockKey(blockID))
 }
 
 // blockKey 获取块在S3中的键
 func (s *S3Store) blockKey(blockID string) string {
 	// 使用两级目录分散对象
+	if len(blockID) < 4 {
+		// 处理短 blockID 的情况
+		return path.Join("blocks", blockID)
+	}
 	dir1 := blockID[:2]
 	dir2 := blockID[2:4]
-	return filepath.Join(s.Prefix, dir1, dir2, blockID)
-}
-
-// updateStats 更新S3存储统计信息
-func (s *S3Store) updateStats() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// 获取桶信息
-	_, err := s.client.HeadBucket(context.TODO(), &s3.HeadBucketInput{
-		Bucket: aws.String(s.Bucket),
-	})
-
-	if err != nil {
-		return
-	}
-
-	// 获取桶大小（简化实现）
-	// 实际实现中应使用S3清单或存储统计服务
-	s.stats = StoreStats{
-		TotalSpace: 1 * 1024 * 1024 * 1024 * 1024, // 1TB (简化)
-		UsedSpace:  500 * 1024 * 1024 * 1024,      // 500GB (简化)
-		FreeSpace:  500 * 1024 * 1024 * 1024,      // 500GB (简化)
-	}
-
-	// 标记更新时间
-	s.lastStat = time.Now()
+	return path.Join("blocks", dir1, dir2, blockID)
 }

@@ -155,10 +155,13 @@ func GetLogger(name string) *Logger {
 
 	mu.Lock()
 	defer mu.Unlock()
-
 	// 如果已存在，直接返回封装的 Logger
 	if logger, exists := loggers[key]; exists {
 		return &Logger{logger}
+	}
+
+	if name == "" {
+		return &Logger{logrus.StandardLogger()}
 	}
 
 	// 创建日志目录
@@ -181,7 +184,6 @@ func GetLogger(name string) *Logger {
 		Compress:   config.Compress,
 	}
 	logger.SetOutput(io.MultiWriter(os.Stdout, fileWriter))
-	logger.SetLevel(logrus.DebugLevel)
 
 	logger.SetFormatter(&logrus.TextFormatter{
 		ForceColors:     true,
