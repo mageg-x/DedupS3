@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	"sync"
 	"time"
 
 	"github.com/mageg-x/boulder/internal/logger"
+	xcache "github.com/mageg-x/boulder/internal/storage/cache"
 	"github.com/mageg-x/boulder/internal/storage/kv"
 	"github.com/mageg-x/boulder/internal/utils"
 	"github.com/mageg-x/boulder/meta"
@@ -21,13 +23,17 @@ var (
 
 // IamService 提供IAM账户管理功能
 type IamService struct {
-	mutex sync.RWMutex
-	iam   kv.KVStore
+	iam kv.KVStore
 }
 
 func GetIamService() *IamService {
+	logger.GetLogger("boulder").Debugf("Acquiring lock for GetIamService")
 	mu.Lock()
-	defer mu.Unlock()
+	logger.GetLogger("boulder").Debugf("Lock acquired for GetIamService")
+	defer func() {
+		mu.Unlock()
+		logger.GetLogger("boulder").Debugf("Lock released for GetIamService")
+	}()
 	if instance == nil || instance.iam == nil {
 		kvStore, err := kv.GetKvStore()
 		if err != nil {
@@ -35,8 +41,7 @@ func GetIamService() *IamService {
 			return nil
 		}
 		instance = &IamService{
-			iam:   kvStore,
-			mutex: sync.RWMutex{},
+			iam: kvStore,
 		}
 	}
 
@@ -49,8 +54,6 @@ func GetIamService() *IamService {
 // CreateAccount 创建新的IAM账户
 // 根据AWS标准，账户ID由系统自动生成，用户提供用户名和密码
 func (s *IamService) CreateAccount(username, password string) (*meta.IAMAccount, error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
 	if err := meta.ValidateUsername(username); err != nil {
 		logger.GetLogger("boulder").Errorf("username %s is invalid format", username)
 		return nil, errors.New("invalid username format")
@@ -98,27 +101,27 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IAMAccount,
 
 	// 在事务中执行所有操作
 	key = "aws:iam:account:id:" + account.AccountID
-	if err := txn.Put(key, account); err != nil {
+	if err = txn.Put(key, account); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to store account %s data in transaction: %v", account.AccountID, err)
 		return nil, err
 	}
 
 	// 更新 name 和 access key 索引
 	key = "aws:iam:account:root:" + username
-	if err := txn.Put(key, account.AccountID); err != nil {
+	if err = txn.Put(key, account.AccountID); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to store account %s name in transaction: %v", account.AccountID, err)
 		return nil, err
 	}
 
 	// 更新 access key 索引
 	key = "aws:iam:account:ak:" + rootUser.AccessKeys[0].AccessKeyID
-	if err := txn.Put(key, &rootUser.AccessKeys[0]); err != nil {
+	if err = txn.Put(key, &rootUser.AccessKeys[0]); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to store account %s access key in transaction: %v", account.AccountID, err)
 		return nil, err
 	}
 
 	// 提交事务
-	if err := txn.Commit(context.Background()); err != nil {
+	if err = txn.Commit(context.Background()); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to commit transaction for account %s: %v", account.AccountID, err)
 		return nil, err
 	} else {
@@ -131,10 +134,18 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IAMAccount,
 
 // GetAccount 获取IAM账户
 func (s *IamService) GetAccount(accountID string) (*meta.IAMAccount, error) {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
 	key := "aws:iam:account:id:" + accountID
+	if cache, err := xcache.GetCache(); err == nil && cache != nil {
+		account, ok, e := cache.Get(context.Background(), key)
+		if e == nil && ok {
+			obj, yes := account.(*meta.IAMAccount)
+			if !yes {
+				logger.GetLogger("boulder").Errorf("Cached account %s is not of type *meta.IAMAccount", accountID)
+				return nil, fmt.Errorf("invalid account type in cache")
+			}
+			return obj, nil
+		}
+	}
 	data, exists, err := s.iam.GetRaw(context.Background(), key)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to get account %s: %v", accountID, err)
@@ -146,9 +157,13 @@ func (s *IamService) GetAccount(accountID string) (*meta.IAMAccount, error) {
 	}
 
 	var account meta.IAMAccount
-	if err := json.Unmarshal(data, &account); err != nil {
+	if err = json.Unmarshal(data, &account); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to unmarshal account %s data: %v", accountID, err)
 		return nil, err
+	}
+
+	if cache, e := xcache.GetCache(); e == nil && cache != nil {
+		cache.Set(context.Background(), key, account, time.Second*600)
 	}
 
 	return &account, nil
@@ -156,8 +171,6 @@ func (s *IamService) GetAccount(accountID string) (*meta.IAMAccount, error) {
 
 // UpdateAccount 更新IAM账户
 func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IAMAccount) error) (bool, error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
 	if meta.ValidateAccountID(accountID) != nil {
 		logger.GetLogger("boulder").Errorf("invalid account id: %s", accountID)
 		return false, errors.New("invalid account id")
@@ -192,7 +205,7 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IAMAc
 	}(txn, context.Background())
 
 	// 应用更新
-	if err := updateFunc(&account); err != nil {
+	if err = updateFunc(&account); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to update account %s: %v", accountID, err)
 		return false, err
 	}
@@ -209,32 +222,41 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IAMAc
 	del, add := utils.SliceDiff(oldAccessKey, newAccessKey, func(a, b *meta.AccessKey) bool {
 		return a.AccessKeyID == b.AccessKeyID
 	})
+
+	var changeKeys []string
 	for _, accessKey := range del {
-		key := "aws:iam:account:ak:" + accessKey.AccessKeyID
+		k := "aws:iam:account:ak:" + accessKey.AccessKeyID
+		changeKeys = append(changeKeys, k)
 		// 删除 access key
-		err := s.iam.Delete(context.Background(), key)
-		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to delete access key %s: %v", accessKey.AccessKeyID, err)
-			return false, err
+		e := s.iam.Delete(context.Background(), k)
+		if e != nil {
+			logger.GetLogger("boulder").Errorf("failed to delete access key %s: %v", accessKey.AccessKeyID, e)
+			return false, e
 		}
 	}
 
 	for _, accessKey := range add {
-		key := "aws:iam:account:ak:" + accessKey.AccessKeyID
+		k := "aws:iam:account:ak:" + accessKey.AccessKeyID
+		changeKeys = append(changeKeys, k)
 		// 添加 access key
-		err := s.iam.Put(context.Background(), key, accessKey)
-		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to add access key %s: %v", accessKey.AccessKeyID, err)
-			return false, err
+		e := s.iam.Put(context.Background(), k, accessKey)
+		if e != nil {
+			logger.GetLogger("boulder").Errorf("failed to add access key %s: %v", accessKey.AccessKeyID, e)
+			return false, e
 		}
 	}
 
 	// 提交事务
-	if err := txn.Commit(context.Background()); err != nil {
+	if err = txn.Commit(context.Background()); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to commit transaction for account %s: %v", account.AccountID, err)
 		return false, err
 	} else {
 		success = true
+	}
+
+	if cache, e := xcache.GetCache(); e == nil && cache != nil {
+		cache.Del(context.Background(), key)
+		cache.BatchDel(context.Background(), changeKeys)
 	}
 
 	return true, nil
@@ -242,10 +264,13 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IAMAc
 
 // DeleteAccount 删除IAM账户
 func (s *IamService) DeleteAccount(accountID string) error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
 	key := "aws:iam:account:id:" + accountID
+
+	if cache, err := xcache.GetCache(); err == nil && cache != nil {
+		cache.Del(context.Background(), key)
+	}
+
+	// 还要删除与之相关的所有 accesskey, block, chunk，bucket，和 object 元数据索引 todo
 	return s.iam.Delete(context.Background(), key)
 }
 
@@ -352,17 +377,31 @@ func (s *IamService) DeleteAccessKey(accountID, accessKeyID string) error {
 }
 
 func (s *IamService) GetAccessKey(accessKeyID string) (*meta.AccessKey, error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
 	if accessKeyID == "" {
 		return nil, errors.New("access key id is empty")
 	}
 
 	key := "aws:iam:account:ak:" + accessKeyID
+	if cache, err := xcache.GetCache(); err == nil && cache != nil {
+		ak, ok, e := cache.Get(context.Background(), key)
+		if e == nil && ok {
+			obj, yes := ak.(*meta.AccessKey)
+			if !yes {
+				logger.GetLogger("boulder").Errorf("invalid type in cache for access key %s", accessKeyID)
+				return nil, fmt.Errorf("invalid access key type in cache")
+			}
+			return obj, nil
+		}
+	}
+
 	ak := meta.AccessKey{}
 	if ok, err := s.iam.Get(context.Background(), key, &ak); err != nil || !ok {
 		logger.GetLogger("boulder").Errorf("get accesskey id %s failed", accessKeyID)
 		return nil, fmt.Errorf("access key %s not found", accessKeyID)
+	}
+
+	if cache, err := xcache.GetCache(); err == nil && cache != nil {
+		cache.Set(context.Background(), key, ak, time.Second*600)
 	}
 	return &ak, nil
 }
