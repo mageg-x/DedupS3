@@ -29,8 +29,13 @@ func GetIamService() *IamService {
 	mu.Lock()
 	defer mu.Unlock()
 	if instance == nil || instance.iam == nil {
+		kvStore, err := kv.GetKvStore()
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("Failed to get kv store: %v", err)
+			return nil
+		}
 		instance = &IamService{
-			iam:   kv.GetKvStore(),
+			iam:   kvStore,
 			mutex: sync.RWMutex{},
 		}
 	}

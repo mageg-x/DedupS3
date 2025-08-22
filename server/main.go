@@ -20,21 +20,24 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/mageg-x/boulder/web"
-	"github.com/sirupsen/logrus"
-	"go.uber.org/zap"
 	"math/rand"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/pflag"
+	"go.uber.org/zap"
+
 	"github.com/mageg-x/boulder/internal/config"
 	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/mageg-x/boulder/internal/logger"
+	"github.com/mageg-x/boulder/internal/storage/block"
+	"github.com/mageg-x/boulder/internal/storage/cache"
 	"github.com/mageg-x/boulder/internal/storage/kv"
 	"github.com/mageg-x/boulder/router"
-	"github.com/spf13/pflag"
+	"github.com/mageg-x/boulder/web"
 )
 
 type CLI struct {
@@ -60,7 +63,7 @@ func ParseCLI() *CLI {
 
 func main() {
 	rand.New(rand.NewSource(time.Now().UnixNano()))
-
+	// 1、 初始化配置和 日志部分
 	cli := ParseCLI()
 	if cli.ShowHelp {
 		flag.Usage()
@@ -86,32 +89,34 @@ func main() {
 	})
 
 	logger.GetLogger("boulder").SetLevel(logrus.Level(int(logrus.InfoLevel) + cli.Verbose))
-
 	logger.GetLogger("boulder").Tracef("get config %v", cfg)
-	// kv 存放元数据
-	_, err := kv.InitKvStore(&kv.Config{
-		Type: kv.StorageBadger,
-		Badger: kv.BadgerConfig{
-			Path: "./data/kv",
-		},
-	})
 
+	// 2、初始化存储部分
+	// 初始kv， 初始meta数据地方
+	_, err := kv.GetKvStore()
 	if err != nil {
 		logger.GetLogger("boulder").Error("failed to init kv store", zap.Error(err))
 		panic(err)
 	}
 
-	// block 存放对象数据块
-	//_, err = block.InitBlockStore("local-disk", "disk", "./data/block")
-	//if err != nil {
-	//	logger.GetLogger("boulder").Error("failed to init block store", zap.Error(err))
-	//	panic(err)
-	//}
+	// 初始block 存放对象数据块地方
+	_, err = block.GetBlockStore()
+	if err != nil {
+		logger.GetLogger("boulder").Error("failed to init block store", zap.Error(err))
+		panic(err)
+	}
 
-	// 1. 创建路由处理器
+	// 初始化cache， 缓存元数据的地方
+	_, err = cache.GetCache()
+	if err != nil {
+		logger.GetLogger("boulder").Error("failed to init cache store", zap.Error(err))
+		panic(err)
+	}
+
+	// 3. 创建路由处理器
 	mux := router.SetupRouter()
 
-	// 2. 创建服务器实例（监听 3000 端口）
+	// 4. 创建服务器实例（监听 3000 端口）
 	tcpOpt := xhttp.TCPOptions{
 		DriveOPTimeout: func() time.Duration {
 			return 5 * time.Second
@@ -157,7 +162,7 @@ func main() {
 		}(i)
 	}
 
-	// 启动console服务
+	// 5、启动console服务
 	web.Start()
 
 	// 创建一个通道来接收操作系统的中断信号

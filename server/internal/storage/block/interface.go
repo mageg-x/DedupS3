@@ -27,27 +27,22 @@ var (
 	blockMutex sync.RWMutex
 )
 
-func GetBlockStore() BlockStore {
+func GetBlockStore() (BlockStore, error) {
 	blockMutex.RLock()
 	defer blockMutex.RUnlock()
 	if bsInstance != nil {
-		return bsInstance
+		return bsInstance, nil
 	}
 
 	cfg := config.Get()
+	var err error
 	if cfg.Block.S3 == nil {
-		inst, err := NewDiskStore()
-		if err == nil && inst != nil {
-			bsInstance = inst
-		}
+		bsInstance, err = NewDiskStore(cfg.Block.Disk)
 	} else {
-		inst, err := NewS3Store()
-		if err == nil && inst != nil {
-			bsInstance = inst
-		}
+		bsInstance, err = NewS3Store(cfg.Block.S3)
 	}
 
-	return bsInstance
+	return bsInstance, err
 }
 
 // BlockStore  存储后端接口

@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/dgraph-io/badger/v4"
+	xconf "github.com/mageg-x/boulder/internal/config"
 )
 
 // BadgerStore 基于BadgerDB的KV存储实现
@@ -32,7 +33,7 @@ type BadgerStore struct {
 }
 
 // InitBadgerStore 初始化Badger存储
-func InitBadgerStore(cfg BadgerConfig) (*BadgerStore, error) {
+func InitBadgerStore(cfg xconf.BadgerConfig) (*BadgerStore, error) {
 	opts := badger.DefaultOptions(cfg.Path)
 	opts.Logger = nil // 禁用日志
 

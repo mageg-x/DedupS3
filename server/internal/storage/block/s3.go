@@ -6,16 +6,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	xconf "github.com/mageg-x/boulder/internal/config"
 	"io"
 	"path"
 	"time"
-
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	xconf "github.com/mageg-x/boulder/internal/config"
 )
 
 // S3Store 实现基于S3的存储后端
@@ -26,11 +25,12 @@ type S3Store struct {
 }
 
 // NewS3Store NewS3Storage 创建新的S3存储后端
-func NewS3Store() (*S3Store, error) {
-	conf := xconf.Get()
+func NewS3Store(c *xconf.S3Config) (*S3Store, error) {
+	if c == nil {
+		return nil, fmt.Errorf("NewDiskStore: nil config")
+	}
 	ctx := context.Background()
 
-	c := conf.Block.S3
 	if c.AccessKey == "" || c.SecretKey == "" {
 		return nil, fmt.Errorf("missing AWS credentials")
 	}
@@ -71,7 +71,7 @@ func (s *S3Store) Type() string {
 
 // WriteBlock 写入块到S3
 func (s *S3Store) WriteBlock(blockID string, data []byte) error {
-	ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
+	ctx, cancel := context.WithCancel(s.ctx)
 	defer cancel()
 
 	key := s.blockKey(blockID)
@@ -89,7 +89,7 @@ func (s *S3Store) WriteBlock(blockID string, data []byte) error {
 
 // ReadBlock 从S3读取块
 func (s *S3Store) ReadBlock(blockID string, offset, length int64) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
+	ctx, cancel := context.WithCancel(s.ctx)
 	defer cancel()
 
 	key := s.blockKey(blockID)
@@ -142,7 +142,7 @@ func (s *S3Store) DeleteBlock(blockID string) error {
 
 // BlockExists 检查块是否存在
 func (s *S3Store) BlockExists(blockID string) (bool, error) {
-	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
 	defer cancel()
 
 	key := s.blockKey(blockID)
@@ -163,7 +163,7 @@ func (s *S3Store) BlockExists(blockID string) (bool, error) {
 
 // HealthCheck 检查S3连接是否正常
 func (s *S3Store) HealthCheck() error {
-	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(s.ctx, 30*time.Second)
 	defer cancel()
 
 	_, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{

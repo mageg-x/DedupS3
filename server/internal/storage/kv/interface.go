@@ -18,40 +18,31 @@ package kv
 
 import (
 	"context"
-	"fmt"
+	"github.com/mageg-x/boulder/internal/config"
 	"sync"
 )
 
 var (
 	kvInstance KVStore
-	kvOnce     sync.Once
 	kvMutex    sync.RWMutex
 )
 
-func InitKvStore(cfg *Config) (KVStore, error) {
-	var initErr error
-	kvOnce.Do(func() {
-		switch cfg.Type {
-		case StorageBadger:
-			kvInstance, initErr = InitBadgerStore(cfg.Badger)
-		case StorageTiKV:
-			kvInstance, initErr = InitTiKVStore(cfg.TiKV)
-		default:
-			initErr = fmt.Errorf("unsupported storage type: %s", cfg.Type)
-		}
-	})
-
-	if initErr != nil {
-		return nil, initErr
-	}
-	return kvInstance, nil
-}
-
 // GetKvStore 获取全局KV存储实例
-func GetKvStore() KVStore {
+func GetKvStore() (KVStore, error) {
 	kvMutex.RLock()
 	defer kvMutex.RUnlock()
-	return kvInstance
+	if kvInstance != nil {
+		return kvInstance, nil
+	}
+	cfg := config.Get()
+	var err error
+	if cfg.KV.TiKV == nil {
+		kvInstance, err = InitBadgerStore(cfg.KV.Badger)
+	} else {
+		kvInstance, err = InitTiKVStore(cfg.KV.TiKV)
+	}
+
+	return kvInstance, err
 }
 
 // KVStore 键值存储接口
@@ -83,30 +74,4 @@ type Txn interface {
 	Commit(ctx context.Context) error
 	// Rollback 回滚事务
 	Rollback(ctx context.Context) error
-}
-
-// StorageType 存储类型
-type StorageType string
-
-const (
-	StorageBadger StorageType = "badger"
-	StorageRedis  StorageType = "redis"
-	StorageTiKV   StorageType = "tikv"
-)
-
-// Config 存储配置
-type Config struct {
-	Type   StorageType
-	Badger BadgerConfig
-	TiKV   TiKVConfig
-}
-
-// BadgerConfig Badger 存储配置
-type BadgerConfig struct {
-	Path string
-}
-
-// TiKVConfig TiKV 存储配置
-type TiKVConfig struct {
-	PDAddrs []string
 }

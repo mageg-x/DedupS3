@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	xconf "github.com/mageg-x/boulder/internal/config"
 	"github.com/tikv/client-go/v2/config"
 	"github.com/tikv/client-go/v2/rawkv"
 )
@@ -31,7 +32,7 @@ type TiKVStore struct {
 }
 
 // InitTiKVStore 初始化TiKV存储
-func InitTiKVStore(cfg TiKVConfig) (*TiKVStore, error) {
+func InitTiKVStore(cfg *xconf.TiKVConfig) (*TiKVStore, error) {
 	// 创建安全配置
 	security := config.Security{
 		// 根据需要配置TLS

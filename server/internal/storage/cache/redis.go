@@ -35,13 +35,12 @@ type Redis struct {
 }
 
 // NewRedis 创建 Redis/Valkey 客户端
-func NewRedis() (*Redis, error) {
-	cfg := config.Get()
+func NewRedis(cfg *config.RedisConfig) (*Redis, error) {
 	client := redis.NewClusterClient(&redis.ClusterOptions{
-		Addrs: cfg.Cache.Redis.Addrs,
+		Addrs: cfg.Addrs,
 		// 可选配置
-		Password: cfg.Cache.Redis.Password,
-		PoolSize: cfg.Cache.Redis.PoolSize,
+		Password: cfg.Password,
+		PoolSize: cfg.PoolSize,
 	})
 
 	// 可选：测试连接

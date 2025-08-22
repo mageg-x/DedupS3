@@ -18,7 +18,6 @@ package cache
 
 import (
 	"context"
-	"fmt"
 	"github.com/mageg-x/boulder/internal/config"
 	"sync"
 	"time"
@@ -53,34 +52,19 @@ type Cache interface {
 	Keys(ctx context.Context, pattern string) ([]string, error)
 }
 
-func GetCache() Cache {
+func GetCache() (Cache, error) {
 	mu.Lock()
 	defer mu.Unlock()
 	if cacheInst != nil {
-		return cacheInst
+		return cacheInst, nil
 	}
 
 	cfg := config.Get()
-	if cfg.Cache.Redis.
-}
-
-// NewCache 创建缓存实例
-func NewCache(cacheType string) (Cache, error) {
-	var cache Cache
 	var err error
-
-	switch cacheType {
-	case "redis":
-		cache, err = NewRedis()
-	case "ristretto":
-		cache, err = NewRistretto()
-	default:
-		return nil, fmt.Errorf("unsupported cache type: %s", cacheType)
+	if cfg.Cache.Redis == nil {
+		cacheInst, err = NewRistretto()
+	} else {
+		cacheInst, err = NewRedis(cfg.Cache.Redis)
 	}
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to create cache: %v", err)
-	}
-
-	return cache, nil
+	return cacheInst, err
 }

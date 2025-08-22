@@ -18,10 +18,7 @@ type DiskStore struct {
 }
 
 // NewDiskStore  创建新的磁盘存储
-func NewDiskStore() (*DiskStore, error) {
-	conf := xconf.Get()
-	c := conf.Block.Disk
-
+func NewDiskStore(c xconf.DiskConfig) (*DiskStore, error) {
 	if err := os.MkdirAll(c.Path, 0755); err != nil {
 		return nil, err
 	}
