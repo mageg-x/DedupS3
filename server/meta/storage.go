@@ -18,6 +18,7 @@
 package meta
 
 import (
+	"fmt"
 	"github.com/mageg-x/boulder/internal/config"
 	"github.com/mageg-x/boulder/internal/storage/block"
 )
@@ -29,4 +30,8 @@ type Storage struct {
 	Type     string             `json:"type" msgpack:"type"`   // 存储类别 (s3, disk, etc.)
 	Conf     config.BlockConfig `json:"conf" msgpack:"conf"`   // 存储配置
 	Instance block.BlockStore   `json:"-" msgpack:"-"`         // 实际读写实例
+}
+
+func (s *Storage) String() string {
+	return fmt.Sprintf("Storage{ID: %s, Class: %s, Type: %s, Conf: %+v}", s.ID, s.Class, s.Type, s.Conf)
 }

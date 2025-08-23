@@ -1,5 +1,11 @@
 package utils
 
+import (
+	"encoding/xml"
+	"errors"
+	"io"
+)
+
 // SliceDiff 返回两个差集：
 // - onlyInA: 在 slice1 中有，但在 slice2 中没有的元素
 // - onlyInB: 在 slice2 中有，但在 slice1 中没有的元素
@@ -34,4 +40,27 @@ func SliceDiff[T any](slice1, slice2 []T, equal func(T, T) bool) (onlyInA, onlyI
 	}
 
 	return onlyInA, onlyInB // Go 支持多返回值
+}
+
+// xmlDecoder provide decoded value in xml.
+func XmlDecoder(body io.Reader, v interface{}, size int64) error {
+	var lbody io.Reader
+	if size > 0 {
+		lbody = io.LimitReader(body, size)
+	} else {
+		lbody = body
+	}
+	d := xml.NewDecoder(lbody)
+	// Ignore any encoding set in the XML body
+	d.CharsetReader = func(label string, input io.Reader) (io.Reader, error) {
+		return input, nil
+	}
+	err := d.Decode(v)
+	if errors.Is(err, io.EOF) {
+		err = &xml.SyntaxError{
+			Line: 0,
+			Msg:  err.Error(),
+		}
+	}
+	return err
 }

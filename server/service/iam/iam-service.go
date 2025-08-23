@@ -26,13 +26,9 @@ type IamService struct {
 }
 
 func GetIamService() *IamService {
-	logger.GetLogger("boulder").Debugf("Acquiring lock for GetIamService")
 	mu.Lock()
-	logger.GetLogger("boulder").Debugf("Lock acquired for GetIamService")
-	defer func() {
-		mu.Unlock()
-		logger.GetLogger("boulder").Debugf("Lock released for GetIamService")
-	}()
+	defer mu.Unlock()
+
 	if instance == nil || instance.iam == nil {
 		kvStore, err := kv.GetKvStore()
 		if err != nil {
@@ -68,10 +64,6 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IAMAccount,
 	ctx := context.Background()
 	// 检查账户是否已存在
 	_, exists, err := s.iam.GetRaw(ctx, key)
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to check username existence: %v", err)
-		return nil, err
-	}
 	if exists {
 		logger.GetLogger("boulder").Errorf("username %s already exists", username)
 		return nil, errors.New("account already exists")
@@ -125,7 +117,7 @@ func (s *IamService) GetAccount(accountID string) (*meta.IAMAccount, error) {
 	}
 
 	if cache, e := xcache.GetCache(); e == nil && cache != nil {
-		cache.Set(context.Background(), key, account, time.Second*600)
+		cache.Set(context.Background(), key, &account, time.Second*600)
 	}
 
 	return &account, nil
@@ -299,10 +291,14 @@ func (s *IamService) CreateAccessKey(accountID, username string, expiredAt time.
 	var key *meta.AccessKey
 	ok, err := s.UpdateAccount(accountID, func(a *meta.IAMAccount) error {
 		if a == nil {
+			logger.GetLogger("boulder").Errorf("account %s not found", accountID)
 			return fmt.Errorf("account %s not found", accountID)
 		}
 		var err error
 		key, err = a.CreateAccessKey(username, expiredAt)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("failed to create access key %s in account %s: %v", username, accountID, err)
+		}
 		return err
 	})
 
@@ -346,7 +342,7 @@ func (s *IamService) GetAccessKey(accessKeyID string) (*meta.AccessKey, error) {
 		if e == nil && ok {
 			obj, yes := ak.(*meta.AccessKey)
 			if !yes {
-				logger.GetLogger("boulder").Errorf("invalid type in cache for access key %s", accessKeyID)
+				logger.GetLogger("boulder").Errorf("invalid type in cache for access key %s ak %T", accessKeyID, ak)
 				return nil, fmt.Errorf("invalid access key type in cache")
 			}
 			return obj, nil
@@ -360,7 +356,7 @@ func (s *IamService) GetAccessKey(accessKeyID string) (*meta.AccessKey, error) {
 	}
 
 	if cache, err := xcache.GetCache(); err == nil && cache != nil {
-		cache.Set(context.Background(), key, ak, time.Second*600)
+		cache.Set(context.Background(), key, &ak, time.Second*600)
 	}
 	return &ak, nil
 }

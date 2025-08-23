@@ -40,16 +40,6 @@ type BucketMetadata struct {
 	Targets      *BucketTargets                  `json:"targets" xml:"Targets"`
 }
 
-// 创建新桶元数据
-func NewBucketMetadata(name string, owner CanonicalUser, location string) *BucketMetadata {
-	return &BucketMetadata{
-		Name:         name,
-		CreationDate: time.Now().UTC(),
-		Owner:        owner,
-		Location:     location,
-	}
-}
-
 // 设置桶策略
 func (bm *BucketMetadata) SetPolicy(policy BucketPolicy) {
 	bm.Policy = &policy

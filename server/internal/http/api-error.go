@@ -146,11 +146,11 @@ const (
 	ErrAdminOpenIDNotEnabled
 	ErrAdminNoSuchAccessKey
 
-	// SSE-S3/SSE-KMS related API errors
+	// ErrInvalidEncryptionMethod SSE-S3/SSE-KMS related API errors
 	ErrInvalidEncryptionMethod
 	ErrInvalidEncryptionKeyID
 
-	// Server-Side-Encryption (with Customer provided key) related API errors.
+	// ErrInsecureSSECustomerRequest Server-Side-Encryption (with Customer provided key) related API errors.
 	ErrInsecureSSECustomerRequest
 	ErrSSEMultipartEncrypted
 	ErrSSEEncryptedObject
@@ -171,7 +171,7 @@ const (
 	ErrNoAccessKey
 	ErrInvalidToken
 
-	// Bucket notification related errors.
+	// ErrEventNotification Bucket notification related errors.
 	ErrEventNotification
 	ErrARNNotification
 	ErrRegionNotification
@@ -183,13 +183,13 @@ const (
 	ErrOverlappingConfigs
 	ErrUnsupportedNotification
 
-	// S3 extended errors.
+	// ErrContentSHA256Mismatch S3 extended errors.
 	ErrContentSHA256Mismatch
 	ErrContentChecksumMismatch
 
 	// Add new extended error codes here.
 
-	// MinIO extended errors.
+	// ErrStorageFull MinIO extended errors.
 	ErrStorageFull
 	ErrRequestBodyParse
 	ErrObjectExistsAsDirectory
@@ -204,7 +204,7 @@ const (
 	ErrTooManyRequests
 	ErrInvalidRequest
 	ErrTransitionStorageClassNotFoundError
-	// MinIO storage class error codes
+	// ErrInvalidStorageClass MinIO storage class error codes
 	ErrInvalidStorageClass
 	ErrBackendDown
 	// Add new extended error codes here.
@@ -240,7 +240,7 @@ const (
 	ErrObjectTampered
 	ErrAdminLDAPNotEnabled
 
-	// Site-Replication errors
+	// ErrSiteReplicationInvalidRequest Site-Replication errors
 	ErrSiteReplicationInvalidRequest
 	ErrSiteReplicationPeerResp
 	ErrSiteReplicationBackendIssue
@@ -251,11 +251,11 @@ const (
 	ErrSiteReplicationConfigMissing
 	ErrSiteReplicationIAMConfigMismatch
 
-	// Pool rebalance errors
+	// ErrAdminRebalanceAlreadyStarted Pool rebalance errors
 	ErrAdminRebalanceAlreadyStarted
 	ErrAdminRebalanceNotStarted
 
-	// Bucket Quota error codes
+	// ErrAdminBucketQuotaExceeded Bucket Quota error codes
 	ErrAdminBucketQuotaExceeded
 	ErrAdminNoSuchQuotaConfiguration
 
@@ -267,7 +267,7 @@ const (
 	ErrHealOverlappingPaths
 	ErrIncorrectContinuationToken
 
-	// S3 Select Errors
+	// ErrEmptyRequestBody S3 Select Errors
 	ErrEmptyRequestBody
 	ErrUnsupportedFunction
 	ErrInvalidExpressionType
@@ -366,11 +366,11 @@ const (
 
 	ErrInvalidChecksum
 
-	// Lambda functions
+	// ErrLambdaARNInvalid Lambda functions
 	ErrLambdaARNInvalid
 	ErrLambdaARNNotFound
 
-	// New Codes for GetObjectAttributes and GetObjectVersionAttributes
+	// ErrInvalidAttributeName New Codes for GetObjectAttributes and GetObjectVersionAttributes
 	ErrInvalidAttributeName
 
 	ErrAdminNoAccessKey

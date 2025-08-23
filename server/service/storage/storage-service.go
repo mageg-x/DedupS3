@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -60,10 +61,12 @@ func (s *StorageService) AddStorage(strType, strClass string, conf config.BlockC
 	switch strType {
 	case "s3":
 		//根据 Endpoint, bucket, region 生成uuid
-		id = string(utils.HmacSHA256([]byte(conf.S3.Region+conf.S3.Endpoint+conf.S3.Bucket), "aws:storage"))
+		id = hex.EncodeToString(utils.HmacSHA256([]byte(conf.S3.Region+conf.S3.Endpoint+conf.S3.Bucket), "aws:storage"))
+		id = id[0:24]
 		logger.GetLogger("boulder").Debugf("Generated S3 storage ID: %s", id)
 	case "disk":
-		id = string(utils.HmacSHA256([]byte(conf.Disk.Path), "aws:storage"))
+		id = hex.EncodeToString(utils.HmacSHA256([]byte(conf.Disk.Path), "aws:storage"))
+		id = id[0:24]
 		logger.GetLogger("boulder").Debugf("Generated disk storage ID: %s", id)
 	default:
 		logger.GetLogger("boulder").Errorf("Unknown storage type: %s", strType)
@@ -72,7 +75,7 @@ func (s *StorageService) AddStorage(strType, strClass string, conf config.BlockC
 
 	key := "aws:storage:" + id
 	var existing meta.Storage
-	if _, err := s.kvStore.Get(context.Background(), key, &existing); err == nil {
+	if ok, err := s.kvStore.Get(context.Background(), key, &existing); err == nil && ok {
 		logger.GetLogger("boulder").Warnf("Storage with ID %s already exists", id)
 		return nil, errors.New("storage with this ID already exists")
 	}

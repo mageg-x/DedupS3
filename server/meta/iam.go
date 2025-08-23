@@ -145,10 +145,6 @@ func formatPolicyARN(accountID, policyName string) string {
 	return "arn:aws:iam::" + accountID + ":policy/" + policyName
 }
 
-func formatRootARN(accountID string) string {
-	return "arn:aws:iam::" + accountID + ":root"
-}
-
 // 规范化路径格式
 func normalizePath(path string) string {
 	if path == "" {
@@ -164,7 +160,6 @@ func normalizePath(path string) string {
 }
 
 // ============================== 根用户操作 ==============================
-
 // CreateRootUser 创建根用户（账户所有者）
 func (a *IAMAccount) CreateRootUser(username, password string) (*IAMUser, error) {
 	// 检查是否已存在根用户
@@ -318,12 +313,12 @@ func (a *IAMAccount) DeleteUser(username string) error {
 // CreateAccessKey 为用户创建访问密钥
 func (a *IAMAccount) CreateAccessKey(username string, expiredAt time.Time) (*AccessKey, error) {
 	user, exists := a.Users[username]
+	if a.Users["root"].Username == username {
+		user = a.Users["root"]
+		exists = true
+	}
 	if !exists {
 		return nil, errors.New("user not found")
-	}
-
-	if user.IsRoot {
-		return nil, errors.New("root user cannot be added access keys")
 	}
 
 	if expiredAt.Before(time.Now()) {
@@ -927,7 +922,9 @@ func ValidatePolicyDocument(document string) error {
 // 生成账户ID (12位数字，符合AWS规范)
 func GenerateAccountID(name string) string {
 	hash := murmur3.Sum64([]byte(name + "@raobanglin"))
-	return strconv.FormatUint(uint64(hash), 10)
+	key := strconv.FormatUint(uint64(hash), 10)
+	key = key[:12]
+	return key
 }
 
 // 生成规范用户ID (64字符十六进制)

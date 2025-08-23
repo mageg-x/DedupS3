@@ -94,6 +94,17 @@ func (l *Logger) Debugf(format string, args ...any) {
 	l.Logger.Debugf("%s "+format, append([]any{caller}, args...)...)
 }
 
+// Trace === Trace 级别 ===
+func (l *Logger) Trace(args ...any) {
+	caller := l.getCaller()
+	l.Logger.Trace(fmt.Sprintf("%s %v", caller, fmt.Sprint(args...)))
+}
+
+func (l *Logger) Tracef(format string, args ...any) {
+	caller := l.getCaller()
+	l.Logger.Tracef("%s "+format, append([]any{caller}, args...)...)
+}
+
 // Info === Info 级别 ===
 func (l *Logger) Info(args ...any) {
 	caller := l.getCaller()

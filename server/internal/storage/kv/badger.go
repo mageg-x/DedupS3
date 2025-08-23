@@ -67,13 +67,13 @@ func (b *BadgerStore) Put(_ context.Context, key string, value interface{}) erro
 // Get 获取值并反序列化到指定结构
 func (b *BadgerStore) Get(ctx context.Context, key string, value interface{}) (bool, error) {
 	data, exists, err := b.GetRaw(ctx, key)
-	if err != nil || !exists {
-		if !exists {
-			logger.GetLogger("boulder").Debugf("Key not found: %s", key)
-		} else {
-			logger.GetLogger("boulder").Errorf("Error getting key %s: %v", key, err)
-		}
-		return exists, err
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("Error getting key %s: %v", key, err)
+		return false, err
+	}
+	if !exists {
+		logger.GetLogger("boulder").Debugf("Key not found: %s", key)
+		return false, fmt.Errorf("key not found: %s", key)
 	}
 
 	if err := json.Unmarshal(data, value); err != nil {
@@ -94,7 +94,7 @@ func (b *BadgerStore) GetRaw(_ context.Context, key string) ([]byte, bool, error
 		if err != nil {
 			if errors.Is(err, badger.ErrKeyNotFound) {
 				logger.GetLogger("boulder").Debugf("Key not found: %s", key)
-				return nil
+				return fmt.Errorf("key not found: %s", key)
 			}
 			logger.GetLogger("boulder").Errorf("Error getting raw data for key %s: %v", key, err)
 			return err

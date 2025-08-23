@@ -105,6 +105,21 @@ func main() {
 		panic(err)
 	}
 
+	// 制造一些测试数据
+	//iamService := iam.GetIamService()
+	//account, _ := iamService.CreateAccount("stevenrao", "Abcd@1234")
+	//ak, err := iamService.CreateAccessKey(account.AccountID, account.Name, time.Now().Add(time.Hour*24*365))
+	//logger.GetLogger("boulder").Tracef("create account %v ak %v ", account, ak)
+
+	//bs := storage.GetStorageService()
+	//strore, _ := bs.AddStorage("disk", "STANDER", config.BlockConfig{
+	//	Disk: config.DiskConfig{
+	//		Path: "./data/block",
+	//	},
+	//})
+	//strores := bs.ListStorages()
+	//logger.GetLogger("boulder").Tracef("list store %v strores %+v", strore, strores)
+
 	// 3. 创建路由处理器
 	mux := router.SetupRouter()
 

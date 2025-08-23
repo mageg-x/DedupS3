@@ -17,12 +17,15 @@
 package handler
 
 import (
-	"github.com/gorilla/mux"
-	xhttp "github.com/mageg-x/boulder/internal/http"
 	"net/http"
 	"strings"
 
+	"github.com/gorilla/mux"
+
+	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/mageg-x/boulder/internal/logger"
+	"github.com/mageg-x/boulder/internal/utils"
+	sb "github.com/mageg-x/boulder/service/bucket"
 )
 
 // ListBucketsHandler 处理 List Buckets 请求
@@ -291,8 +294,6 @@ func ResetBucketReplicationStartHandler(w http.ResponseWriter, r *http.Request) 
 
 // PutBucketHandler 处理 PUT Bucket (CreateBucket) 请求
 func PutBucketHandler(w http.ResponseWriter, r *http.Request) {
-	// 打印接口名称
-
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 	objectLockEnabled := false
@@ -306,9 +307,69 @@ func PutBucketHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	logger.GetLogger("boulder").Tracef("create bucket %s get object lock option %v", bucket, objectLockEnabled)
 
-	logger.GetLogger("boulder").Infof("API called: PutBucketHandler %v", bucket, objectLockEnabled)
-	// TODO: 实现 PUT Bucket 逻辑
+	// 从请求上下文获取变量
+	ctx := r.Context()
+
+	// 获取accessKeyID
+	accessKeyID, ok := ctx.Value("accesskey").(string)
+	if !ok {
+		logger.GetLogger("boulder").Errorf("Failed to get accessKeyID from context")
+	} else {
+		logger.GetLogger("boulder").Tracef("accessKeyID from context: %s", accessKeyID)
+	}
+
+	// 获取region
+	region, ok := ctx.Value("region").(string)
+	if !ok {
+		logger.GetLogger("boulder").Errorf("Failed to get region from context")
+	} else {
+		logger.GetLogger("boulder").Tracef("region from context: %s", region)
+	}
+
+	var locationConstraint sb.CreateBucketLocationConfiguration
+	err := utils.XmlDecoder(r.Body, &locationConstraint, r.ContentLength)
+	if err == nil {
+		logger.GetLogger("boulder").Tracef("creating bucket location configuration %+v", locationConstraint)
+	}
+
+	if err := utils.CheckValidBucketNameStrict(bucket); err != nil {
+		logger.GetLogger("boulder").Errorf("check bucket name invalid %v", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketName)
+		return
+	}
+
+	// 校验有没有 创建通的权限 policy.CreateBucketAction
+	// 每个账户创建的桶数量有上限，检查有没有超限
+
+	bs := sb.GetBucketService()
+	if bs == nil {
+		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+	err = bs.CreateBucket(sb.CreateBucketParams{
+		BucketName:        bucket,
+		Location:          locationConstraint.Location,
+		ObjectLockEnabled: objectLockEnabled,
+		AccessKeyID:       accessKeyID,
+	})
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed create bucket err: %v", err)
+
+		if err.Error() == xhttp.ToError(xhttp.ErrBucketAlreadyOwnedByYou).Error() {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrBucketAlreadyOwnedByYou)
+		} else if err.Error() == xhttp.ToError(xhttp.ErrBucketAlreadyExists).Error() {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrBucketAlreadyExists)
+		} else {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrBucketMetadataNotInitialized)
+		}
+		return
+	}
+	logger.GetLogger("boulder").Tracef("success bucket created: %v", bucket)
+	// Make sure to add Location information here only for bucket
+	w.Header().Set(xhttp.Location, "/"+bucket)
 	w.WriteHeader(http.StatusOK)
 }
 

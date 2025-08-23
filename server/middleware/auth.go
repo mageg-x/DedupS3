@@ -19,11 +19,11 @@ package middleware
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	xhttp "github.com/mageg-x/boulder/internal/http"
 	"io"
 	"net/http"
 	"regexp"
@@ -31,6 +31,7 @@ import (
 	"strings"
 	"time"
 
+	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/mageg-x/boulder/internal/logger"
 	"github.com/mageg-x/boulder/internal/utils"
 	"github.com/mageg-x/boulder/service/iam"
@@ -38,8 +39,6 @@ import (
 
 // 错误定义
 var (
-	ErrAccessKeyNotFound = errors.New("access key not found")
-
 	spaceRegex = regexp.MustCompile(`\s+`)
 )
 
@@ -133,13 +132,14 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 
 		// 6. 计算签名
 		// 获取秘密访问密钥
-		if iam.GetIamService() == nil {
+		iamService := iam.GetIamService()
+		if iamService == nil {
 			logger.GetLogger("boulder").Errorf("Failed to get IAM service")
 			xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 			return
 		}
 
-		ak, err := iam.GetIamService().GetAccessKey(accessKeyID)
+		ak, err := iamService.GetAccessKey(accessKeyID)
 		if ak == nil || err != nil {
 			logger.GetLogger("boulder").Errorf("get access key failed: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidAccessKeyID)
@@ -181,9 +181,13 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 				return
 			}
 		}
+		// 签名验证成功，将解析的变量添加到请求上下文
+		ctx := r.Context()
+		ctx = context.WithValue(ctx, "accesskey", accessKeyID)
+		ctx = context.WithValue(ctx, "region", region)
 
 		// 签名验证成功，继续处理请求
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
