@@ -17,14 +17,14 @@
 package kv
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
-
 	"github.com/dgraph-io/badger/v4"
 	xconf "github.com/mageg-x/boulder/internal/config"
+	"github.com/mageg-x/boulder/internal/logger"
 )
 
 // BadgerStore 基于BadgerDB的KV存储实现
@@ -39,9 +39,11 @@ func InitBadgerStore(cfg xconf.BadgerConfig) (*BadgerStore, error) {
 
 	db, err := badger.Open(opts)
 	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to open BadgerDB: %v", err)
 		return nil, fmt.Errorf("failed to open badger db: %w", err)
 	}
 
+	logger.GetLogger("boulder").Infof("BadgerDB store initialized successfully")
 	return &BadgerStore{db: db}, nil
 }
 
@@ -49,24 +51,36 @@ func InitBadgerStore(cfg xconf.BadgerConfig) (*BadgerStore, error) {
 func (b *BadgerStore) Put(_ context.Context, key string, value interface{}) error {
 	data, err := json.Marshal(value)
 	if err != nil {
+		logger.GetLogger("boulder").Errorf("JSON marshal error for key %s: %v", key, err)
 		return fmt.Errorf("json marshal error: %w", err)
 	}
 
-	return b.db.Update(func(txn *badger.Txn) error {
+	err = b.db.Update(func(txn *badger.Txn) error {
 		return txn.Set([]byte(key), data)
 	})
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to put key %s: %v", key, err)
+	}
+	return err
 }
 
 // Get 获取值并反序列化到指定结构
 func (b *BadgerStore) Get(ctx context.Context, key string, value interface{}) (bool, error) {
 	data, exists, err := b.GetRaw(ctx, key)
 	if err != nil || !exists {
+		if !exists {
+			logger.GetLogger("boulder").Debugf("Key not found: %s", key)
+		} else {
+			logger.GetLogger("boulder").Errorf("Error getting key %s: %v", key, err)
+		}
 		return exists, err
 	}
 
 	if err := json.Unmarshal(data, value); err != nil {
+		logger.GetLogger("boulder").Errorf("JSON unmarshal error for key %s: %v", key, err)
 		return true, fmt.Errorf("json unmarshal error: %w", err)
 	}
+	logger.GetLogger("boulder").Debugf("Successfully got value for key: %s", key)
 	return true, nil
 }
 
@@ -79,8 +93,10 @@ func (b *BadgerStore) GetRaw(_ context.Context, key string) ([]byte, bool, error
 		item, err := txn.Get([]byte(key))
 		if err != nil {
 			if errors.Is(err, badger.ErrKeyNotFound) {
+				logger.GetLogger("boulder").Debugf("Key not found: %s", key)
 				return nil
 			}
+			logger.GetLogger("boulder").Errorf("Error getting raw data for key %s: %v", key, err)
 			return err
 		}
 
@@ -92,190 +108,114 @@ func (b *BadgerStore) GetRaw(_ context.Context, key string) ([]byte, bool, error
 		})
 	})
 
+	if err == nil && exists {
+		logger.GetLogger("boulder").Debugf("Successfully got raw data for key: %s", key)
+	}
 	return data, exists, err
 }
 
 // Delete 删除键
 func (b *BadgerStore) Delete(_ context.Context, key string) error {
-	return b.db.Update(func(txn *badger.Txn) error {
+	err := b.db.Update(func(txn *badger.Txn) error {
 		return txn.Delete([]byte(key))
 	})
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to delete key %s: %v", key, err)
+	} else {
+		logger.GetLogger("boulder").Debugf("Successfully deleted key: %s", key)
+	}
+	return err
 }
 
-// Scan 扫描指定前缀的键
-func (b *BadgerStore) Scan(_ context.Context, prefix string) ([]string, string, error) {
-	return b.scanInternal(prefix, "", 0)
+func (b *BadgerStore) DeletePrefix(ctx context.Context, prefix string) error {
+	err := b.db.DropPrefix([]byte(prefix))
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to delete key %s: %v", prefix, err)
+	} else {
+		logger.GetLogger("boulder").Debugf("Successfully deleted key: %s", prefix)
+	}
+	return err
 }
 
-// ScanWithValues 扫描指定前缀的键值对
-func (b *BadgerStore) ScanWithValues(_ context.Context, prefix string) (map[string][]byte, error) {
-	result := make(map[string][]byte)
-
-	err := b.db.View(func(txn *badger.Txn) error {
-		opts := badger.DefaultIteratorOptions
-		opts.Prefix = []byte(prefix)
-
-		it := txn.NewIterator(opts)
-		defer it.Close()
-
-		for it.Rewind(); it.Valid(); it.Next() {
-			item := it.Item()
-			key := string(item.Key())
-
-			err := item.Value(func(val []byte) error {
-				value := make([]byte, len(val))
-				copy(value, val)
-				result[key] = value
-				return nil
-			})
-
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-
-	return result, err
-}
-
-// ScanPage 分页扫描键
-func (b *BadgerStore) ScanPage(_ context.Context, prefix, startKey string, limit int) ([]string, string, error) {
-	return b.scanInternal(prefix, startKey, limit)
-}
-
-// scanInternal 内部扫描实现
-func (b *BadgerStore) scanInternal(prefix, startKey string, limit int) ([]string, string, error) {
+func (b *BadgerStore) Scan(ctx context.Context, prefix, startKey string, limit int) ([]string, string, error) {
 	var keys []string
 	var nextKey string
 
 	err := b.db.View(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
-		opts.Prefix = []byte(prefix)
-		opts.PrefetchValues = false // 只获取键
+		opts.PrefetchValues = false // 我们只需要键，不需要值
+		opts.PrefetchSize = 100     // 预取大小，可根据需要调整
 
 		it := txn.NewIterator(opts)
 		defer it.Close()
 
-		// 定位到起始键
-		if startKey != "" {
-			it.Seek([]byte(startKey))
-			if it.Valid() && string(it.Item().Key()) == startKey {
-				it.Next() // 跳过起始键本身
-			}
-		} else {
-			it.Rewind()
+		// 确定起始位置
+		seekKey := []byte(startKey)
+		if startKey == "" {
+			seekKey = []byte(prefix)
 		}
+		// 开始迭代
+		it.Seek(seekKey)
 
 		count := 0
-		for ; it.Valid(); it.Next() {
-			key := string(it.Item().Key())
+		prefixBytes := []byte(prefix)
+		prefixLen := len(prefixBytes)
 
-			// 检查是否超出前缀范围
-			if !strings.HasPrefix(key, prefix) {
+		for ; it.Valid() && count < limit; it.Next() {
+			item := it.Item()
+			key := item.Key()
+
+			// 检查是否仍然在指定前缀范围内
+			if len(key) < prefixLen || !bytes.Equal(key[:prefixLen], prefixBytes) {
 				break
 			}
 
-			keys = append(keys, key)
+			// 转换为字符串并添加到结果
+			keyStr := string(key)
+			keys = append(keys, keyStr)
 			count++
 
-			// 如果设置了限制且达到限制，获取下一个键
-			if limit > 0 && count >= limit {
-				it.Next()
-				if it.Valid() {
-					nextKey = string(it.Item().Key())
-				}
-				break
+			// 检查上下文是否已取消
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
 			}
 		}
+
+		// 获取下一个键（如果有）
+		if it.Valid() {
+			item := it.Item()
+			nextKeyBytes := item.Key()
+
+			// 确保下一个键仍然在前缀范围内
+			if len(nextKeyBytes) >= prefixLen && bytes.Equal(nextKeyBytes[:prefixLen], prefixBytes) {
+				nextKey = string(nextKeyBytes)
+			}
+		}
+
 		return nil
 	})
 
-	return keys, nextKey, err
+	if err != nil {
+		return nil, "", err
+	}
+
+	return keys, nextKey, nil
 }
 
 // Close 关闭数据库
 func (b *BadgerStore) Close() error {
 	if b.db == nil {
+		logger.GetLogger("boulder").Errorf("Database already closed")
 		return errors.New("database already closed")
 	}
 
 	if err := b.db.Close(); err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to close BadgerDB: %v", err)
 		return fmt.Errorf("failed to close badger db: %w", err)
 	}
 
-	return nil
-}
-
-// BeginTxn 开始一个新事务
-func (b *BadgerStore) BeginTxn(_ context.Context) (Txn, error) {
-	txn := b.db.NewTransaction(true)
-	return &BadgerTxn{txn: txn}, nil
-}
-
-// BadgerTxn 基于BadgerDB的事务实现
-type BadgerTxn struct {
-	txn *badger.Txn
-}
-
-// Put 在事务中存储键值对
-func (t *BadgerTxn) Put(key string, value interface{}) error {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return fmt.Errorf("json marshal error: %w", err)
-	}
-
-	return t.txn.Set([]byte(key), data)
-}
-
-// Get 在事务中获取值
-func (t *BadgerTxn) Get(key string, value interface{}) (bool, error) {
-	data, exists, err := t.GetRaw(key)
-	if err != nil || !exists {
-		return exists, err
-	}
-
-	if err := json.Unmarshal(data, value); err != nil {
-		return true, fmt.Errorf("json unmarshal error: %w", err)
-	}
-	return true, nil
-}
-
-// GetRaw 在事务中获取原始字节数据
-func (t *BadgerTxn) GetRaw(key string) ([]byte, bool, error) {
-	var data []byte
-	var exists bool
-
-	item, err := t.txn.Get([]byte(key))
-	if err != nil {
-		if errors.Is(err, badger.ErrKeyNotFound) {
-			return nil, false, nil
-		}
-		return nil, false, err
-	}
-
-	exists = true
-	err = item.Value(func(val []byte) error {
-		data = make([]byte, len(val))
-		copy(data, val)
-		return nil
-	})
-
-	return data, exists, err
-}
-
-// Delete 在事务中删除键
-func (t *BadgerTxn) Delete(key string) error {
-	return t.txn.Delete([]byte(key))
-}
-
-// Commit 提交事务
-func (t *BadgerTxn) Commit(_ context.Context) error {
-	return t.txn.Commit()
-}
-
-// Rollback 回滚事务
-func (t *BadgerTxn) Rollback(_ context.Context) error {
-	t.txn.Discard()
+	logger.GetLogger("boulder").Debugf("BadgerDB store closed successfully")
 	return nil
 }

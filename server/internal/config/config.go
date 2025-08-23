@@ -48,6 +48,12 @@ type DiskConfig struct {
 	Path string `yaml:"path" json:"path" env:"BOULDER_BLOCK_DISK_PATH" default:"./data/block"`
 }
 
+// BlockConfig 存储Block相关配置
+type BlockConfig struct {
+	S3   *S3Config  `yaml:"s3" json:"s3"`
+	Disk DiskConfig `yaml:"disk" json:"disk"`
+}
+
 // RedisConfig Redis集群配置
 type RedisConfig struct {
 	Addrs    []string `yaml:"addrs" json:"addrs" env:"BOULDER_CACHE_REDIS_ADDRS"`
@@ -64,7 +70,7 @@ type CacheConfig struct {
 // ServerConfig represents server configuration
 type ServerConfig struct {
 	Address             string        `yaml:"address" json:"address" env:"BOULDER_SERVER_ADDRESS" default:":3000"`
-	Listeners           int           `yaml:"listeners" json:"listeners" env:"BOULDER_SERVER_LISTENERS" default:"1"`
+	Listeners           int           `yaml:"listeners" json:"listeners" env:"BOULDER_SERVER_LISTENERS" default:"4"`
 	ConsoleAddress      string        `yaml:"console_address" json:"consoleAddress" env:"BOULDER_SERVER_CONSOLE_ADDRESS" default:":3002"`
 	ShutdownTimeout     time.Duration `yaml:"shutdown_timeout" json:"shutdownTimeout" env:"BOULDER_SERVER_SHUTDOWN_TIMEOUT" default:"30s"`
 	IdleTimeout         time.Duration `yaml:"idle_timeout" json:"idleTimeout" env:"BOULDER_SERVER_IDLE_TIMEOUT" default:"30s"`

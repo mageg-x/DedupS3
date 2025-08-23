@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/mageg-x/boulder/internal/logger"
 
 	xconf "github.com/mageg-x/boulder/internal/config"
 	"github.com/tikv/client-go/v2/config"
@@ -40,9 +41,11 @@ func InitTiKVStore(cfg *xconf.TiKVConfig) (*TiKVStore, error) {
 
 	client, err := rawkv.NewClient(context.TODO(), cfg.PDAddrs, security)
 	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to create TiKV client: %v", err)
 		return nil, fmt.Errorf("failed to create TiKV client: %w", err)
 	}
 
+	logger.GetLogger("boulder").Infof("TiKV store initialized successfully")
 	return &TiKVStore{client: client}, nil
 }
 
@@ -50,26 +53,35 @@ func InitTiKVStore(cfg *xconf.TiKVConfig) (*TiKVStore, error) {
 func (t *TiKVStore) Put(ctx context.Context, key string, value interface{}) error {
 	data, err := json.Marshal(value)
 	if err != nil {
+		logger.GetLogger("boulder").Errorf("JSON marshal error for key %s: %v", key, err)
 		return fmt.Errorf("json marshal error: %w", err)
 	}
 
-	return t.client.Put(ctx, []byte(key), data)
+	err = t.client.Put(ctx, []byte(key), data)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to put key %s: %v", key, err)
+	}
+	return err
 }
 
 // Get 获取值并反序列化到指定结构
 func (t *TiKVStore) Get(ctx context.Context, key string, value interface{}) (bool, error) {
 	data, err := t.client.Get(ctx, []byte(key))
 	if err != nil {
+		logger.GetLogger("boulder").Errorf("Error getting key %s: %v", key, err)
 		return false, err
 	}
 
 	if data == nil {
+		logger.GetLogger("boulder").Debugf("Key not found: %s", key)
 		return false, nil
 	}
 
 	if err := json.Unmarshal(data, value); err != nil {
+		logger.GetLogger("boulder").Errorf("JSON unmarshal error for key %s: %v", key, err)
 		return true, fmt.Errorf("json unmarshal error: %w", err)
 	}
+	logger.GetLogger("boulder").Debugf("Successfully got value for key: %s", key)
 	return true, nil
 }
 
@@ -77,83 +89,85 @@ func (t *TiKVStore) Get(ctx context.Context, key string, value interface{}) (boo
 func (t *TiKVStore) GetRaw(ctx context.Context, key string) ([]byte, bool, error) {
 	data, err := t.client.Get(ctx, []byte(key))
 	if err != nil {
+		logger.GetLogger("boulder").Errorf("Error getting raw data for key %s: %v", key, err)
 		return nil, false, err
 	}
 
 	if data == nil {
+		logger.GetLogger("boulder").Debugf("Key not found: %s", key)
 		return nil, false, nil
 	}
 
+	logger.GetLogger("boulder").Debugf("Successfully got raw data for key: %s", key)
 	return data, true, nil
 }
 
 // Delete 删除键
 func (t *TiKVStore) Delete(ctx context.Context, key string) error {
-	return t.client.Delete(ctx, []byte(key))
+	err := t.client.Delete(ctx, []byte(key))
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to delete key %s: %v", key, err)
+	} else {
+		logger.GetLogger("boulder").Debugf("Successfully deleted key: %s", key)
+	}
+	return err
+}
+
+func (t *TiKVStore) DeletePrefix(ctx context.Context, prefix string) error {
+	// 计算结束前缀：例如 user: -> user; （字节序上刚好大于 user: 的最小前缀）
+	endPrefix := make([]byte, len(prefix))
+	copy(endPrefix, prefix)
+	endPrefix[len(endPrefix)-1]++ // 简单递增最后一个字节
+	err := t.client.DeleteRange(ctx, []byte(prefix), endPrefix)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to delete key %s: %v", prefix, err)
+	} else {
+		logger.GetLogger("boulder").Debugf("Successfully deleted key: %s", prefix)
+	}
+	return err
 }
 
 // Scan 扫描指定前缀的键
-func (t *TiKVStore) Scan(ctx context.Context, prefix string) ([]string, string, error) {
-	return t.scanInternal(ctx, prefix, "", 0)
-}
-
-// ScanWithValues 扫描指定前缀的键值对
-func (t *TiKVStore) ScanWithValues(ctx context.Context, prefix string) (map[string][]byte, error) {
-	result := make(map[string][]byte)
-
-	startKey := []byte(prefix)
-	endKey := []byte(prefix + "\xFF") // 前缀结束标记
-
-	keys, values, err := t.client.Scan(ctx, startKey, endKey, 1000)
-	if err != nil {
-		return nil, err
-	}
-
-	for i, key := range keys {
-		result[string(key)] = values[i]
-	}
-
-	return result, nil
-}
-
-// ScanPage 分页扫描键
-func (t *TiKVStore) ScanPage(ctx context.Context, prefix, startKey string, limit int) ([]string, string, error) {
-	return t.scanInternal(ctx, prefix, startKey, limit)
-}
-
-// scanInternal 内部扫描实现
-func (t *TiKVStore) scanInternal(ctx context.Context, prefix, startKey string, limit int) ([]string, string, error) {
-	var keys []string
-	var nextKey string
-
+func (t *TiKVStore) Scan(ctx context.Context, prefix, startKey string, limit int) ([]string, string, error) {
 	// 确定起始键
-	start := []byte(prefix)
-	if startKey != "" {
-		start = []byte(startKey)
+	start := []byte(startKey)
+	if startKey == "" {
+		start = []byte(prefix)
 	}
-
-	// 确定结束键
-	end := []byte(prefix + "\xFF") // 前缀结束标记
-
-	// 计算实际扫描大小
-	scanSize := 100
-	if limit > 0 {
-		scanSize = limit
+	// 计算结束前缀：例如 user: -> user; （字节序上刚好大于 user: 的最小前缀）
+	end := make([]byte, len(prefix))
+	copy(end, prefix)
+	for i := len(end) - 1; i >= 0; i-- {
+		if end[i] < 0xFF {
+			end[i]++
+			end = end[:i+1]
+			break
+		}
+		// 如果字节是0xFF，继续向前寻找可以递增的字节
+		if i == 0 {
+			// 整个前缀都是0xFF，需要特殊处理
+			end = []byte(append([]byte(prefix), 0x00))
+		}
 	}
-
-	scannedKeys, _, err := t.client.Scan(ctx, start, end, scanSize)
+	// 执行扫描
+	ks, _, err := t.client.Scan(ctx, start, end, limit)
 	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to scan key-value pairs with prefix %s: %v", prefix, err)
 		return nil, "", err
+	} else {
+		logger.GetLogger("boulder").Debugf("Successfully scanned key-value pairs with prefix %s: %d", prefix, len(ks))
 	}
 
 	// 转换为字符串键
-	for _, key := range scannedKeys {
+	keys := make([]string, 0, len(ks))
+	for _, key := range ks {
 		keys = append(keys, string(key))
 	}
 
-	// 如果扫描结果达到限制大小，设置下一个起始键
-	if len(scannedKeys) == scanSize && len(scannedKeys) > 0 {
-		lastKey := scannedKeys[len(scannedKeys)-1]
+	// 确定下一个起始键
+	var nextKey string
+	if len(ks) == limit && len(ks) > 0 {
+		lastKey := ks[len(ks)-1]
 		nextKey = string(lastKey)
 	}
 
@@ -162,106 +176,12 @@ func (t *TiKVStore) scanInternal(ctx context.Context, prefix, startKey string, l
 
 // Close 关闭连接
 func (t *TiKVStore) Close() error {
-	return t.client.Close()
-}
-
-// BeginTxn 开始一个新事务
-func (t *TiKVStore) BeginTxn(ctx context.Context) (Txn, error) {
-	// 对于TiKV，我们需要使用事务客户端而不是原始客户端
-	// 这里创建一个简单的事务封装
-	return &TiKVTxn{
-		client: t.client,
-		ctx:    ctx,
-		writes: make([]writeOperation, 0),
-	}, nil
-}
-
-// TiKVTxn 基于TiKV的事务实现
-type TiKVTxn struct {
-	client *rawkv.Client
-	ctx    context.Context
-	writes []writeOperation
-}
-
-// writeOperation 表示一个写操作
-type writeOperation struct {
-	key   string
-	value []byte
-	op    string // "put" 或 "delete"
-}
-
-// Put 在事务中存储键值对
-func (t *TiKVTxn) Put(key string, value interface{}) error {
-	data, err := json.Marshal(value)
+	err := t.client.Close()
 	if err != nil {
-		return fmt.Errorf("json marshal error: %w", err)
+		logger.GetLogger("boulder").Errorf("Failed to close TiKV client: %v", err)
+		return fmt.Errorf("failed to close TiKV client: %w", err)
 	}
 
-	t.writes = append(t.writes, writeOperation{
-		key:   key,
-		value: data,
-		op:    "put",
-	})
-	return nil
-}
-
-// Get 在事务中获取值
-func (t *TiKVTxn) Get(key string, value interface{}) (bool, error) {
-	data, exists, err := t.GetRaw(key)
-	if err != nil || !exists {
-		return exists, err
-	}
-
-	if err := json.Unmarshal(data, value); err != nil {
-		return true, fmt.Errorf("json unmarshal error: %w", err)
-	}
-	return true, nil
-}
-
-// GetRaw 在事务中获取原始字节数据
-func (t *TiKVTxn) GetRaw(key string) ([]byte, bool, error) {
-	data, err := t.client.Get(t.ctx, []byte(key))
-	if err != nil {
-		return nil, false, err
-	}
-
-	if data == nil {
-		return nil, false, nil
-	}
-
-	return data, true, nil
-}
-
-// Delete 在事务中删除键
-func (t *TiKVTxn) Delete(key string) error {
-	t.writes = append(t.writes, writeOperation{
-		key: key,
-		op:  "delete",
-	})
-	return nil
-}
-
-// Commit 提交事务
-func (t *TiKVTxn) Commit(ctx context.Context) error {
-	// 对于rawkv客户端，我们只能模拟事务，这里使用简单的批量操作
-	// 注意：这不是真正的原子事务，只是批量操作
-	for _, op := range t.writes {
-		if op.op == "put" {
-			if err := t.client.Put(ctx, []byte(op.key), op.value); err != nil {
-				return err
-			}
-		} else if op.op == "delete" {
-			if err := t.client.Delete(ctx, []byte(op.key)); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-// Rollback 回滚事务
-func (t *TiKVTxn) Rollback(_ context.Context) error {
-	// 对于rawkv客户端，我们只需清除未提交的写操作
-	t.writes = nil
+	logger.GetLogger("boulder").Debugf("TiKV store closed successfully")
 	return nil
 }

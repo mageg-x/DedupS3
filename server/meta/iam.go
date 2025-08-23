@@ -22,6 +22,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/twmb/murmur3"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +34,7 @@ import (
 // IAMAccount 表示完整的 IAM 系统
 type IAMAccount struct {
 	AccountID string                `json:"accountId"` // AWS 账户ID
+	Name      string                `json:"name"`      // AWS 账户名
 	Users     map[string]*IAMUser   `json:"users"`     // IAM 用户 (key: 用户名)
 	Groups    map[string]*IAMGroup  `json:"groups"`    // IAM 用户组 (key: 组名)
 	Roles     map[string]*IAMRole   `json:"roles"`     // IAM 角色 (key: 角色名)
@@ -39,9 +42,10 @@ type IAMAccount struct {
 }
 
 // CreateAccount 创建新的 IAM 系统
-func CreateAccount() *IAMAccount {
+func CreateAccount(name string) *IAMAccount {
 	return &IAMAccount{
-		AccountID: generateAccountID(),
+		AccountID: GenerateAccountID(name),
+		Name:      name,
 		Users:     make(map[string]*IAMUser),
 		Groups:    make(map[string]*IAMGroup),
 		Roles:     make(map[string]*IAMRole),
@@ -921,13 +925,9 @@ func ValidatePolicyDocument(document string) error {
 }
 
 // 生成账户ID (12位数字，符合AWS规范)
-func generateAccountID() string {
-	const charset = "0123456789"
-	b := make([]byte, 12)
-	for i := range b {
-		b[i] = charset[Rand.Intn(len(charset))]
-	}
-	return string(b)
+func GenerateAccountID(name string) string {
+	hash := murmur3.Sum64([]byte(name + "@raobanglin"))
+	return strconv.FormatUint(uint64(hash), 10)
 }
 
 // 生成规范用户ID (64字符十六进制)

@@ -151,17 +151,16 @@ func (l *Logger) Panicf(format string, args ...any) {
 
 // GetLogger === GetLogger：返回封装后的 Logger ===
 func GetLogger(name string) *Logger {
-	key := getLoggerKey(name)
+	if name == "" {
+		return &Logger{logrus.StandardLogger()}
+	}
 
+	key := getLoggerKey(name)
 	mu.Lock()
 	defer mu.Unlock()
 	// 如果已存在，直接返回封装的 Logger
 	if logger, exists := loggers[key]; exists {
 		return &Logger{logger}
-	}
-
-	if name == "" {
-		return &Logger{logrus.StandardLogger()}
 	}
 
 	// 创建日志目录

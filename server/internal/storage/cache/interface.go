@@ -42,14 +42,9 @@ type Cache interface {
 	BatchSet(ctx context.Context, items map[string]Item) error
 	BatchGet(ctx context.Context, keys []string) (map[string]interface{}, error)
 	BatchDel(ctx context.Context, keys []string) error
+	Exists(ctx context.Context, key string) (bool, error)
 	Clear(ctx context.Context) error
 	Close() error
-	Ping(ctx context.Context) error
-	TTL(ctx context.Context, key string) (time.Duration, error)
-	Exists(ctx context.Context, key string) (bool, error)
-	Increment(ctx context.Context, key string, value int64) (int64, error)
-	Decrement(ctx context.Context, key string, value int64) (int64, error)
-	Keys(ctx context.Context, pattern string) ([]string, error)
 }
 
 func GetCache() (Cache, error) {

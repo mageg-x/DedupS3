@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	xconf "github.com/mageg-x/boulder/internal/config"
+	"github.com/mageg-x/boulder/internal/logger"
 	"io"
 	"path"
 	"time"
@@ -26,12 +27,16 @@ type S3Store struct {
 
 // NewS3Store NewS3Storage 创建新的S3存储后端
 func NewS3Store(c *xconf.S3Config) (*S3Store, error) {
+	logger.GetLogger("boulder").Infof("Creating new S3 store with bucket: %s", c.Bucket)
+
 	if c == nil {
+		logger.GetLogger("boulder").Errorf("NewS3Store: nil config")
 		return nil, fmt.Errorf("NewDiskStore: nil config")
 	}
 	ctx := context.Background()
 
 	if c.AccessKey == "" || c.SecretKey == "" {
+		logger.GetLogger("boulder").Errorf("Missing AWS credentials")
 		return nil, fmt.Errorf("missing AWS credentials")
 	}
 
@@ -44,6 +49,7 @@ func NewS3Store(c *xconf.S3Config) (*S3Store, error) {
 		config.WithCredentialsProvider(credentialProvider),
 	)
 	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to load SDK configuration: %v", err)
 		return nil, fmt.Errorf("failed to load SDK configuration: %v", err)
 	}
 
@@ -52,11 +58,14 @@ func NewS3Store(c *xconf.S3Config) (*S3Store, error) {
 		// 如果配置了自定义端点，设置自定义端点
 		if c.Endpoint != "" {
 			o.BaseEndpoint = aws.String(c.Endpoint)
+			logger.GetLogger("boulder").Debugf("Using custom endpoint: %s", c.Endpoint)
 		}
 		// 对接 MinIO/OSS/COS 等需要PathStyle的情况
 		o.UsePathStyle = c.UsePathStyle
+		logger.GetLogger("boulder").Debugf("Use path style: %v", c.UsePathStyle)
 	})
 
+	logger.GetLogger("boulder").Infof("S3 store initialized successfully")
 	return &S3Store{
 		client: client,
 		conf:   c,
@@ -82,8 +91,11 @@ func (s *S3Store) WriteBlock(blockID string, data []byte) error {
 	})
 
 	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to write block %s to S3: %v", blockID, err)
 		return fmt.Errorf("failed to write block %s to S3: %w", blockID, err)
 	}
+
+	logger.GetLogger("boulder").Debugf("Successfully wrote block to S3: %s", blockID)
 	return nil
 }
 
@@ -98,6 +110,7 @@ func (s *S3Store) ReadBlock(blockID string, offset, length int64) ([]byte, error
 	rangeHeader := ""
 	if length > 0 {
 		rangeHeader = fmt.Sprintf("bytes=%d-%d", offset, offset+length-1)
+		logger.GetLogger("boulder").Debugf("Using range header: %s", rangeHeader)
 	}
 
 	input := &s3.GetObjectInput{
@@ -111,15 +124,18 @@ func (s *S3Store) ReadBlock(blockID string, offset, length int64) ([]byte, error
 
 	resp, err := s.client.GetObject(ctx, input)
 	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to read block %s from S3: %v", blockID, err)
 		return nil, fmt.Errorf("failed to read block %s from S3: %w", blockID, err)
 	}
 	defer resp.Body.Close()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to read response body for block %s: %v", blockID, err)
 		return nil, fmt.Errorf("failed to read response body for block %s: %w", blockID, err)
 	}
 
+	logger.GetLogger("boulder").Debugf("Successfully read block from S3: %s, read %d bytes", blockID, len(data))
 	return data, nil
 }
 
@@ -135,8 +151,11 @@ func (s *S3Store) DeleteBlock(blockID string) error {
 	})
 
 	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to delete block %s from S3: %v", blockID, err)
 		return fmt.Errorf("failed to delete block %s from S3: %w", blockID, err)
 	}
+
+	logger.GetLogger("boulder").Debugf("Successfully deleted block from S3: %s", blockID)
 	return nil
 }
 
@@ -154,10 +173,13 @@ func (s *S3Store) BlockExists(blockID string) (bool, error) {
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
+			logger.GetLogger("boulder").Debugf("Block %s does not exist in S3", blockID)
 			return false, nil
 		}
+		logger.GetLogger("boulder").Errorf("Failed to check if block %s exists: %v", blockID, err)
 		return false, fmt.Errorf("failed to check if block %s exists: %w", blockID, err)
 	}
+	logger.GetLogger("boulder").Debugf("Block %s exists in S3", blockID)
 	return true, nil
 }
 
@@ -170,8 +192,10 @@ func (s *S3Store) HealthCheck() error {
 		Bucket: aws.String(s.conf.Bucket),
 	})
 	if err != nil {
+		logger.GetLogger("boulder").Errorf("S3 health check failed: %v", err)
 		return fmt.Errorf("S3 health check failed: %w", err)
 	}
+	logger.GetLogger("boulder").Debugf("S3 health check passed")
 	return nil
 }
 
@@ -185,6 +209,7 @@ func (s *S3Store) blockKey(blockID string) string {
 	// 使用两级目录分散对象
 	if len(blockID) < 4 {
 		// 处理短 blockID 的情况
+		logger.GetLogger("boulder").Debugf("Short blockID detected: %s", blockID)
 		return path.Join("blocks", blockID)
 	}
 	dir1 := blockID[:2]

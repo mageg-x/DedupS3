@@ -55,8 +55,6 @@ func GetStorageService() *StorageService {
 
 // AddStorage 注册新的存储实例
 func (s *StorageService) AddStorage(strType, strClass string, conf config.BlockConfig) (*meta.Storage, error) {
-	logger.GetLogger("boulder").Debugf("Adding storage with type: %s, class: %s", strType, strClass)
-
 	// 检查 ID 是否已存在
 	id := ""
 	switch strType {
@@ -100,8 +98,6 @@ func (s *StorageService) AddStorage(strType, strClass string, conf config.BlockC
 func (s *StorageService) GetStorage(id string) (*meta.Storage, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-
-	logger.GetLogger("boulder").Debugf("Getting storage with ID: %s", id)
 
 	if s.stores != nil && s.stores[id] != nil {
 		logger.GetLogger("boulder").Debugf("Found storage ID %s in local cache", id)
@@ -149,10 +145,8 @@ func (s *StorageService) GetStorage(id string) (*meta.Storage, error) {
 
 // ListStorages 返回所有已注册的存储实例
 func (s *StorageService) ListStorages() []*meta.Storage {
-	logger.GetLogger("boulder").Debug("Listing all storages")
-
 	// 从KV存储中获取所有存储实例
-	keys, _, err := s.kvStore.Scan(context.Background(), "aws:storage:")
+	keys, _, err := s.kvStore.Scan(context.Background(), "aws:storage:", "", 1000)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("Failed to scan storages: %v", err)
 		return []*meta.Storage{}
@@ -177,7 +171,7 @@ func (s *StorageService) GetStoragesByClass(class string) []*meta.Storage {
 	logger.GetLogger("boulder").Debugf("Listing storages by class: %s", class)
 
 	// 从KV存储中获取所有存储实例并筛选
-	keys, _, err := s.kvStore.Scan(context.Background(), "aws:storage:")
+	keys, _, err := s.kvStore.Scan(context.Background(), "aws:storage:", "", 1000)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("Failed to scan storages: %v", err)
 		return []*meta.Storage{}
@@ -202,7 +196,7 @@ func (s *StorageService) GetStoragesByType(strType string) []*meta.Storage {
 	logger.GetLogger("boulder").Debugf("Listing storages by type: %s", strType)
 
 	// 从KV存储中获取所有存储实例并筛选
-	keys, _, err := s.kvStore.Scan(context.Background(), "aws:storage:")
+	keys, _, err := s.kvStore.Scan(context.Background(), "aws:storage:", "", 1000)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("Failed to scan storages: %v", err)
 		return []*meta.Storage{}

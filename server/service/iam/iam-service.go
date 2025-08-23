@@ -2,7 +2,6 @@ package iam
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -63,10 +62,12 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IAMAccount,
 		return nil, fmt.Errorf("invalid password: %w", err)
 	}
 
-	key := "aws:iam:account:root:" + username
+	accountID := meta.GenerateAccountID(username)
+	key := "aws:iam:account:id:" + accountID
 
+	ctx := context.Background()
 	// 检查账户是否已存在
-	_, exists, err := s.iam.GetRaw(context.Background(), key)
+	_, exists, err := s.iam.GetRaw(ctx, key)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to check username existence: %v", err)
 		return nil, err
@@ -77,7 +78,7 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IAMAccount,
 	}
 
 	// 创建新账户
-	account := meta.CreateAccount()
+	account := meta.CreateAccount(username)
 
 	// 创建根用户
 	rootUser, err := account.CreateRootUser(username, password)
@@ -86,46 +87,16 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IAMAccount,
 		return nil, err
 	}
 
-	// 开始事务
-	success := false
-	txn, err := s.iam.BeginTxn(context.Background())
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to begin transaction for account %s: %v", account.AccountID, err)
-		return nil, err
-	}
-	defer func(txn kv.Txn, ctx context.Context) {
-		if !success {
-			_ = txn.Rollback(ctx)
-		}
-	}(txn, context.Background())
-
-	// 在事务中执行所有操作
-	key = "aws:iam:account:id:" + account.AccountID
-	if err = txn.Put(key, account); err != nil {
+	if err = s.iam.Put(ctx, key, account); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to store account %s data in transaction: %v", account.AccountID, err)
-		return nil, err
-	}
-
-	// 更新 name 和 access key 索引
-	key = "aws:iam:account:root:" + username
-	if err = txn.Put(key, account.AccountID); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to store account %s name in transaction: %v", account.AccountID, err)
 		return nil, err
 	}
 
 	// 更新 access key 索引
 	key = "aws:iam:account:ak:" + rootUser.AccessKeys[0].AccessKeyID
-	if err = txn.Put(key, &rootUser.AccessKeys[0]); err != nil {
+	if err = s.iam.Put(ctx, key, &rootUser.AccessKeys[0]); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to store account %s access key in transaction: %v", account.AccountID, err)
 		return nil, err
-	}
-
-	// 提交事务
-	if err = txn.Commit(context.Background()); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to commit transaction for account %s: %v", account.AccountID, err)
-		return nil, err
-	} else {
-		success = true
 	}
 
 	logger.GetLogger("boulder").Infof("account %s created with user %s", account.AccountID, username)
@@ -146,19 +117,10 @@ func (s *IamService) GetAccount(accountID string) (*meta.IAMAccount, error) {
 			return obj, nil
 		}
 	}
-	data, exists, err := s.iam.GetRaw(context.Background(), key)
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to get account %s: %v", accountID, err)
-		return nil, err
-	}
-	if !exists {
-		logger.GetLogger("boulder").Errorf("account %s not found", accountID)
-		return nil, errors.New("account not found")
-	}
-
 	var account meta.IAMAccount
-	if err = json.Unmarshal(data, &account); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to unmarshal account %s data: %v", accountID, err)
+	exist, err := s.iam.Get(context.Background(), key, &account)
+	if err != nil || !exist {
+		logger.GetLogger("boulder").Errorf("failed to get account %s: %v", accountID, err)
 		return nil, err
 	}
 
@@ -179,30 +141,13 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IAMAc
 	key := "aws:iam:account:id:" + accountID
 	var account meta.IAMAccount
 	exists, err := s.iam.Get(context.Background(), key, &account)
-	if err != nil {
+	if err != nil || !exists {
 		logger.GetLogger("boulder").Errorf("failed to get account %s: %v", accountID, err)
 		return false, err
-	}
-	if !exists {
-		logger.GetLogger("boulder").Errorf("account %s not found", accountID)
-		return false, errors.New("account not found")
 	}
 
 	//再记录 access key
 	oldAccessKey := account.GetAllAccessKeys()
-
-	// 开始事务
-	success := false
-	txn, err := s.iam.BeginTxn(context.Background())
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to begin transaction for account %s: %v", account.AccountID, err)
-		return false, err
-	}
-	defer func(txn kv.Txn, ctx context.Context) {
-		if !success {
-			_ = txn.Rollback(ctx)
-		}
-	}(txn, context.Background())
 
 	// 应用更新
 	if err = updateFunc(&account); err != nil {
@@ -246,14 +191,6 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IAMAc
 		}
 	}
 
-	// 提交事务
-	if err = txn.Commit(context.Background()); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to commit transaction for account %s: %v", account.AccountID, err)
-		return false, err
-	} else {
-		success = true
-	}
-
 	if cache, e := xcache.GetCache(); e == nil && cache != nil {
 		cache.Del(context.Background(), key)
 		cache.BatchDel(context.Background(), changeKeys)
@@ -270,7 +207,29 @@ func (s *IamService) DeleteAccount(accountID string) error {
 		cache.Del(context.Background(), key)
 	}
 
-	// 还要删除与之相关的所有 accesskey, block, chunk，bucket，和 object 元数据索引 todo
+	// 删除与之相关的所有 accesskey
+	var account meta.IAMAccount
+	exists, err := s.iam.Get(context.Background(), key, &account)
+	if err != nil || !exists {
+		logger.GetLogger("boulder").Errorf("failed to get account %s: %v", accountID, err)
+		return err
+	}
+
+	allAccessKeys := account.GetAllAccessKeys()
+	allDel := make([]string, len(allAccessKeys))
+	for _, accessKey := range allAccessKeys {
+		if accessKey != nil {
+			k := "aws:iam:account:ak:" + accessKey.AccessKeyID
+			s.iam.Delete(context.Background(), k)
+			allDel = append(allDel, k)
+		}
+	}
+
+	if cache, err := xcache.GetCache(); err == nil && cache != nil {
+		cache.BatchDel(context.Background(), allDel)
+	}
+
+	// 还要删除与之相关的所有  block, chunk，bucket，和 object 元数据索引 todo
 	return s.iam.Delete(context.Background(), key)
 }
 
