@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"net"
 	"net/url"
 	"regexp"
@@ -356,4 +357,14 @@ func CheckValidObjectName(objectName string) error {
 		return errors.New("Object name cannot be empty")
 	}
 	return CheckValidObjectNamePrefix(objectName)
+}
+
+func CheckValidStorageClass(storageClass string) (err error) {
+	var oscs types.ObjectStorageClass
+	for _, osc := range oscs.Values() {
+		if osc == types.ObjectStorageClass(storageClass) {
+			return nil
+		}
+	}
+	return errors.New("Invalid storage class")
 }

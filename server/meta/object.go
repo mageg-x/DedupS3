@@ -31,11 +31,12 @@ import (
 // Object 表示存储桶中的一个对象
 type Object struct {
 	// 对象标识信息
-	Bucket    string `json:"bucket" xml:"Bucket"`       // 所属存储桶
-	Key       string `json:"key" xml:"Key"`             // 对象键
-	VersionID string `json:"versionId" xml:"VersionId"` // 版本ID（如果启用版本控制）
-	ETag      string `json:"etag" xml:"ETag"`           // 对象的ETag
-	Size      int64  `json:"size" xml:"Size"`           // 对象大小（字节）
+	Bucket    string   `json:"bucket" xml:"Bucket"`       // 所属存储桶
+	Key       string   `json:"key" xml:"Key"`             // 对象键
+	VersionID string   `json:"versionId" xml:"VersionId"` // 版本ID（如果启用版本控制）
+	ETag      string   `json:"etag" xml:"ETag"`           // 对象的ETag
+	Size      int64    `json:"size" xml:"Size"`           // 对象大小（字节）
+	Chunks    []*Chunk `json:"chunks" xml:"Chunk"`        // chunk 索引
 
 	// 时间信息
 	LastModified time.Time `json:"lastModified" xml:"LastModified"` // 最后修改时间
@@ -91,6 +92,7 @@ func NewObject(bucket, key string) *Object {
 		StorageClass: "STANDARD",
 		UserMetadata: make(map[string]string),
 		Tags:         make(map[string]string),
+		Chunks:       make([]*Chunk, 0),
 	}
 }
 

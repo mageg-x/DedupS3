@@ -61,9 +61,16 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IAMAccount,
 	accountID := meta.GenerateAccountID(username)
 	key := "aws:iam:account:id:" + accountID
 
-	ctx := context.Background()
+	txn, err := s.iam.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		return nil, fmt.Errorf("failed to initialize kvstore txn: %v", err)
+	}
+
+	defer txn.Rollback()
+
 	// 检查账户是否已存在
-	_, exists, err := s.iam.GetRaw(ctx, key)
+	_, exists, err := txn.GetRaw(key)
 	if exists {
 		logger.GetLogger("boulder").Errorf("username %s already exists", username)
 		return nil, errors.New("account already exists")
@@ -79,18 +86,21 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IAMAccount,
 		return nil, err
 	}
 
-	if err = s.iam.Put(ctx, key, account); err != nil {
+	if err = txn.Set(key, account); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to store account %s data in transaction: %v", account.AccountID, err)
 		return nil, err
 	}
 
 	// 更新 access key 索引
 	key = "aws:iam:account:ak:" + rootUser.AccessKeys[0].AccessKeyID
-	if err = s.iam.Put(ctx, key, &rootUser.AccessKeys[0]); err != nil {
+	if err = txn.Set(key, &rootUser.AccessKeys[0]); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to store account %s access key in transaction: %v", account.AccountID, err)
 		return nil, err
 	}
-
+	if err = txn.Commit(); err != nil {
+		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		return nil, err
+	}
 	logger.GetLogger("boulder").Infof("account %s created with user %s", account.AccountID, username)
 	return account, nil
 }
@@ -104,13 +114,13 @@ func (s *IamService) GetAccount(accountID string) (*meta.IAMAccount, error) {
 			obj, yes := account.(*meta.IAMAccount)
 			if !yes {
 				logger.GetLogger("boulder").Errorf("Cached account %s is not of type *meta.IAMAccount", accountID)
-				return nil, fmt.Errorf("invalid account type in cache")
+				cache.Del(context.Background(), key)
 			}
 			return obj, nil
 		}
 	}
 	var account meta.IAMAccount
-	exist, err := s.iam.Get(context.Background(), key, &account)
+	exist, err := s.iam.Get(key, &account)
 	if err != nil || !exist {
 		logger.GetLogger("boulder").Errorf("failed to get account %s: %v", accountID, err)
 		return nil, err
@@ -130,9 +140,16 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IAMAc
 		return false, errors.New("invalid account id")
 	}
 
+	txn, err := s.iam.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		return false, fmt.Errorf("failed to initialize kvstore txn: %v", err)
+	}
+	defer txn.Rollback()
+
 	key := "aws:iam:account:id:" + accountID
 	var account meta.IAMAccount
-	exists, err := s.iam.Get(context.Background(), key, &account)
+	exists, err := txn.Get(key, &account)
 	if err != nil || !exists {
 		logger.GetLogger("boulder").Errorf("failed to get account %s: %v", accountID, err)
 		return false, err
@@ -148,7 +165,7 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IAMAc
 	}
 
 	// 更新账户数据
-	err = s.iam.Put(context.Background(), key, account)
+	err = txn.Set(key, account)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to delete account %s: %v", accountID, err)
 		return false, err
@@ -165,7 +182,7 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IAMAc
 		k := "aws:iam:account:ak:" + accessKey.AccessKeyID
 		changeKeys = append(changeKeys, k)
 		// 删除 access key
-		e := s.iam.Delete(context.Background(), k)
+		e := txn.Delete(k)
 		if e != nil {
 			logger.GetLogger("boulder").Errorf("failed to delete access key %s: %v", accessKey.AccessKeyID, e)
 			return false, e
@@ -176,11 +193,15 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IAMAc
 		k := "aws:iam:account:ak:" + accessKey.AccessKeyID
 		changeKeys = append(changeKeys, k)
 		// 添加 access key
-		e := s.iam.Put(context.Background(), k, accessKey)
+		e := txn.Set(k, accessKey)
 		if e != nil {
 			logger.GetLogger("boulder").Errorf("failed to add access key %s: %v", accessKey.AccessKeyID, e)
 			return false, e
 		}
+	}
+	if err = txn.Commit(); err != nil {
+		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		return false, err
 	}
 
 	if cache, e := xcache.GetCache(); e == nil && cache != nil {
@@ -199,9 +220,16 @@ func (s *IamService) DeleteAccount(accountID string) error {
 		cache.Del(context.Background(), key)
 	}
 
+	txn, err := s.iam.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		return fmt.Errorf("failed to initialize kvstore txn: %v", err)
+	}
+	defer txn.Rollback()
+
 	// 删除与之相关的所有 accesskey
 	var account meta.IAMAccount
-	exists, err := s.iam.Get(context.Background(), key, &account)
+	exists, err := txn.Get(key, &account)
 	if err != nil || !exists {
 		logger.GetLogger("boulder").Errorf("failed to get account %s: %v", accountID, err)
 		return err
@@ -212,7 +240,11 @@ func (s *IamService) DeleteAccount(accountID string) error {
 	for _, accessKey := range allAccessKeys {
 		if accessKey != nil {
 			k := "aws:iam:account:ak:" + accessKey.AccessKeyID
-			s.iam.Delete(context.Background(), k)
+			err = txn.Delete(k)
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("failed to delete account %s access key: %v", accountID, err)
+				return fmt.Errorf("failed to delete account %s access key: %v", accountID, err)
+			}
 			allDel = append(allDel, k)
 		}
 	}
@@ -221,8 +253,18 @@ func (s *IamService) DeleteAccount(accountID string) error {
 		cache.BatchDel(context.Background(), allDel)
 	}
 
+	err = txn.Delete(key)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to delete account %s: %v", accountID, err)
+		return err
+	}
+	if err = txn.Commit(); err != nil {
+		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		return err
+	}
+
 	// 还要删除与之相关的所有  block, chunk，bucket，和 object 元数据索引 todo
-	return s.iam.Delete(context.Background(), key)
+	return nil
 }
 
 // CreateUser 为指定账户添加新用户
@@ -350,7 +392,7 @@ func (s *IamService) GetAccessKey(accessKeyID string) (*meta.AccessKey, error) {
 	}
 
 	ak := meta.AccessKey{}
-	if ok, err := s.iam.Get(context.Background(), key, &ak); err != nil || !ok {
+	if ok, err := s.iam.Get(key, &ak); err != nil || !ok {
 		logger.GetLogger("boulder").Errorf("get accesskey id %s failed", accessKeyID)
 		return nil, fmt.Errorf("access key %s not found", accessKeyID)
 	}

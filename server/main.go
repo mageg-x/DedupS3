@@ -20,6 +20,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/mageg-x/boulder/service/storage"
 	"math/rand"
 	"os"
 	"os/signal"
@@ -105,20 +106,21 @@ func main() {
 		panic(err)
 	}
 
+	// 初始化 缺省block存储
+	bs := storage.GetStorageService()
+	strore, _ := bs.AddStorage("disk", "STANDARD", config.BlockConfig{
+		Disk: config.DiskConfig{
+			Path: "./data/blocks",
+		},
+	})
+	strores := bs.ListStorages()
+	logger.GetLogger("boulder").Tracef("list store %v strores %+v", strore, strores)
+
 	// 制造一些测试数据
 	//iamService := iam.GetIamService()
 	//account, _ := iamService.CreateAccount("stevenrao", "Abcd@1234")
 	//ak, err := iamService.CreateAccessKey(account.AccountID, account.Name, time.Now().Add(time.Hour*24*365))
 	//logger.GetLogger("boulder").Tracef("create account %v ak %v ", account, ak)
-
-	//bs := storage.GetStorageService()
-	//strore, _ := bs.AddStorage("disk", "STANDER", config.BlockConfig{
-	//	Disk: config.DiskConfig{
-	//		Path: "./data/block",
-	//	},
-	//})
-	//strores := bs.ListStorages()
-	//logger.GetLogger("boulder").Tracef("list store %v strores %+v", strore, strores)
 
 	// 3. 创建路由处理器
 	mux := router.SetupRouter()

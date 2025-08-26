@@ -18,11 +18,15 @@ package kv
 
 import (
 	"context"
-	"github.com/mageg-x/boulder/internal/config"
+	"errors"
 	"sync"
+
+	"github.com/mageg-x/boulder/internal/config"
 )
 
 var (
+	ErrKeyExists = errors.New("key already exists")
+
 	kvInstance KVStore
 	kvMutex    sync.RWMutex
 )
@@ -47,11 +51,26 @@ func GetKvStore() (KVStore, error) {
 
 // KVStore 键值存储接口
 type KVStore interface {
-	Put(ctx context.Context, key string, value interface{}) error
-	Get(ctx context.Context, key string, value interface{}) (bool, error)
-	GetRaw(ctx context.Context, key string) ([]byte, bool, error)
-	Delete(ctx context.Context, key string) error
-	DeletePrefix(ctx context.Context, prefix string) error
-	Scan(ctx context.Context, prefix, startKey string, limit int) ([]string, string, error)
+	Get(key string, value interface{}) (bool, error)
+	GetRaw(key string) ([]byte, bool, error)
+	BatchGet(keys []string) (map[string][]byte, error)
+	// BeginTxn 开始一个新事务
+	BeginTxn(ctx context.Context, opt *TxnOpt) (Txn, error)
 	Close() error
+}
+type Txn interface {
+	Get(key string, value interface{}) (bool, error)
+	GetRaw(key string) ([]byte, bool, error)
+	BatchGet(keys []string) (map[string][]byte, error)
+	Set(key string, value interface{}) error
+	SetNX(key string, value interface{}) error
+	BatchSet(kvs map[string]interface{}) error
+	Delete(key string) error
+	DeletePrefix(key string, limit int32) error
+	Scan(prefix string, startKey string, limit int) ([]string, string, error)
+	Commit() error
+	Rollback() error
+}
+
+type TxnOpt struct {
 }

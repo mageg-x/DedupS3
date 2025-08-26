@@ -17,7 +17,11 @@
 package handler
 
 import (
+	xhttp "github.com/mageg-x/boulder/internal/http"
+	"github.com/mageg-x/boulder/internal/utils"
+	"github.com/mageg-x/boulder/service/object"
 	"net/http"
+	"strings"
 
 	"github.com/mageg-x/boulder/internal/logger"
 )
@@ -159,11 +163,55 @@ func PutObjectExtractHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// PutObjectHandler 处理 PUT Object 请求
+// PutObjectHandler 上传对象
 func PutObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: PutObjectHandler")
-	// TODO: 实现 PUT Object 逻辑
+	logger.GetLogger("boulder").Infof("putobect header %+v", r.Header)
+	bucket, objectKey, _, accessKeyID := GetReqVar(r)
+	if err := utils.CheckValidObjectName(objectKey); err != nil {
+		logger.GetLogger("boulder").Errorf("Invalid object name: %s", objectKey)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
+		return
+	}
+
+	// Validate storage class metadata if present
+	sc := r.Header.Get(xhttp.AmzStorageClass)
+	sc = strings.TrimSpace(sc)
+	if sc != "" {
+		if err := utils.CheckValidStorageClass(sc); err != nil {
+			logger.GetLogger("boulder").Errorf("Invalid storage class: %s", sc)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidStorageClass)
+			return
+		}
+	}
+
+	// etag
+	etag := r.Header.Get(xhttp.ContentMD5)
+	etag = strings.Trim(etag, `" \'`) // 去除双引号和空格
+	size := r.ContentLength
+
+	_os := object.GetObjectService()
+	if _os == nil {
+		logger.GetLogger("boulder").Errorf("Object service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	err := _os.PutObject(r.Body, object.BaseObjectParams{
+		BucketName:   bucket,
+		ObjKey:       objectKey,
+		Etag:         etag,
+		ContentLen:   size,
+		AccessKeyID:  accessKeyID,
+		StorageClass: sc,
+	})
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("Error putting object: %s", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+	// go-cdc-chunkers  fastcdc 进行分 chunk
 	w.WriteHeader(http.StatusOK)
 }
 

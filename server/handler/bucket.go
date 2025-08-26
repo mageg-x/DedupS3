@@ -17,9 +17,12 @@
 package handler
 
 import (
+	"encoding/xml"
 	"net/http"
+	"regexp"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/gorilla/mux"
 
 	xhttp "github.com/mageg-x/boulder/internal/http"
@@ -28,12 +31,81 @@ import (
 	sb "github.com/mageg-x/boulder/service/bucket"
 )
 
-// ListBucketsHandler 处理 List Buckets 请求
+type ListAllMyBucketsResult struct {
+	XMLName xml.Name       `xml:"ListAllMyBucketsResult"`
+	Owner   types.Owner    `xml:"Owner"`
+	Buckets []types.Bucket `xml:"Buckets>Bucket"`
+}
+
+// GetReqVar 获取请求中一些通用的变量
+func GetReqVar(r *http.Request) (string, string, string, string) {
+	vars := mux.Vars(r)
+	bucket := vars["bucket"]
+	object := vars["object"]
+	if object != "" {
+		// 处理多个连续的斜杠（可选，根据业务需求）
+		object = regexp.MustCompile(`/+`).ReplaceAllString(object, "/")
+		// 移除开头的斜杠（如果有）
+		object = strings.TrimPrefix(object, "/")
+	}
+
+	// 从请求上下文获取变量
+	ctx := r.Context()
+	// 获取accessKeyID
+	accessKeyID, ok := ctx.Value("accesskey").(string)
+	if !ok {
+		logger.GetLogger("boulder").Errorf("Failed to get accessKeyID from context")
+	} else {
+		logger.GetLogger("boulder").Tracef("accessKeyID from context: %s", accessKeyID)
+	}
+	// 获取region
+	region, ok := ctx.Value("region").(string)
+	if !ok {
+		logger.GetLogger("boulder").Errorf("Failed to get region from context")
+	} else {
+		logger.GetLogger("boulder").Tracef("region from context: %s", region)
+	}
+
+	return bucket, object, region, accessKeyID
+}
+
+// ListBucketsHandler 列出所有存储桶
 func ListBucketsHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: ListBucketsHandler")
-	// TODO: 实现 List Buckets 逻辑
-	w.WriteHeader(http.StatusOK)
+	_, _, _, accessKeyID := GetReqVar(r)
+	bs := sb.GetBucketService()
+	if bs == nil {
+		logger.GetLogger("boulder").Errorf("bucket service is nil")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	buckets, owner, err := bs.ListBuckets(sb.BaseBucketParams{
+		AccessKeyID: accessKeyID,
+	})
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to list buckets: %v", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+	}
+
+	var bucketList []types.Bucket
+	for _, bucket := range buckets {
+		bucketList = append(bucketList, types.Bucket{
+			Name:         &bucket.Name,
+			CreationDate: &bucket.CreationDate,
+		})
+	}
+
+	result := ListAllMyBucketsResult{
+		Owner: types.Owner{
+			DisplayName: &owner.DisplayName,
+			ID:          &owner.ID,
+		},
+		Buckets: bucketList,
+	}
+
+	xhttp.WriteAWSSuc(w, r, result)
 }
 
 // GetBucketLocationHandler 处理 GET Bucket Location 请求
@@ -294,8 +366,9 @@ func ResetBucketReplicationStartHandler(w http.ResponseWriter, r *http.Request) 
 
 // PutBucketHandler 处理 PUT Bucket (CreateBucket) 请求
 func PutBucketHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	bucket := vars["bucket"]
+	logger.GetLogger("boulder").Tracef("API called: PutBucketHandler")
+	bucket, _, _, accessKeyID := GetReqVar(r)
+
 	objectLockEnabled := false
 	if vs := r.Header.Get(xhttp.AmzObjectLockEnabled); len(vs) > 0 {
 		v := strings.ToLower(vs)
@@ -309,33 +382,14 @@ func PutBucketHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	logger.GetLogger("boulder").Tracef("create bucket %s get object lock option %v", bucket, objectLockEnabled)
 
-	// 从请求上下文获取变量
-	ctx := r.Context()
-
-	// 获取accessKeyID
-	accessKeyID, ok := ctx.Value("accesskey").(string)
-	if !ok {
-		logger.GetLogger("boulder").Errorf("Failed to get accessKeyID from context")
-	} else {
-		logger.GetLogger("boulder").Tracef("accessKeyID from context: %s", accessKeyID)
-	}
-
-	// 获取region
-	region, ok := ctx.Value("region").(string)
-	if !ok {
-		logger.GetLogger("boulder").Errorf("Failed to get region from context")
-	} else {
-		logger.GetLogger("boulder").Tracef("region from context: %s", region)
-	}
-
 	var locationConstraint sb.CreateBucketLocationConfiguration
 	err := utils.XmlDecoder(r.Body, &locationConstraint, r.ContentLength)
 	if err == nil {
 		logger.GetLogger("boulder").Tracef("creating bucket location configuration %+v", locationConstraint)
 	}
 
-	if err := utils.CheckValidBucketNameStrict(bucket); err != nil {
-		logger.GetLogger("boulder").Errorf("check bucket name invalid %v", err)
+	if err := utils.CheckValidBucketName(bucket); err != nil {
+		logger.GetLogger("boulder").Errorf("check bucket name %s invalid %v", bucket, err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketName)
 		return
 	}
@@ -349,7 +403,7 @@ func PutBucketHandler(w http.ResponseWriter, r *http.Request) {
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
-	err = bs.CreateBucket(sb.CreateBucketParams{
+	err = bs.CreateBucket(sb.BaseBucketParams{
 		BucketName:        bucket,
 		Location:          locationConstraint.Location,
 		ObjectLockEnabled: objectLockEnabled,
@@ -373,11 +427,32 @@ func PutBucketHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// HeadBucketHandler 处理 HEAD Bucket 请求
+// HeadBucketHandler 检查存储桶是否存在
 func HeadBucketHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: HeadBucketHandler")
-	// TODO: 实现 HEAD Bucket 逻辑
+	logger.GetLogger("boulder").Tracef("API called: HeadBucketHandler")
+	bucket, _, region, accessKeyID := GetReqVar(r)
+
+	bs := sb.GetBucketService()
+	if bs == nil {
+		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+	_bucket, err := bs.GetBucketInfo(sb.BaseBucketParams{
+		BucketName:  bucket,
+		AccessKeyID: accessKeyID,
+	})
+	if err != nil || _bucket == nil {
+		logger.GetLogger("boulder").Errorf("bucket %s does not exist: %v", bucket, err)
+		if err.Error() == xhttp.ToError(xhttp.ErrNoSuchBucket).Error() {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+			return
+		}
+		xhttp.WriteAWSErr(w, r, xhttp.ErrBucketMetadataNotInitialized)
+	}
+	w.Header().Set(xhttp.Location, "/"+bucket)
+	w.Header().Set(xhttp.AmzBucketRegion, region)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -423,7 +498,7 @@ func DeleteBucketEncryptionHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// DeleteBucketHandler 处理 DELETE Bucket Request
+// DeleteBucketHandler 删除存储桶
 func DeleteBucketHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: DeleteBucketHandler")

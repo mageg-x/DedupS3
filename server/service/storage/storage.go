@@ -56,6 +56,12 @@ func GetStorageService() *StorageService {
 
 // AddStorage 注册新的存储实例
 func (s *StorageService) AddStorage(strType, strClass string, conf config.BlockConfig) (*meta.Storage, error) {
+	// 每种class 只能有一个存储
+	sl := s.GetStoragesByClass(strClass)
+	if sl != nil && len(sl) > 0 {
+		logger.GetLogger("boulder").Warnf("Storage already has a storage with class %s", strClass)
+		return nil, errors.New("Storage already has a storage with class " + strClass)
+	}
 	// 检查 ID 是否已存在
 	id := ""
 	switch strType {
@@ -73,9 +79,16 @@ func (s *StorageService) AddStorage(strType, strClass string, conf config.BlockC
 		return nil, fmt.Errorf("unknown storage type: %s", strType)
 	}
 
+	txn, err := s.kvStore.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		return nil, err
+	}
+	defer txn.Rollback()
+
 	key := "aws:storage:" + id
 	var existing meta.Storage
-	if ok, err := s.kvStore.Get(context.Background(), key, &existing); err == nil && ok {
+	if ok, err := txn.Get(key, &existing); err == nil && ok {
 		logger.GetLogger("boulder").Warnf("Storage with ID %s already exists", id)
 		return nil, errors.New("storage with this ID already exists")
 	}
@@ -88,11 +101,15 @@ func (s *StorageService) AddStorage(strType, strClass string, conf config.BlockC
 		Conf:  conf,
 	}
 
-	if err := s.kvStore.Put(context.Background(), key, storage); err != nil {
+	if err := txn.Set(key, storage); err != nil {
 		logger.GetLogger("boulder").Errorf("Failed to store storage ID %s: %v", id, err)
 		return nil, err
 	}
-
+	err = txn.Commit()
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to commit transaction: %v", err)
+		return nil, err
+	}
 	logger.GetLogger("boulder").Infof("Successfully added storage with ID: %s, type: %s", id, strType)
 	return storage, nil
 }
@@ -109,7 +126,7 @@ func (s *StorageService) GetStorage(id string) (*meta.Storage, error) {
 
 	key := "aws:storage:" + id
 	var storage meta.Storage
-	found, err := s.kvStore.Get(context.Background(), key, &storage)
+	found, err := s.kvStore.Get(key, &storage)
 	if err != nil || !found {
 		logger.GetLogger("boulder").Warnf("Storage with ID %s does not exist", id)
 		return nil, errors.New("storage with this ID does not exist")
@@ -148,8 +165,14 @@ func (s *StorageService) GetStorage(id string) (*meta.Storage, error) {
 
 // ListStorages 返回所有已注册的存储实例
 func (s *StorageService) ListStorages() []*meta.Storage {
+	txn, err := s.kvStore.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		return nil
+	}
+	defer txn.Rollback()
 	// 从KV存储中获取所有存储实例
-	keys, _, err := s.kvStore.Scan(context.Background(), "aws:storage:", "", 1000)
+	keys, _, err := txn.Scan("aws:storage:", "", 1000)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("Failed to scan storages: %v", err)
 		return []*meta.Storage{}
@@ -158,7 +181,7 @@ func (s *StorageService) ListStorages() []*meta.Storage {
 	var storages []*meta.Storage
 	for _, key := range keys {
 		var storage meta.Storage
-		if _, err := s.kvStore.Get(context.Background(), key, &storage); err == nil {
+		if _, err := txn.Get(key, &storage); err == nil {
 			storages = append(storages, &storage)
 		} else {
 			logger.GetLogger("boulder").Warnf("Failed to get storage from key %s: %v", key, err)
@@ -172,9 +195,14 @@ func (s *StorageService) ListStorages() []*meta.Storage {
 // GetStoragesByClass 根据类别获取存储实例
 func (s *StorageService) GetStoragesByClass(class string) []*meta.Storage {
 	logger.GetLogger("boulder").Debugf("Listing storages by class: %s", class)
-
+	txn, err := s.kvStore.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		return nil
+	}
+	defer txn.Rollback()
 	// 从KV存储中获取所有存储实例并筛选
-	keys, _, err := s.kvStore.Scan(context.Background(), "aws:storage:", "", 1000)
+	keys, _, err := txn.Scan("aws:storage:", "", 1000)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("Failed to scan storages: %v", err)
 		return []*meta.Storage{}
@@ -183,7 +211,7 @@ func (s *StorageService) GetStoragesByClass(class string) []*meta.Storage {
 	var result []*meta.Storage
 	for _, key := range keys {
 		var storage meta.Storage
-		if _, err := s.kvStore.Get(context.Background(), key, &storage); err == nil && storage.Class == class {
+		if _, err := s.kvStore.Get(key, &storage); err == nil && storage.Class == class {
 			result = append(result, &storage)
 		} else if err != nil {
 			logger.GetLogger("boulder").Warnf("Failed to get storage from key %s: %v", key, err)
@@ -198,8 +226,15 @@ func (s *StorageService) GetStoragesByClass(class string) []*meta.Storage {
 func (s *StorageService) GetStoragesByType(strType string) []*meta.Storage {
 	logger.GetLogger("boulder").Debugf("Listing storages by type: %s", strType)
 
+	txn, err := s.kvStore.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		return nil
+	}
+	defer txn.Rollback()
+
 	// 从KV存储中获取所有存储实例并筛选
-	keys, _, err := s.kvStore.Scan(context.Background(), "aws:storage:", "", 1000)
+	keys, _, err := txn.Scan("aws:storage:", "", 1000)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("Failed to scan storages: %v", err)
 		return []*meta.Storage{}
@@ -208,7 +243,7 @@ func (s *StorageService) GetStoragesByType(strType string) []*meta.Storage {
 	var result []*meta.Storage
 	for _, key := range keys {
 		var storage meta.Storage
-		if _, err := s.kvStore.Get(context.Background(), key, &storage); err == nil && storage.Type == strType {
+		if _, err := s.kvStore.Get(key, &storage); err == nil && storage.Type == strType {
 			result = append(result, &storage)
 		} else if err != nil {
 			logger.GetLogger("boulder").Warnf("Failed to get storage from key %s: %v", key, err)
@@ -222,21 +257,29 @@ func (s *StorageService) GetStoragesByType(strType string) []*meta.Storage {
 // RemoveStorage 删除指定 ID 的存储实例
 func (s *StorageService) RemoveStorage(id string) bool {
 	logger.GetLogger("boulder").Debugf("Removing storage with ID: %s", id)
+	txn, err := s.kvStore.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		return false
+	}
+	defer txn.Rollback()
 
 	key := "aws:storage:" + id
-	if err := s.kvStore.Delete(context.Background(), key); err != nil {
+	if err := txn.Delete(key); err != nil {
 		logger.GetLogger("boulder").Errorf("Failed to delete storage with ID %s: %v", id, err)
 		return false
 	}
+	if err = txn.Commit(); err == nil {
+		s.mutex.Lock()
+		defer s.mutex.Unlock()
 
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+		if s.stores != nil {
+			delete(s.stores, id)
+			logger.GetLogger("boulder").Debugf("Removed storage ID %s from local cache", id)
+		}
 
-	if s.stores != nil {
-		delete(s.stores, id)
-		logger.GetLogger("boulder").Debugf("Removed storage ID %s from local cache", id)
+		logger.GetLogger("boulder").Infof("Successfully removed storage with ID: %s", id)
+		return true
 	}
-
-	logger.GetLogger("boulder").Infof("Successfully removed storage with ID: %s", id)
-	return true
+	return false
 }
