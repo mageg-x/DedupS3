@@ -21,13 +21,13 @@ type DiskStore struct {
 // NewDiskStore  创建新的磁盘存储
 func NewDiskStore(c xconf.DiskConfig) (*DiskStore, error) {
 	if err := os.MkdirAll(c.Path, 0755); err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to create disk store directory: %v", err)
+		logger.GetLogger("boulder").Errorf("failed to create disk store directory: %v", err)
 		return nil, err
 	}
 	// 尝试创建测试文件
 	testFile := filepath.Join(c.Path, ".write_test")
 	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to write test file: %v", err)
+		logger.GetLogger("boulder").Errorf("failed to write test file: %v", err)
 		return nil, err
 	}
 	// 清理测试文件
@@ -56,14 +56,14 @@ func (d *DiskStore) WriteBlock(blockID string, data []byte) error {
 
 	// 确保目录存在
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to create directory for block %s: %v", blockID, err)
+		logger.GetLogger("boulder").Errorf("failed to create directory for block %s: %v", blockID, err)
 		return fmt.Errorf("failed to create directory for block %s: %w", blockID, err)
 	}
 
 	// 使用临时文件写入，然后重命名，确保原子性
 	tmpPath := path + ".tmp"
 	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to write block %s: %v", blockID, err)
+		logger.GetLogger("boulder").Errorf("failed to write block %s: %v", blockID, err)
 		return fmt.Errorf("failed to write block %s: %w", blockID, err)
 	}
 
@@ -71,7 +71,7 @@ func (d *DiskStore) WriteBlock(blockID string, data []byte) error {
 	if err := os.Rename(tmpPath, path); err != nil {
 		// 清理临时文件
 		os.Remove(tmpPath)
-		logger.GetLogger("boulder").Errorf("Failed to commit block %s: %v", blockID, err)
+		logger.GetLogger("boulder").Errorf("failed to commit block %s: %v", blockID, err)
 		return fmt.Errorf("failed to commit block %s: %w", blockID, err)
 	}
 
@@ -91,7 +91,7 @@ func (d *DiskStore) ReadBlock(blockID string, offset, length int64) ([]byte, err
 			logger.GetLogger("boulder").Debugf("Block %s does not exist", blockID)
 			return nil, fmt.Errorf("block %s does not exist", blockID)
 		}
-		logger.GetLogger("boulder").Errorf("Failed to open block %s: %v", blockID, err)
+		logger.GetLogger("boulder").Errorf("failed to open block %s: %v", blockID, err)
 		return nil, fmt.Errorf("failed to open block %s: %w", blockID, err)
 	}
 	defer file.Close()
@@ -99,7 +99,7 @@ func (d *DiskStore) ReadBlock(blockID string, offset, length int64) ([]byte, err
 	// 获取文件信息以确定文件大小
 	fileInfo, err := file.Stat()
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to get file info for block %s: %v", blockID, err)
+		logger.GetLogger("boulder").Errorf("failed to get file info for block %s: %v", blockID, err)
 		return nil, fmt.Errorf("failed to get file info for block %s: %w", blockID, err)
 	}
 
@@ -121,7 +121,7 @@ func (d *DiskStore) ReadBlock(blockID string, offset, length int64) ([]byte, err
 	if offset > 0 {
 		_, err = file.Seek(offset, io.SeekStart)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("Failed to seek in block %s: %v", blockID, err)
+			logger.GetLogger("boulder").Errorf("failed to seek in block %s: %v", blockID, err)
 			return nil, fmt.Errorf("failed to seek in block %s: %w", blockID, err)
 		}
 	}
@@ -129,7 +129,7 @@ func (d *DiskStore) ReadBlock(blockID string, offset, length int64) ([]byte, err
 	data := make([]byte, length)
 	n, err := file.Read(data)
 	if err != nil && err != io.EOF {
-		logger.GetLogger("boulder").Errorf("Failed to read block %s: %v", blockID, err)
+		logger.GetLogger("boulder").Errorf("failed to read block %s: %v", blockID, err)
 		return nil, fmt.Errorf("failed to read block %s: %w", blockID, err)
 	}
 
@@ -148,7 +148,7 @@ func (d *DiskStore) DeleteBlock(blockID string) error {
 			logger.GetLogger("boulder").Debugf("Block %s does not exist for deletion", blockID)
 			return fmt.Errorf("block %s does not exist", blockID)
 		}
-		logger.GetLogger("boulder").Errorf("Failed to delete block %s: %v", blockID, err)
+		logger.GetLogger("boulder").Errorf("failed to delete block %s: %v", blockID, err)
 		return fmt.Errorf("failed to delete block %s: %w", blockID, err)
 	}
 
@@ -168,7 +168,7 @@ func (d *DiskStore) BlockExists(blockID string) (bool, error) {
 			logger.GetLogger("boulder").Debugf("Block %s does not exist", blockID)
 			return false, nil
 		}
-		logger.GetLogger("boulder").Errorf("Failed to check if block %s exists: %v", blockID, err)
+		logger.GetLogger("boulder").Errorf("failed to check if block %s exists: %v", blockID, err)
 		return false, fmt.Errorf("failed to check if block %s exists: %w", blockID, err)
 	}
 	return true, nil

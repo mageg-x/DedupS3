@@ -82,6 +82,24 @@ func (b *BadgerStore) BatchGet(keys []string) (map[string][]byte, error) {
 	return txn.BatchGet(keys)
 }
 
+func (b *BadgerStore) Set(key string, value interface{}) error {
+	txn, err := b.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to initialize TiKV txn: %v", err)
+		return err
+	}
+	defer txn.Rollback()
+	err = txn.Set(key, value)
+	if err == nil {
+		logger.GetLogger("boulder").Infof("Setting key %s with value %v", key, value)
+		err = txn.Commit()
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		}
+	}
+	return err
+}
+
 // BeginTxn 开始一个新事务
 func (b *BadgerStore) BeginTxn(_ context.Context, _ *TxnOpt) (Txn, error) {
 	txn := b.db.NewTransaction(true)
@@ -113,7 +131,7 @@ func (t *BadgerTxn) Get(key string, value interface{}) (bool, error) {
 	}
 	if !exists {
 		logger.GetLogger("boulder").Debugf("Key not found: %s", key)
-		return false, fmt.Errorf("key not found: %s", key)
+		return false, nil
 	}
 
 	if err := json.Unmarshal(data, value); err != nil {
@@ -131,7 +149,7 @@ func (t *BadgerTxn) GetRaw(key string) ([]byte, bool, error) {
 	if err != nil {
 		if errors.Is(err, badger.ErrKeyNotFound) {
 			logger.GetLogger("boulder").Debugf("Key not found: %s", key)
-			return nil, false, fmt.Errorf("key not found: %s", key)
+			return nil, false, nil
 		}
 		return nil, false, err
 	}

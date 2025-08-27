@@ -54,6 +54,7 @@ type KVStore interface {
 	Get(key string, value interface{}) (bool, error)
 	GetRaw(key string) ([]byte, bool, error)
 	BatchGet(keys []string) (map[string][]byte, error)
+	Set(key string, value interface{}) error
 	// BeginTxn 开始一个新事务
 	BeginTxn(ctx context.Context, opt *TxnOpt) (Txn, error)
 	Close() error

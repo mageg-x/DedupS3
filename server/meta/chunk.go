@@ -21,17 +21,15 @@ import (
 	"lukechampine.com/blake3"
 
 	_ "github.com/PlakarKorp/go-cdc-chunkers/chunkers/fastcdc"
-	"strconv"
 )
 
 // Chunk 表示数据块
 type Chunk struct {
-	Hash      string `json:"hash"`      // 内容的哈希
-	ShortHash uint64 `json:"-"`         // 短hash辅助提高效率
-	Size      int32  `json:"size"`      // 块大小(字节)
-	RefCount  int32  `json:"ref_count"` // 引用计数
-	BlockID   string `json:"block_id"`  // 所属BlockID
-	Data      []byte `json:"-"`         // 仅用于内存操作，不持久化
+	Hash     string `json:"hash"`      // 内容的哈希
+	Size     int32  `json:"size"`      // 块大小(字节)
+	RefCount int32  `json:"ref_count"` // 引用计数
+	BlockID  string `json:"block_id"`  // 所属BlockID
+	Data     []byte `json:"-"`         // 仅用于内存操作，不持久化
 }
 
 // NewChunk 从数据创建新块
@@ -47,8 +45,7 @@ func NewChunk(data []byte) *Chunk {
 		BlockID:  "",
 		Data:     data,
 	}
-	c.CalcChunkHash()
-	c.CalcShortHash()
+	c.Hash = c.CalcChunkHash()
 	return &c
 }
 
@@ -62,9 +59,4 @@ func (c *Chunk) CalcChunkHash() string {
 	fp := blake3.Sum256(c.Data)
 	c.Hash = hex.EncodeToString(fp[:20])
 	return c.Hash
-}
-
-func (c *Chunk) CalcShortHash() uint64 {
-	c.ShortHash, _ = strconv.ParseUint(c.Hash[:16], 16, 64)
-	return c.ShortHash
 }

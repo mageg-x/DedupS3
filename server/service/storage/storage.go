@@ -43,6 +43,7 @@ func GetStorageService() *StorageService {
 		instance = &StorageService{
 			kvStore: kvStore,
 			mutex:   sync.RWMutex{},
+			stores:  make(map[string]*meta.Storage),
 		}
 		logger.GetLogger("boulder").Infof("Storage service initialized successfully")
 	}

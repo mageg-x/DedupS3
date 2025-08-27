@@ -211,7 +211,8 @@ func PutObjectHandler(w http.ResponseWriter, r *http.Request) {
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
-	// go-cdc-chunkers  fastcdc 进行分 chunk
+
+	w.Header().Set(xhttp.ETag, etag)
 	w.WriteHeader(http.StatusOK)
 }
 

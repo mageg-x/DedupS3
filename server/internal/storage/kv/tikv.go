@@ -67,6 +67,9 @@ func (t *TiKVStore) Get(key string, value interface{}) (bool, error) {
 
 	data, err := snapshot.Get(context.Background(), []byte(key))
 	if err != nil {
+		if err.Error() == "not exist" {
+			return false, nil
+		}
 		logger.GetLogger("boulder").Errorf("Error getting key %s: %v", key, err)
 		return false, err
 	}
@@ -94,6 +97,9 @@ func (t *TiKVStore) GetRaw(key string) ([]byte, bool, error) {
 
 	data, err := snapshot.Get(context.Background(), []byte(key))
 	if err != nil {
+		if err.Error() == "not exist" {
+			return nil, false, nil
+		}
 		logger.GetLogger("boulder").Errorf("Error getting key %s: %v", key, err)
 		return nil, false, err
 	}
@@ -119,6 +125,24 @@ func (t *TiKVStore) BatchGet(keys []string) (map[string][]byte, error) {
 	}
 
 	return values, nil
+}
+
+func (t *TiKVStore) Set(key string, value interface{}) error {
+	txn, err := t.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
+		return err
+	}
+	defer txn.Rollback()
+	err = txn.Set(key, value)
+	if err == nil {
+		logger.GetLogger("boulder").Infof("Successfully set value for key: %s", key)
+		err = txn.Commit()
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		}
+	}
+	return err
 }
 
 // BeginTxn 开始一个新事务
@@ -166,6 +190,9 @@ func (t *TiKVTxn) Rollback() error {
 func (t *TiKVTxn) Get(key string, value interface{}) (bool, error) {
 	data, err := t.txn.Get(context.Background(), []byte(key))
 	if err != nil {
+		if err.Error() == "not exist" {
+			return false, nil
+		}
 		logger.GetLogger("boulder").Errorf("Error getting key %s: %v", key, err)
 		return false, err
 	}
@@ -186,6 +213,9 @@ func (t *TiKVTxn) Get(key string, value interface{}) (bool, error) {
 func (t *TiKVTxn) GetRaw(key string) ([]byte, bool, error) {
 	data, err := t.txn.Get(context.Background(), []byte(key))
 	if err != nil {
+		if err.Error() == "not exist" {
+			return nil, false, nil
+		}
 		logger.GetLogger("boulder").Errorf("Error getting raw data for key %s: %v", key, err)
 		return nil, false, err
 	}
@@ -357,7 +387,7 @@ func (t *TiKVTxn) Scan(prefix string, startKey string, limit int) ([]string, str
 	}
 	defer iter.Close()
 
-	keys := make([]string, 0, 0)
+	keys := make([]string, 0)
 	for iter.Valid() && len(keys) < limit {
 		key := iter.Key()
 		keys = append(keys, string(key))

@@ -33,6 +33,7 @@ type BaseObjectParams struct {
 	AccessKeyID  string
 	Etag         string
 	StorageClass string
+	StorageID    string
 	ContentLen   int64
 }
 
@@ -128,7 +129,10 @@ func (o *ObjectService) PutObject(r io.Reader, params BaseObjectParams) error {
 		logger.GetLogger("boulder").Errorf("failed to get chunk service")
 		return fmt.Errorf("failed to get chunk service")
 	}
-	chunker.DoChunk(r, params.BucketName, params.ObjKey)
+	err = chunker.DoChunk(r, objectInfo)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to chunk object: %v", err)
+	}
 
-	return nil
+	return err
 }

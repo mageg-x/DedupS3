@@ -28,15 +28,20 @@ import (
 	"time"
 )
 
+type ObjChunk struct {
+	Hash    string `json:"hash"`     // 内容的哈希
+	BlockID string `json:"block_id"` // 所属BlockID
+}
+
 // Object 表示存储桶中的一个对象
 type Object struct {
 	// 对象标识信息
-	Bucket    string   `json:"bucket" xml:"Bucket"`       // 所属存储桶
-	Key       string   `json:"key" xml:"Key"`             // 对象键
-	VersionID string   `json:"versionId" xml:"VersionId"` // 版本ID（如果启用版本控制）
-	ETag      string   `json:"etag" xml:"ETag"`           // 对象的ETag
-	Size      int64    `json:"size" xml:"Size"`           // 对象大小（字节）
-	Chunks    []*Chunk `json:"chunks" xml:"Chunk"`        // chunk 索引
+	Bucket    string     `json:"bucket" xml:"Bucket"`       // 所属存储桶
+	Key       string     `json:"key" xml:"Key"`             // 对象键
+	VersionID string     `json:"versionId" xml:"VersionId"` // 版本ID（如果启用版本控制）
+	ETag      string     `json:"etag" xml:"ETag"`           // 对象的ETag
+	Size      int64      `json:"size" xml:"Size"`           // 对象大小（字节）
+	Chunks    []ObjChunk `json:"chunks" xml:"Chunk"`        // chunk 索引
 
 	// 时间信息
 	LastModified time.Time `json:"lastModified" xml:"LastModified"` // 最后修改时间
@@ -92,7 +97,6 @@ func NewObject(bucket, key string) *Object {
 		StorageClass: "STANDARD",
 		UserMetadata: make(map[string]string),
 		Tags:         make(map[string]string),
-		Chunks:       make([]*Chunk, 0),
 	}
 }
 
@@ -295,7 +299,7 @@ func (o *Object) ParseHeaders(headers http.Header) {
 		}
 	}
 	legalHold := headers.Get("x-amz-object-lock-legal-hold")
-	o.LegalHold = (legalHold == "ON")
+	o.LegalHold = legalHold == "ON"
 
 	// 用户元数据
 	o.UserMetadata = make(map[string]string)
@@ -391,7 +395,7 @@ func (o *Object) Validate() error {
 
 // Copy 创建对象的副本
 func (o *Object) Copy() *Object {
-	copy := &Object{
+	cp := &Object{
 		Bucket:             o.Bucket,
 		Key:                o.Key,
 		VersionID:          o.VersionID,
@@ -417,17 +421,17 @@ func (o *Object) Copy() *Object {
 	}
 
 	// 深拷贝map
-	copy.UserMetadata = make(map[string]string)
+	cp.UserMetadata = make(map[string]string)
 	for k, v := range o.UserMetadata {
-		copy.UserMetadata[k] = v
+		cp.UserMetadata[k] = v
 	}
 
-	copy.Tags = make(map[string]string)
+	cp.Tags = make(map[string]string)
 	for k, v := range o.Tags {
-		copy.Tags[k] = v
+		cp.Tags[k] = v
 	}
 
-	return copy
+	return cp
 }
 
 // IsDeletionAllowed 检查是否允许删除对象
