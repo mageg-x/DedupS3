@@ -19,7 +19,6 @@ package cache
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/mageg-x/boulder/internal/logger"
 	"time"
 
@@ -89,8 +88,8 @@ func (r *Ristretto) Get(ctx context.Context, key string) (interface{}, bool, err
 	if found {
 		logger.GetLogger("boulder").Debugf("Successfully got cache item: %s", key)
 	} else {
-		logger.GetLogger("boulder").Errorf("Failed got cache item: %s", key)
-		return value, found, fmt.Errorf("Failed got cache item: %s", key)
+		logger.GetLogger("boulder").Infof("Failed got cache item: %s", key)
+		return value, found, nil
 	}
 	return value, found, nil
 }

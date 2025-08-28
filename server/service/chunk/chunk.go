@@ -5,11 +5,11 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/mageg-x/boulder/service/block"
 	"io"
-	"strings"
 	"sync"
+
+	"github.com/mageg-x/boulder/internal/utils"
+	"github.com/mageg-x/boulder/service/block"
 
 	fastcdc "github.com/PlakarKorp/go-cdc-chunkers"
 
@@ -90,7 +90,7 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.Object) error {
 
 	rollback := false
 	//重组
-	blockChunks, err := c.Assemble(ctx, dedupChan, obj.DataLocation, obj.Bucket, obj.Key)
+	blocks, err := c.Assemble(ctx, dedupChan, obj.DataLocation, obj.Bucket, obj.Key)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("%s/%s assemble chunk failed: %v", obj.Bucket, obj.Key, err)
 		rollback = true
@@ -98,7 +98,7 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.Object) error {
 	}
 
 	// 汇总信息
-	allChunk, err := c.Summary(ctx, allChan, blockChunks, obj.Bucket, obj.Key)
+	allChunk, err := c.Summary(ctx, allChan, blocks, obj.Bucket, obj.Key)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("%s/%s summary chunk failed: %v", obj.Bucket, obj.Key, err)
 		rollback = true
@@ -107,7 +107,7 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.Object) error {
 		logger.GetLogger("boulder").Debugf("%s/%s summary chunk finished %+v", obj.Bucket, obj.Key, allChunk)
 	}
 	if !rollback {
-		err = c.WriteMeta(ctx, obj.Owner.ID, allChunk, blockChunks, obj)
+		err = c.WriteMeta(ctx, obj.Owner.ID, allChunk, blocks, obj)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("%s/%s write meta info failed: %v", obj.Bucket, obj.Key, err)
 			rollback = true
@@ -117,13 +117,13 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.Object) error {
 
 	// 回滚处理，删除之前写入的block
 	if rollback {
-		logger.GetLogger("boulder").Warnf("rollback for %s/%s failed", obj.Bucket, obj.Key)
-		gcKey := "aws:gc:blocks:" + strings.ReplaceAll(uuid.New().String(), "-", "")
-		var blocks []*meta.Block
-		for _, _block := range blockChunks {
-			blocks = append(blocks, _block)
+		gcKey := "aws:gc:blocks:" + utils.GenUUID()
+		var blockIDs []string
+		for _, _block := range blocks {
+			blockIDs = append(blockIDs, _block.ID)
 		}
-		err := c.kvstore.Set(gcKey, &blocks)
+		logger.GetLogger("boulder").Warnf("rollback for %s/%s delete blocks %#v ", obj.Bucket, obj.Key, blockIDs)
+		err := c.kvstore.Set(gcKey, &blockIDs)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("%s/%s save blocks failed: %v", obj.Bucket, obj.Key, err)
 		}
@@ -171,7 +171,7 @@ func (c *ChunkService) Split(ctx context.Context, r io.Reader, outputChan chan *
 
 func (c *ChunkService) Dedup(ctx context.Context, inputChan, dedupChan chan *meta.Chunk, bucket, objkey string) ([]*meta.Chunk, error) {
 	allChan := make([]*meta.Chunk, 0)
-	chunkFilter := make(map[string]bool)
+	chunkFilter := make(map[string]string)
 	// 初始化 MD5 哈希用于计算整个数据块的MD5
 	fullMD5 := md5.New()
 	// 从通道读取并处理块
@@ -191,6 +191,14 @@ func (c *ChunkService) Dedup(ctx context.Context, inputChan, dedupChan chan *met
 			logger.GetLogger("boulder").Debugf("get cdc chunk %d fp %s", chunk.Size, chunk.Hash)
 			// 更新整个数据块的 MD5
 			fullMD5.Write(chunk.Data)
+			allChan = append(allChan, chunk)
+
+			// 对象内去重
+			if chunkFilter[chunk.Hash] != "" {
+				chunk.BlockID = chunkFilter[chunk.Hash]
+				chunk.Data = nil
+				continue
+			}
 
 			// 对象间去重
 			chunkKey := "aws:chunk:" + chunk.Hash
@@ -201,18 +209,13 @@ func (c *ChunkService) Dedup(ctx context.Context, inputChan, dedupChan chan *met
 				return nil, fmt.Errorf("failed to get chunk %s: %v", chunk.Hash, err)
 			}
 			if exists {
-				chunkFilter[chunk.Hash] = true
-				allChan = append(allChan, &meta.Chunk{Hash: chunk.Hash, BlockID: _chunk.BlockID})
+				chunkFilter[chunk.Hash] = _chunk.BlockID
+				chunk.BlockID = _chunk.BlockID
+				chunk.Data = nil
 				continue
 			}
 
-			allChan = append(allChan, &meta.Chunk{Hash: chunk.Hash, BlockID: ""})
-			// 对象内去重
-			if chunkFilter[chunk.Hash] {
-				continue
-			}
-
-			chunkFilter[chunk.Hash] = true
+			chunkFilter[chunk.Hash] = "000000000000000000000000"
 			dedupChan <- chunk
 		}
 	}
@@ -224,43 +227,44 @@ func (c *ChunkService) Dedup(ctx context.Context, inputChan, dedupChan chan *met
 }
 
 func (c *ChunkService) Assemble(ctx context.Context, dedupChan chan *meta.Chunk, storageID, bucket, objkey string) (map[string]*meta.Block, error) {
-	blockChunks := make(map[string]*meta.Block)
+	blocks := make(map[string]*meta.Block)
 	finished := false
 	for !finished {
 		select {
 		case <-ctx.Done():
 			logger.GetLogger("boulder").Warnf(" assemble chunk be cancelled: %v", ctx.Err())
-			return blockChunks, fmt.Errorf("assemble chunk be cancelled for %s/%s: %v", bucket, objkey, ctx.Err())
+			return blocks, fmt.Errorf("assemble chunk be cancelled for %s/%s: %v", bucket, objkey, ctx.Err())
 		case chunk, ok := <-dedupChan:
 			bs := block.GetBlockService()
 			if bs == nil {
 				logger.GetLogger("boulder").Errorf("%s/%s block service is nil", bucket, objkey)
-				return blockChunks, fmt.Errorf("%s/%s block service is nil", bucket, objkey)
+				return blocks, fmt.Errorf("%s/%s block service is nil", bucket, objkey)
 			}
 
 			_block, err := bs.PutChunk(chunk, storageID, bucket, objkey)
 			if err != nil {
 				logger.GetLogger("boulder").Errorf("%s/%s put chunk failed: %v", bucket, objkey, err)
-				return blockChunks, fmt.Errorf("%s/%s put chunk failed: %v", bucket, objkey, err)
+				return blocks, fmt.Errorf("%s/%s put chunk failed: %v", bucket, objkey, err)
 			}
 
 			if _block != nil {
-				blockChunks[_block.ID] = _block
+				blocks[_block.ID] = _block
 			}
 
 			if !ok || chunk == nil {
 				finished = true
+				logger.GetLogger("boulder").Warnf("%s/%s block service is finish object %v ", bucket, objkey, chunk)
 				break
 			}
 		}
 	}
-	return blockChunks, nil
+	return blocks, nil
 }
 
-func (c *ChunkService) Summary(ctx context.Context, allChan chan []*meta.Chunk, blockChunks map[string]*meta.Block, bucket, objkey string) ([]*meta.Chunk, error) {
+func (c *ChunkService) Summary(ctx context.Context, allChan chan []*meta.Chunk, blocks map[string]*meta.Block, bucket, objkey string) ([]*meta.Chunk, error) {
 	allChunks := make([]*meta.Chunk, 0)
 	chunk2block := make(map[string]string)
-	for _, _block := range blockChunks {
+	for _, _block := range blocks {
 		for _, _chunk := range _block.ChunkList {
 			chunk2block[_chunk.Hash] = _block.ID
 		}
@@ -296,7 +300,7 @@ func (c *ChunkService) Summary(ctx context.Context, allChan chan []*meta.Chunk, 
 	return allChunks, nil
 }
 
-func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk []*meta.Chunk, blockChunks map[string]*meta.Block, obj *meta.Object) error {
+func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk []*meta.Chunk, blocks map[string]*meta.Block, obj *meta.Object) error {
 	txn, err := c.kvstore.BeginTxn(ctx, nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("%s/%s create transaction failed: %v", obj.Bucket, obj.Key, err)
@@ -306,6 +310,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 
 	// 写入chunk元数据
 	for _, chunk := range allChunk {
+		//logger.GetLogger("boulder").Errorf("%s/%s write chunk %s:%s:%d ", obj.Bucket, obj.Key, chunk.Hash, chunk.BlockID, len(chunk.Data))
 		chunkey := "aws:chunk:" + chunk.Hash
 		var _chunk meta.Chunk
 		exists, e := txn.Get(chunkey, &_chunk)
@@ -335,7 +340,8 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 	}
 
 	// 写入桶的元数据
-	for _, item := range blockChunks {
+	for _, item := range blocks {
+		//logger.GetLogger("boulder").Errorf("%s/%s write block meta inf : %s:%d:%d", obj.Bucket, obj.Key, item.ID, item.TotalSize, item.RealSize)
 		blockKey := "aws:block:" + item.ID
 		err = txn.Set(blockKey, &item)
 		if err != nil {
@@ -351,6 +357,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 	for _, _chunk := range allChunk {
 		obj.Chunks = append(obj.Chunks, meta.ObjChunk{Hash: _chunk.Hash, BlockID: _chunk.BlockID})
 	}
+	//logger.GetLogger("boulder").Errorf("%s/%s write object meta %#v", obj.Bucket, obj.Key, obj)
 	// 如果是覆盖，需要先删除旧的索引
 	var _obj meta.Object
 	exists, err := txn.Get(objKey, &_obj)
@@ -359,8 +366,12 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 		return fmt.Errorf("%s/%s get object failed: %v", obj.Bucket, obj.Key, err)
 	}
 	if exists {
-		gckey := "aws:gc:chunks" + strings.ReplaceAll(uuid.New().String(), "-", "")
-		err = txn.Set(gckey, &_obj.Chunks)
+		var chunkIDs []string
+		for _, chunk := range _obj.Chunks {
+			chunkIDs = append(chunkIDs, chunk.Hash)
+		}
+		gckey := "aws:gc:chunks" + utils.GenUUID()
+		err = txn.Set(gckey, &chunkIDs)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("%s/%s set gc chunk failed: %v", obj.Bucket, obj.Key, err)
 			return fmt.Errorf("%s/%s set gc chunk failed: %v", obj.Bucket, obj.Key, err)

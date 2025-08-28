@@ -183,5 +183,6 @@ func (d *DiskStore) Location(blockID string) string {
 func (d *DiskStore) blockPath(blockID string) string {
 	dir1 := blockID[:2]
 	dir2 := blockID[2:4]
-	return filepath.Join(d.conf.Path, dir1, dir2, blockID)
+	dir3 := blockID[4:6]
+	return filepath.Join(d.conf.Path, dir1, dir2, dir3, blockID)
 }

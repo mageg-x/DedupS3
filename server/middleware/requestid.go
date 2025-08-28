@@ -19,9 +19,10 @@ package middleware
 
 import (
 	"context"
-	"github.com/google/uuid"
-	xhttp "github.com/mageg-x/boulder/internal/http"
 	"net/http"
+
+	xhttp "github.com/mageg-x/boulder/internal/http"
+	"github.com/mageg-x/boulder/internal/utils"
 )
 
 // RequestIDMiddleware 为所有请求生成唯一ID
@@ -29,7 +30,7 @@ func RequestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 生成唯一Request ID
 		// 可以使用UUID或时间戳+随机数的组合
-		requestID := uuid.New().String()
+		requestID := utils.GenUUID()
 
 		// 将Request ID添加到响应头
 		w.Header().Set("x-amz-request-id", requestID)

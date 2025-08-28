@@ -1,10 +1,20 @@
 package utils
 
 import (
+	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/xml"
 	"errors"
 	"io"
+	"strings"
 	"sync"
+
+	"github.com/google/uuid"
+	"github.com/klauspost/compress/zstd"
+	"golang.org/x/crypto/pbkdf2"
 )
 
 // SliceDiff 返回两个差集：
@@ -78,4 +88,125 @@ func WithTryLock(mu *sync.Mutex, fn func()) {
 		defer mu.Unlock()
 		fn()
 	}
+}
+
+func GenUUID() string {
+	return strings.ReplaceAll(uuid.New().String(), "-", "")
+}
+
+func GenKey(password string, keyLen int) []byte {
+	// 实际应用中，salt 应随机生成并随密文一起存储
+	salt := []byte("liusiming@rao") // 至少 8 字节
+
+	// 迭代次数（建议 100,000 以上）
+	iterations := 100
+
+	key := pbkdf2.Key([]byte(password), salt, iterations, keyLen, sha256.New)
+	return key
+}
+
+// Compress 压缩函数 - 使用Zstd
+func Compress(data []byte) ([]byte, error) {
+	if len(data) == 0 {
+		return data, nil
+	}
+
+	encoder, err := zstd.NewWriter(nil)
+	if err != nil {
+		return nil, err
+	}
+	defer encoder.Close()
+
+	var compressed bytes.Buffer
+	encoder.Reset(&compressed)
+
+	_, err = encoder.Write(data)
+	if err != nil {
+		return nil, err
+	}
+
+	return compressed.Bytes(), nil
+}
+
+// Decompress 解压缩函数 - 使用Zstd
+func Decompress(data []byte) ([]byte, error) {
+	if len(data) == 0 {
+		return data, nil
+	}
+
+	decoder, err := zstd.NewReader(nil)
+	if err != nil {
+		return nil, err
+	}
+	defer decoder.Close()
+
+	var decompressed bytes.Buffer
+	decoder.Reset(bytes.NewReader(data))
+	_, err = io.Copy(&decompressed, decoder)
+	if err != nil {
+		return nil, err
+	}
+
+	return decompressed.Bytes(), nil
+}
+
+// Encrypt 加密函数 - 使用AES-GCM
+func Encrypt(data []byte, key string) ([]byte, error) {
+	keyBytes := GenKey(key, 16)
+
+	// 创建 AES cipher
+	block, err := aes.NewCipher(keyBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	// 创建 GCM 模式
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	// 生成随机 nonce
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
+
+	// 加密
+	ciphertext := gcm.Seal(nonce, nonce, data, nil)
+
+	return ciphertext, nil
+}
+
+// Decrypt  解密函数
+func Decrypt(data []byte, key string) ([]byte, error) {
+	keyBytes := []byte(key)
+	if len(keyBytes) != 16 && len(keyBytes) != 24 && len(keyBytes) != 32 {
+		return nil, errors.New("invalid key size: must be 16, 24, or 32 bytes")
+	}
+
+	block, err := aes.NewCipher(keyBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonceSize := gcm.NonceSize()
+	if len(data) < nonceSize {
+		return nil, errors.New("ciphertext too short")
+	}
+
+	nonce, encryptedData := data[:nonceSize], data[nonceSize:]
+
+	// 解密（自动验证认证标签）
+	plaintext, err := gcm.Open(nil, nonce, encryptedData, nil)
+	if err != nil {
+		return nil, errors.New("decryption failed: invalid key or corrupted data")
+	}
+
+	return plaintext, nil
 }

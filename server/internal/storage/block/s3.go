@@ -207,12 +207,13 @@ func (s *S3Store) Location(blockID string) string {
 // blockKey 获取块在S3中的键
 func (s *S3Store) blockKey(blockID string) string {
 	// 使用两级目录分散对象
-	if len(blockID) < 4 {
+	if len(blockID) < 6 {
 		// 处理短 blockID 的情况
 		logger.GetLogger("boulder").Debugf("Short blockID detected: %s", blockID)
 		return path.Join("blocks", blockID)
 	}
 	dir1 := blockID[:2]
 	dir2 := blockID[2:4]
-	return path.Join("blocks", dir1, dir2, blockID)
+	dir3 := blockID[4:6]
+	return path.Join("blocks", dir1, dir2, dir3, blockID)
 }

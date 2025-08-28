@@ -19,7 +19,7 @@ package meta
 import (
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/mageg-x/boulder/internal/utils"
 )
 
 // BlockChunk 表示块中的一个块条目
@@ -31,20 +31,25 @@ type BlockChunk struct {
 
 // BlockData ，存放在磁盘上
 type BlockData struct {
-	ID        string       `json:"id" msgpack:"id"`                 // 唯一标识符
-	TotalSize int64        `json:"total_size" msgpack:"total_size"` // 总大小(字节)
-	ChunkList []BlockChunk `json:"chunklist" msgpack:"chunklist"`   // chunk 索引
-	Data      []byte       `json:"data" msgpack:"data"`             //数据块
+	ID         string       `json:"id" msgpack:"id"`                 // 唯一标识符
+	TotalSize  int64        `json:"total_size" msgpack:"total_size"` // 总大小(字节)
+	Compressed bool         `json:"compressed" msgpack:"compressed"` // 是否压缩
+	Encrypted  bool         `json:"encrypted" msgpack:"encrypted"`   // 是否加密
+	ChunkList  []BlockChunk `json:"chunklist" msgpack:"chunklist"`   // chunk 索引
+	Data       []byte       `json:"data" msgpack:"data"`             //数据块
 }
 
 // Block 表示存储块, 存在元数据中
 type Block struct {
-	ID        string       `json:"id" msgpack:"id"`                 // 唯一标识符
-	TotalSize int64        `json:"total_size" msgpack:"total_size"` // 总大小(字节)
-	ChunkList []BlockChunk `json:"chunk_list" msgpack:"chunk_list"` // 包含的块列表
-	StorageID string       `json:"storage_id" msgpack:"storage_id"` // 存储后端ID
-	CreatedAt time.Time    `json:"created_at" msgpack:"created_at"` // 创建时间
-	UpdatedAt time.Time    `json:"updated_at" msgpack:"updated_at"` // 更新时间
+	ID         string       `json:"id" msgpack:"id"`                 // 唯一标识符
+	TotalSize  int64        `json:"total_size" msgpack:"total_size"` // 总大小(字节)
+	Compressed bool         `json:"compressed" msgpack:"compressed"` // 是否压缩
+	Encrypted  bool         `json:"encrypted" msgpack:"encrypted"`   // 是否加密
+	RealSize   int64        `json:"real_size" msgpack:"real_size"`   // 实际占用大小
+	ChunkList  []BlockChunk `json:"chunk_list" msgpack:"chunk_list"` // 包含的块列表
+	StorageID  string       `json:"storage_id" msgpack:"storage_id"` // 存储后端ID
+	CreatedAt  time.Time    `json:"created_at" msgpack:"created_at"` // 创建时间
+	UpdatedAt  time.Time    `json:"updated_at" msgpack:"updated_at"` // 更新时间
 }
 
 // NewBlock 创建新块
@@ -58,5 +63,5 @@ func NewBlock(storageID string) *Block {
 }
 
 func GenBlockID() string {
-	return uuid.New().String()
+	return utils.GenUUID()
 }

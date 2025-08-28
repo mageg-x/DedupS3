@@ -57,10 +57,13 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, storageID, bucket, objKey str
 	var flushBlock *meta.Block
 
 	if chunk == nil {
-		// 结束了
 		utils.WithLock(&s.muxtext, func() {
 			flushBlock = s.preBlocks[i]
 		})
+		// 结束了
+		if flushBlock != nil {
+			logger.GetLogger("boulder").Warnf("ready to flush block %s", flushBlock.ID)
+		}
 	} else {
 		utils.WithLock(&s.muxtext, func() {
 			curBlock := s.preBlocks[i]
@@ -115,7 +118,21 @@ func (s *BlockService) FlushBlock(block *meta.Block) error {
 		}
 		blockData.ChunkList = append(blockData.ChunkList, _chunk)
 		blockData.Data = append(blockData.Data, block.ChunkList[i].Data...)
-		block.ChunkList[i].Data = nil
+	}
+	// 压缩Data
+	compress, err := utils.Compress(blockData.Data)
+	if err == nil && compress != nil {
+		block.Compressed = true
+		block.RealSize = int64(len(compress))
+		blockData.Data = compress
+
+		//// 加密Data
+		//encrypt, err := utils.Encrypt(compress, "rao@bang#lin*2018")
+		//if err == nil && encrypt != nil {
+		//	block.Encrypted = true
+		//	block.RealSize = int64(len(encrypt))
+		//	blockData.Data = encrypt
+		//}
 	}
 
 	logger.GetLogger("boulder").Debugf("pre flush block data size %d:%d", blockData.TotalSize, len(blockData.Data))
