@@ -17,11 +17,14 @@
 package handler
 
 import (
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+
 	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/mageg-x/boulder/internal/utils"
 	"github.com/mageg-x/boulder/service/object"
-	"net/http"
-	"strings"
 
 	"github.com/mageg-x/boulder/internal/logger"
 )
@@ -29,18 +32,107 @@ import (
 func HeadObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: HeadObjectHandler")
+	//logger.GetLogger("boulder").Infof("head obect header %#v", r.Header)
+	bucket, objectKey, _, accessKeyID := GetReqVar(r)
+	if err := utils.CheckValidObjectName(objectKey); err != nil {
+		logger.GetLogger("boulder").Errorf("invalid object name: %s", objectKey)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
+		return
+	}
 
-	// 1. 获取路径参数 (使用gorilla/mux库)
-	//vars := mux.Vars(r)
-	//
-	// 2. 获取查询参数
-	// attributes := r.URL.Query().Get("attributes")
+	Range := r.Header.Get("Range")
+	ifMatch := r.Header.Get("If-Match")
+	ifnoneMatch := r.Header.Get("If-None-Match")
+	ifmodifiedSince := r.Header.Get("If-Modified-Since")
 
-	// 3. 输出获取的参数值 (仅用于演示)
-	//logger.GetLogger("boulder").Infof("path params object: %v", vars)
-	//logger.GetLogger("boulder").Infof("query params attributes: %s", attributes)
+	_os := object.GetObjectService()
+	if _os == nil {
+		logger.GetLogger("boulder").Errorf("object service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
 
-	// 不要写入响应体
+	objInfo, err := _os.HeadObject(&object.BaseObjectParams{
+		BucketName:  bucket,
+		ObjKey:      objectKey,
+		AccessKeyID: accessKeyID,
+	})
+	if err != nil {
+		if err.Error() == xhttp.ToError(xhttp.ErrAccessDenied).Error() {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+			return
+		}
+		if err.Error() == xhttp.ToError(xhttp.ErrNoSuchBucket).Error() {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+			return
+		}
+		logger.GetLogger("boulder").Errorf("object %s not found err: %v", objectKey, err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+	if objInfo == nil {
+		logger.GetLogger("boulder").Errorf("object %s not found", objectKey)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+		return
+	}
+
+	logger.GetLogger("boulder").Debugf("headObject object %#v", objInfo)
+
+	// If-Match
+	if ifMatch != "" && objInfo.ETag != ifMatch {
+		logger.GetLogger("boulder").Errorf("Object %s is not matched with If-Match ETag %s:%s", objectKey, ifMatch, objInfo.ETag)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrPreconditionFailed)
+		return
+	}
+
+	// If-None-Match
+	if ifnoneMatch != "" && objInfo.ETag != ifnoneMatch {
+		logger.GetLogger("boulder").Errorf("object %s is not matched with If-None-Match ETag %s:%s", objectKey, ifnoneMatch, objInfo.ETag)
+		xhttp.WriteAWSErr(w, r, xhttp.ERRNotModify)
+		return
+	}
+
+	// If-Modified-Since
+	if ifmodifiedSince != "" {
+		if since, err := http.ParseTime(ifmodifiedSince); err == nil {
+			if !objInfo.LastModified.After(since) {
+				logger.GetLogger("boulder").Errorf("object %s is not last modified since %s", objectKey, since)
+				xhttp.WriteAWSErr(w, r, xhttp.ERRNotModify)
+				return
+			}
+		}
+	}
+
+	// 设置响应头
+	w.Header().Set(xhttp.ContentType, objInfo.ContentType)
+	w.Header().Set(xhttp.ContentLength, strconv.FormatInt(objInfo.Size, 10))
+	w.Header().Set(xhttp.ETag, objInfo.ETag)
+	w.Header().Set(xhttp.LastModified, objInfo.LastModified.Format(http.TimeFormat))
+
+	if objInfo.ContentEncoding != "" {
+		w.Header().Set(xhttp.ContentEncoding, objInfo.ContentEncoding)
+	}
+	if objInfo.ContentLanguage != "" {
+		w.Header().Set(xhttp.ContentLanguage, objInfo.ContentLanguage)
+	}
+	if objInfo.ContentDisposition != "" {
+		w.Header().Set(xhttp.ContentDisposition, objInfo.ContentDisposition)
+	}
+	if objInfo.CacheControl != "" {
+		w.Header().Set(xhttp.CacheControl, objInfo.CacheControl)
+	}
+
+	// 不支持head range
+	if Range != "" {
+		w.Header().Set(xhttp.AcceptRanges, "none")
+	}
+
+	// 设置用户元数据
+	for key, value := range objInfo.UserMetadata {
+		w.Header().Set(fmt.Sprintf("%s%s", xhttp.AMZMetPrefix, key), value)
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 // GetObjectAttributesHandler 处理 GET Object Attributes 请求
@@ -167,12 +259,18 @@ func PutObjectExtractHandler(w http.ResponseWriter, r *http.Request) {
 func PutObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: PutObjectHandler")
-	logger.GetLogger("boulder").Infof("putobect header %+v", r.Header)
+	//logger.GetLogger("boulder").Infof("putobect header %#v", r.Header)
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 	if err := utils.CheckValidObjectName(objectKey); err != nil {
 		logger.GetLogger("boulder").Errorf("Invalid object name: %s", objectKey)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
 		return
+	}
+
+	// content-type
+	ct := r.Header.Get(xhttp.ContentType)
+	if ct == "" {
+		ct = "application/octet-stream"
 	}
 
 	// Validate storage class metadata if present
@@ -186,9 +284,6 @@ func PutObjectHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// etag
-	etag := r.Header.Get(xhttp.ContentMD5)
-	etag = strings.Trim(etag, `" \'`) // 去除双引号和空格
 	size := r.ContentLength
 
 	_os := object.GetObjectService()
@@ -198,21 +293,30 @@ func PutObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := _os.PutObject(r.Body, object.BaseObjectParams{
+	obj, err := _os.PutObject(r.Body, r.Header, &object.BaseObjectParams{
 		BucketName:   bucket,
 		ObjKey:       objectKey,
-		Etag:         etag,
+		ContentType:  ct,
 		ContentLen:   size,
 		AccessKeyID:  accessKeyID,
 		StorageClass: sc,
 	})
+
 	if err != nil {
+		if err.Error() == xhttp.ToError(xhttp.ErrAccessDenied).Error() {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+			return
+		}
+		if err.Error() == xhttp.ToError(xhttp.ErrNoSuchBucket).Error() {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+			return
+		}
 		logger.GetLogger("boulder").Errorf("Error putting object: %s", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
 
-	w.Header().Set(xhttp.ETag, etag)
+	w.Header().Set(xhttp.ETag, obj.ETag)
 	w.WriteHeader(http.StatusOK)
 }
 

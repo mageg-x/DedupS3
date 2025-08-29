@@ -20,12 +20,16 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	xhttp "github.com/mageg-x/boulder/internal/http"
 	"net"
+	"net/http"
 	"net/url"
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -367,4 +371,52 @@ func CheckValidStorageClass(storageClass string) (err error) {
 		}
 	}
 	return errors.New("Invalid storage class")
+}
+
+func ExtractMetadata(header http.Header) (map[string]string, error) {
+	meta := make(map[string]string)
+	totalSize := 0
+
+	for key, values := range header {
+		lowerKey := strings.ToLower(key)
+		if !strings.HasPrefix(lowerKey, strings.ToLower(xhttp.AMZMetPrefix)) {
+			continue
+		}
+
+		metaKey := key[len(xhttp.AMZMetPrefix):]
+
+		// 检查 key 是否只包含合法字符（可选）
+		if !IsValidMetaKey(metaKey) {
+			return nil, fmt.Errorf("invalid meta key: %s", metaKey)
+		}
+
+		if len(values) == 0 {
+			continue
+		}
+		metaValue := values[0]
+
+		// 检查值是否为有效 UTF-8（可选）
+		if !utf8.ValidString(metaValue) {
+			return nil, fmt.Errorf("meta value not valid UTF-8: %s", metaKey)
+		}
+
+		size := len(metaKey) + len(metaValue)
+		if totalSize+size > xhttp.AMZMaxMetaSize {
+			return nil, fmt.Errorf("user metadata exceeds 2KB limit")
+		}
+		totalSize += size
+
+		meta[metaKey] = metaValue
+	}
+
+	return meta, nil
+}
+
+func IsValidMetaKey(key string) bool {
+	for _, r := range key {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' && r != '_' && r != '.' {
+			return false
+		}
+	}
+	return len(key) > 0
 }

@@ -3,13 +3,12 @@ package block
 
 import (
 	"fmt"
+	xconf "github.com/mageg-x/boulder/internal/config"
+	"github.com/mageg-x/boulder/internal/logger"
 	"io"
 	"os"
 	"path/filepath"
 	"sync"
-
-	xconf "github.com/mageg-x/boulder/internal/config"
-	"github.com/mageg-x/boulder/internal/logger"
 )
 
 // DiskStore 实现基于磁盘的存储后端
@@ -89,7 +88,7 @@ func (d *DiskStore) ReadBlock(blockID string, offset, length int64) ([]byte, err
 	if err != nil {
 		if os.IsNotExist(err) {
 			logger.GetLogger("boulder").Debugf("Block %s does not exist", blockID)
-			return nil, fmt.Errorf("block %s does not exist", blockID)
+			return nil, ErrBlockNotFound
 		}
 		logger.GetLogger("boulder").Errorf("failed to open block %s: %v", blockID, err)
 		return nil, fmt.Errorf("failed to open block %s: %w", blockID, err)
@@ -146,7 +145,7 @@ func (d *DiskStore) DeleteBlock(blockID string) error {
 	if err := os.Remove(path); err != nil {
 		if os.IsNotExist(err) {
 			logger.GetLogger("boulder").Debugf("Block %s does not exist for deletion", blockID)
-			return fmt.Errorf("block %s does not exist", blockID)
+			return ErrBlockNotFound
 		}
 		logger.GetLogger("boulder").Errorf("failed to delete block %s: %v", blockID, err)
 		return fmt.Errorf("failed to delete block %s: %w", blockID, err)
@@ -177,6 +176,46 @@ func (d *DiskStore) BlockExists(blockID string) (bool, error) {
 // Location 获取块位置
 func (d *DiskStore) Location(blockID string) string {
 	return d.blockPath(blockID)
+}
+
+// List 递归遍历整个存储，流式返回 blockID
+func (d *DiskStore) List() (<-chan string, <-chan error) {
+	blockChan := make(chan string)
+	errChan := make(chan error)
+
+	go func() {
+		defer close(blockChan)
+		defer close(errChan)
+
+		d.mu.RLock()
+		rootPath := d.conf.Path
+		d.mu.RUnlock()
+
+		// 递归遍历目录
+		walker := func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+
+			// 如果是文件，检查是否是 block 文件
+			if !info.IsDir() && len(info.Name()) >= 20 {
+				// 假设 blockID 格式是至少20个字符的文件名
+				blockID := info.Name()
+				blockChan <- blockID
+			}
+			return nil
+		}
+
+		// 开始递归遍历
+		logger.GetLogger("boulder").Infof("starting to list blocks in disk store: %s", rootPath)
+		if err := filepath.Walk(rootPath, walker); err != nil {
+			logger.GetLogger("boulder").Errorf("error while listing blocks: %v", err)
+			errChan <- fmt.Errorf("error while listing blocks: %w", err)
+		}
+		logger.GetLogger("boulder").Infof("finished listing blocks in disk store")
+	}()
+
+	return blockChan, errChan
 }
 
 // blockPath 获取块的完整路径

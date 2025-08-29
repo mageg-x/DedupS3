@@ -32,7 +32,7 @@ func GetIamService() *IamService {
 	if instance == nil || instance.iam == nil {
 		kvStore, err := kv.GetKvStore()
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("Failed to get kv store: %v", err)
+			logger.GetLogger("boulder").Errorf("failed to get kv store: %v", err)
 			return nil
 		}
 		instance = &IamService{
@@ -113,7 +113,7 @@ func (s *IamService) GetAccount(accountID string) (*meta.IAMAccount, error) {
 		if e == nil && ok {
 			obj, yes := account.(*meta.IAMAccount)
 			if !yes {
-				logger.GetLogger("boulder").Errorf("Cached account %s is not of type *meta.IAMAccount", accountID)
+				logger.GetLogger("boulder").Errorf("cached account %s is not of type *meta.iamaccount", accountID)
 				cache.Del(context.Background(), key)
 			}
 			return obj, nil
@@ -204,7 +204,7 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IAMAc
 		return false, err
 	}
 
-	if cache, e := xcache.GetCache(); e == nil && cache != nil {
+	if cache, err := xcache.GetCache(); err == nil && cache != nil {
 		cache.Del(context.Background(), key)
 		cache.BatchDel(context.Background(), changeKeys)
 	}

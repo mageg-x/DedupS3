@@ -168,9 +168,10 @@ const (
 	AmzWriteOffsetBytes = "x-amz-write-offset-bytes"
 
 	// Post Policy related
-	AmzMetaUUID = "X-Amz-Meta-Uuid"
-	AmzMetaName = "X-Amz-Meta-Name"
-
+	AmzMetaUUID    = "X-Amz-Meta-Uuid"
+	AmzMetaName    = "X-Amz-Meta-Name"
+	AMZMetPrefix   = "X-Amz-Meta-"
+	AMZMaxMetaSize = 2 * 1024 // 2KB
 	// SUBNET related
 	SubnetAPIKey = "x-subnet-api-key"
 )

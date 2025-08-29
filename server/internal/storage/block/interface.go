@@ -16,12 +16,19 @@
  */
 package block
 
+import "errors"
+
+var (
+	ErrBlockNotFound = errors.New("block not found")
+)
+
 // BlockStore  存储后端接口
 type BlockStore interface {
 	Type() string
 	WriteBlock(blockID string, data []byte) error
 	ReadBlock(blockID string, offset, length int64) ([]byte, error)
 	DeleteBlock(blockID string) error
+	List() (<-chan string, <-chan error)
 	Location(blockID string) string
 	BlockExists(blockID string) (bool, error)
 }

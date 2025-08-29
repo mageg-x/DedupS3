@@ -60,3 +60,28 @@ func (c *Chunk) CalcChunkHash() string {
 	c.Hash = hex.EncodeToString(fp[:20])
 	return c.Hash
 }
+
+// Clone 创建 Chunk 的深拷贝
+// 该方法创建一个新的 Chunk 实例，并复制所有字段的值
+// 特别注意：对于 Data 字段([]byte)，会创建新的切片并复制内容，确保是真正的深拷贝
+func (c *Chunk) Clone() *Chunk {
+	if c == nil {
+		return nil
+	}
+
+	// 创建新的 Chunk 实例
+	clone := &Chunk{
+		Hash:     c.Hash,
+		Size:     c.Size,
+		RefCount: c.RefCount,
+		BlockID:  c.BlockID,
+	}
+
+	// 深拷贝 Data 字段
+	if c.Data != nil {
+		clone.Data = make([]byte, len(c.Data))
+		copy(clone.Data, c.Data)
+	}
+
+	return clone
+}

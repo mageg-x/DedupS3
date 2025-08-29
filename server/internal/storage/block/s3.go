@@ -15,6 +15,7 @@ import (
 	"github.com/mageg-x/boulder/internal/logger"
 	"io"
 	"path"
+	"strings"
 	"time"
 )
 
@@ -29,10 +30,6 @@ type S3Store struct {
 func NewS3Store(c *xconf.S3Config) (*S3Store, error) {
 	logger.GetLogger("boulder").Infof("Creating new S3 store with bucket: %s", c.Bucket)
 
-	if c == nil {
-		logger.GetLogger("boulder").Errorf("NewS3Store: nil config")
-		return nil, fmt.Errorf("NewDiskStore: nil config")
-	}
 	ctx := context.Background()
 
 	if c.AccessKey == "" || c.SecretKey == "" {
@@ -192,9 +189,10 @@ func (s *S3Store) HealthCheck() error {
 		Bucket: aws.String(s.conf.Bucket),
 	})
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("S3 health check failed: %v", err)
-		return fmt.Errorf("S3 health check failed: %w", err)
+		logger.GetLogger("boulder").Errorf("s3 health check failed: %v", err)
+		return fmt.Errorf("s3 health check failed: %w", err)
 	}
+
 	logger.GetLogger("boulder").Debugf("S3 health check passed")
 	return nil
 }
@@ -204,10 +202,93 @@ func (s *S3Store) Location(blockID string) string {
 	return fmt.Sprintf("s3://%s/%s", s.conf.Bucket, s.blockKey(blockID))
 }
 
+// List 使用分页方式列出S3存储中的所有块，流式返回 blockID
+func (s *S3Store) List() (<-chan string, <-chan error) {
+	blockChan := make(chan string, 100) // 增加缓冲，避免阻塞
+	errChan := make(chan error, 1)
+
+	go func() {
+		defer close(blockChan)
+		defer close(errChan)
+
+		const batchSize = 1000
+		var continuationToken *string
+		isTruncated := true
+		blockPrefix := "blocks/"
+
+		logger.GetLogger("boulder").Infof("Starting to list blocks in S3 store: bucket=%s, prefix=%s", s.conf.Bucket, blockPrefix)
+
+		totalBlocks := 0
+		pageCount := 0
+
+		for isTruncated {
+			pageCount++
+			logger.GetLogger("boulder").Debugf("Listing S3 page %d with continuation token: %v", pageCount, continuationToken)
+
+			resp, err := s.client.ListObjectsV2(s.ctx, &s3.ListObjectsV2Input{
+				Bucket:            aws.String(s.conf.Bucket),
+				Prefix:            aws.String(blockPrefix),
+				MaxKeys:           aws.Int32(batchSize),
+				ContinuationToken: continuationToken,
+			})
+
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("Error listing S3 objects: %v", err)
+				errChan <- fmt.Errorf("error listing S3 objects: %w", err)
+				return
+			}
+
+			// 优化：直接从 Key 末尾提取 blockID，避免 Split 分配
+			pageBlocks := 0
+			for _, obj := range resp.Contents {
+				key := aws.ToString(obj.Key)
+
+				// 路径格式：blocks/xx/yy/zz/blockID → blockID 是最后一段
+				lastSlash := strings.LastIndex(key, "/")
+				if lastSlash == -1 || lastSlash >= len(key)-1 {
+					continue // 无效路径
+				}
+				blockID := key[lastSlash+1:]
+
+				// 只检查长度，不依赖目录层级
+				if len(blockID) < 20 {
+					logger.GetLogger("boulder").Debugf("Skipping invalid block ID (too short): %s", blockID)
+					continue
+				}
+
+				pageBlocks++
+				totalBlocks++
+
+				select {
+				case blockChan <- blockID:
+				case <-s.ctx.Done():
+					logger.GetLogger("boulder").Debugf("Context canceled while listing, total sent: %d", totalBlocks)
+					return
+				}
+			}
+
+			logger.GetLogger("boulder").Debugf("Processed page %d, found %d blocks, total: %d", pageCount, pageBlocks, totalBlocks)
+
+			// 更新分页状态
+			continuationToken = resp.ContinuationToken
+			isTruncated = aws.ToBool(resp.IsTruncated) // 显式转换
+
+			// 每 10 页休息一下，避免请求过密
+			if pageCount%10 == 0 {
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+
+		logger.GetLogger("boulder").Infof("Finished listing blocks, total: %d", totalBlocks)
+	}()
+
+	return blockChan, errChan
+}
+
 // blockKey 获取块在S3中的键
 func (s *S3Store) blockKey(blockID string) string {
 	// 使用两级目录分散对象
-	if len(blockID) < 6 {
+	if len(blockID) < 20 {
 		// 处理短 blockID 的情况
 		logger.GetLogger("boulder").Debugf("Short blockID detected: %s", blockID)
 		return path.Join("blocks", blockID)

@@ -1,7 +1,9 @@
 package block
 
 import (
+	"bytes"
 	"fmt"
+	sb "github.com/mageg-x/boulder/internal/storage/block"
 	"github.com/mageg-x/boulder/internal/utils"
 	"github.com/mageg-x/boulder/service/storage"
 	"github.com/twmb/murmur3"
@@ -73,12 +75,14 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, storageID, bucket, objKey str
 			}
 			chunk.BlockID = curBlock.ID
 			curBlock.ChunkList = append(curBlock.ChunkList, meta.BlockChunk{Hash: chunk.Hash, Size: chunk.Size, Data: chunk.Data})
+			chunk.Data = nil
 			curBlock.TotalSize += int64(chunk.Size)
 			curBlock.UpdatedAt = time.Now()
 			if curBlock.TotalSize > 64*1024*1024 {
 				flushBlock = curBlock
 				s.preBlocks[i] = nil
 			}
+
 		})
 	}
 
@@ -106,10 +110,13 @@ func (s *BlockService) FlushBlock(block *meta.Block) error {
 	}
 
 	blockData := meta.BlockData{
-		ID:        block.ID,
-		TotalSize: block.TotalSize,
-		ChunkList: make([]meta.BlockChunk, 0),
-		Data:      make([]byte, 0),
+		BlockHeader: meta.BlockHeader{
+			ID:        block.ID,
+			TotalSize: block.TotalSize,
+			ChunkList: make([]meta.BlockChunk, 0),
+		},
+
+		Data: make([]byte, 0),
 	}
 	for i := 0; i < len(block.ChunkList); i++ {
 		_chunk := meta.BlockChunk{
@@ -118,6 +125,7 @@ func (s *BlockService) FlushBlock(block *meta.Block) error {
 		}
 		blockData.ChunkList = append(blockData.ChunkList, _chunk)
 		blockData.Data = append(blockData.Data, block.ChunkList[i].Data...)
+		block.ChunkList[i].Data = nil
 	}
 	// 压缩Data
 	compress, err := utils.Compress(blockData.Data)
@@ -125,14 +133,14 @@ func (s *BlockService) FlushBlock(block *meta.Block) error {
 		block.Compressed = true
 		block.RealSize = int64(len(compress))
 		blockData.Data = compress
+	}
 
-		//// 加密Data
-		//encrypt, err := utils.Encrypt(compress, "rao@bang#lin*2018")
-		//if err == nil && encrypt != nil {
-		//	block.Encrypted = true
-		//	block.RealSize = int64(len(encrypt))
-		//	blockData.Data = encrypt
-		//}
+	// 加密Data
+	encrypt, err := utils.Encrypt(blockData.Data, blockData.ID)
+	if err == nil && encrypt != nil {
+		block.Encrypted = true
+		block.RealSize = int64(len(encrypt))
+		blockData.Data = encrypt
 	}
 
 	logger.GetLogger("boulder").Debugf("pre flush block data size %d:%d", blockData.TotalSize, len(blockData.Data))
@@ -151,6 +159,104 @@ func (s *BlockService) FlushBlock(block *meta.Block) error {
 	return nil
 }
 
-func (s *BlockService) RemoveBlock(block *meta.Block) error {
+func (s *BlockService) ReadBlock(storageID, blockID string) (*meta.BlockData, error) {
+	ss := storage.GetStorageService()
+	if ss == nil {
+		logger.GetLogger("boulder").Errorf("get nil storage service")
+		return nil, fmt.Errorf("get nil storage service")
+	}
+
+	st, err := ss.GetStorage(storageID)
+	if err != nil || st == nil || st.Instance == nil {
+		logger.GetLogger("boulder").Errorf("get nil storage instance")
+		return nil, fmt.Errorf("get nil storage instance")
+	}
+
+	data, err := st.Instance.ReadBlock(blockID, 0, 0)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("read block %s failed: %v", blockID, err)
+		return nil, fmt.Errorf("read block %s failed: %v", blockID, err)
+	}
+	blockData := meta.BlockData{}
+	err = msgpack.Unmarshal(data, &blockData)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("msgpack unmarshal block %s  data %d to struct failed: %v", blockID, len(data), err)
+		return nil, fmt.Errorf("msgpack unmarshal block %s  data %d to struct failed: %v", blockID, len(data), err)
+	}
+	if blockID != blockData.ID {
+		logger.GetLogger("boulder").Errorf("read block %s id not match block %s ", blockID, blockData.ID)
+		return nil, fmt.Errorf("read block %s id not match block %s ", blockID, blockData.ID)
+	}
+	if blockData.Compressed {
+		_d, err := utils.Decompress(blockData.Data)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("decompress block %s data failed: %v", blockID, err)
+			return nil, fmt.Errorf("decompress block %s data failed: %v", blockID, err)
+		}
+		blockData.Data = _d
+	}
+
+	if blockData.Encrypted {
+		_d, err := utils.Decrypt(blockData.Data, blockID)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("decrypt block %s failed: %v", blockID, err)
+			return nil, fmt.Errorf("decrypt block %s failed: %v", blockID, err)
+		}
+		blockData.Data = _d
+	}
+	return &blockData, nil
+}
+
+func (s *BlockService) ReadBlockHead(storageID, blockID string) (*meta.BlockHeader, error) {
+	ss := storage.GetStorageService()
+	if ss == nil {
+		logger.GetLogger("boulder").Errorf("get nil storage service")
+		return nil, fmt.Errorf("get nil storage service")
+	}
+
+	st, err := ss.GetStorage(storageID)
+	if err != nil || st == nil || st.Instance == nil {
+		logger.GetLogger("boulder").Errorf("get nil storage instance")
+		return nil, fmt.Errorf("get nil storage instance")
+	}
+
+	data, err := st.Instance.ReadBlock(blockID, 0, 200*1024)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("read block header %s failed: %v", blockID, err)
+		return nil, fmt.Errorf("read block header %s failed: %v", blockID, err)
+	}
+
+	dec := msgpack.NewDecoder(bytes.NewReader(data))
+	var header meta.BlockHeader
+	err = dec.Decode(&header)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("decode block header %s failed: %v", blockID, err)
+		return nil, fmt.Errorf("decode block header %s failed: %v", blockID, err)
+	}
+
+	return &header, nil
+}
+
+func (s *BlockService) RemoveBlock(storageID, blockID string) error {
+	ss := storage.GetStorageService()
+	if ss == nil {
+		logger.GetLogger("boulder").Errorf("get nil storage service")
+		return fmt.Errorf("get nil storage service")
+	}
+
+	st, err := ss.GetStorage(storageID)
+	if err != nil || st == nil || st.Instance == nil {
+		logger.GetLogger("boulder").Errorf("get nil storage instance")
+		return fmt.Errorf("get nil storage instance")
+	}
+
+	err = st.Instance.DeleteBlock(blockID)
+	if err != nil {
+		if err.Error() == sb.ErrBlockNotFound.Error() {
+			return nil
+		}
+		logger.GetLogger("boulder").Debugf("failed to remove block %s: %v", blockID, err)
+		return fmt.Errorf("failed to remove block %s: %v", blockID, err)
+	}
 	return nil
 }

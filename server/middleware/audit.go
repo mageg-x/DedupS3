@@ -72,7 +72,7 @@ func AuditMiddleware(next http.Handler) http.Handler {
 			"bucket":         bucket,
 			"key":            key,
 		})
-		logger.GetLogger("audit").Info(string(txt))
+		logger.GetLogger("audit").Tracef(string(txt))
 	})
 }
 

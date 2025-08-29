@@ -26,6 +26,7 @@ import (
 
 var (
 	ErrKeyExists = errors.New("key already exists")
+	ErrTxnCommit = errors.New("txn commit failed")
 
 	kvInstance KVStore
 	kvMutex    sync.RWMutex

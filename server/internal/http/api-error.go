@@ -381,6 +381,8 @@ const (
 	ErrAuthentication
 	ErrMissingAuthenticationToken
 	ErrRequestExpired
+
+	ERRNotModify
 	apiErrCodeEnd // This is used only for the testing code
 )
 
@@ -2075,6 +2077,11 @@ var errorCodes = errorCodeMap{
 		Code:           "InvalidUTF",
 		Description:    "Invalid UTF-8 character detected.",
 		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ERRNotModify: {
+		Code:           "NotModify",
+		Description:    "Content not modify",
+		HTTPStatusCode: http.StatusNotModified,
 	},
 }
 

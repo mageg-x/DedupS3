@@ -431,7 +431,17 @@ func (o *Object) Copy() *Object {
 		cp.Tags[k] = v
 	}
 
+	// 深拷贝Chunks数组
+	cp.Chunks = make([]ObjChunk, len(o.Chunks))
+	copy(cp.Chunks, o.Chunks)
+
 	return cp
+}
+
+// Clone 创建对象的深拷贝
+// 这个方法与Copy方法功能相同，提供另一种命名方式以便符合不同的编程风格
+func (o *Object) Clone() *Object {
+	return o.Copy()
 }
 
 // IsDeletionAllowed 检查是否允许删除对象

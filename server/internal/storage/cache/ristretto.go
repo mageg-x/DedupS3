@@ -43,11 +43,11 @@ func NewRistretto() (Cache, error) {
 	// 创建Ristretto缓存
 	cache, err := ristretto.NewCache(conf)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to create Ristretto cache: %v", err)
+		logger.GetLogger("boulder").Errorf("failed to create ristretto cache: %v", err)
 		return nil, err
 	}
 
-	logger.GetLogger("boulder").Infof("Ristretto cache initialized successfully")
+	logger.GetLogger("boulder").Infof("ristretto cache initialized successfully")
 	return &Ristretto{
 			client: cache,
 			config: conf,
@@ -58,7 +58,7 @@ func NewRistretto() (Cache, error) {
 // Set 设置键值对
 func (r *Ristretto) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
 	if ctx.Err() != nil {
-		logger.GetLogger("boulder").Errorf("Context error when setting cache item %s: %v", key, ctx.Err())
+		logger.GetLogger("boulder").Errorf("context error when setting cache item %s: %v", key, ctx.Err())
 		return ctx.Err()
 	}
 
@@ -69,26 +69,26 @@ func (r *Ristretto) Set(ctx context.Context, key string, value interface{}, ttl 
 	// 设置缓存项
 	ok := r.client.SetWithTTL(key, value, cost, ttl)
 	if !ok {
-		logger.GetLogger("boulder").Errorf("Failed to set cache item: %s", key)
+		logger.GetLogger("boulder").Errorf("failed to set cache item: %s", key)
 		return errors.New("failed to set cache item")
 	}
 
-	logger.GetLogger("boulder").Debugf("Successfully set cache item: %s", key)
+	logger.GetLogger("boulder").Debugf("successfully set cache item: %s", key)
 	return nil
 }
 
 // Get 获取缓存值
 func (r *Ristretto) Get(ctx context.Context, key string) (interface{}, bool, error) {
 	if ctx.Err() != nil {
-		logger.GetLogger("boulder").Errorf("Context error when getting cache item %s: %v", key, ctx.Err())
+		logger.GetLogger("boulder").Errorf("context error when getting cache item %s: %v", key, ctx.Err())
 		return nil, false, ctx.Err()
 	}
 
 	value, found := r.client.Get(key)
 	if found {
-		logger.GetLogger("boulder").Debugf("Successfully got cache item: %s", key)
+		logger.GetLogger("boulder").Debugf("successfully got cache item: %s", key)
 	} else {
-		logger.GetLogger("boulder").Infof("Failed got cache item: %s", key)
+		logger.GetLogger("boulder").Infof("failed got cache item: %s", key)
 		return value, found, nil
 	}
 	return value, found, nil
@@ -97,36 +97,36 @@ func (r *Ristretto) Get(ctx context.Context, key string) (interface{}, bool, err
 // Del 删除缓存
 func (r *Ristretto) Del(ctx context.Context, key string) error {
 	if ctx.Err() != nil {
-		logger.GetLogger("boulder").Errorf("Context error when deleting cache item %s: %v", key, ctx.Err())
+		logger.GetLogger("boulder").Errorf("context error when deleting cache item %s: %v", key, ctx.Err())
 		return ctx.Err()
 	}
 
 	r.client.Del(key)
-	logger.GetLogger("boulder").Debugf("Successfully deleted cache item: %s", key)
+	logger.GetLogger("boulder").Debugf("successfully deleted cache item: %s", key)
 	return nil
 }
 
 // BatchSet 批量设置键值对
 func (r *Ristretto) BatchSet(ctx context.Context, items map[string]Item) error {
 	if ctx.Err() != nil {
-		logger.GetLogger("boulder").Errorf("Context error when batch setting cache items: %v", ctx.Err())
+		logger.GetLogger("boulder").Errorf("context error when batch setting cache items: %v", ctx.Err())
 		return ctx.Err()
 	}
 
 	for key, item := range items {
 		cost := int64(1)
 		r.client.SetWithTTL(key, item.Value, cost, item.TTL)
-		logger.GetLogger("boulder").Debugf("Set cache item in batch: %s", key)
+		logger.GetLogger("boulder").Debugf("set cache item in batch: %s", key)
 	}
 
-	logger.GetLogger("boulder").Debugf("Successfully batch set %d cache items", len(items))
+	logger.GetLogger("boulder").Debugf("successfully batch set %d cache items", len(items))
 	return nil
 }
 
 // BatchGet 批量获取缓存值
 func (r *Ristretto) BatchGet(ctx context.Context, keys []string) (map[string]interface{}, error) {
 	if ctx.Err() != nil {
-		logger.GetLogger("boulder").Errorf("Context error when batch getting cache items: %v", ctx.Err())
+		logger.GetLogger("boulder").Errorf("context error when batch getting cache items: %v", ctx.Err())
 		return nil, ctx.Err()
 	}
 
@@ -135,48 +135,48 @@ func (r *Ristretto) BatchGet(ctx context.Context, keys []string) (map[string]int
 	for _, key := range keys {
 		if value, found := r.client.Get(key); found {
 			result[key] = value
-			logger.GetLogger("boulder").Debugf("Got cache item in batch: %s", key)
+			logger.GetLogger("boulder").Debugf("got cache item in batch: %s", key)
 		} else {
-			logger.GetLogger("boulder").Debugf("Cache item not found in batch: %s", key)
+			logger.GetLogger("boulder").Debugf("cache item not found in batch: %s", key)
 		}
 	}
 
-	logger.GetLogger("boulder").Debugf("Successfully batch got %d cache items", len(result))
+	logger.GetLogger("boulder").Debugf("successfully batch got %d cache items", len(result))
 	return result, nil
 }
 
 // BatchDel 批量删除缓存
 func (r *Ristretto) BatchDel(ctx context.Context, keys []string) error {
 	if ctx.Err() != nil {
-		logger.GetLogger("boulder").Errorf("Context error when batch deleting cache items: %v", ctx.Err())
+		logger.GetLogger("boulder").Errorf("context error when batch deleting cache items: %v", ctx.Err())
 		return ctx.Err()
 	}
 
 	for _, key := range keys {
 		r.client.Del(key)
-		logger.GetLogger("boulder").Debugf("Deleted cache item in batch: %s", key)
+		logger.GetLogger("boulder").Debugf("deleted cache item in batch: %s", key)
 	}
 
-	logger.GetLogger("boulder").Debugf("Successfully batch deleted %d cache items", len(keys))
+	logger.GetLogger("boulder").Debugf("successfully batch deleted %d cache items", len(keys))
 	return nil
 }
 
 // Exists 检查键是否存在
 func (r *Ristretto) Exists(ctx context.Context, key string) (bool, error) {
 	if ctx.Err() != nil {
-		logger.GetLogger("boulder").Errorf("Context error when checking existence of %s: %v", key, ctx.Err())
+		logger.GetLogger("boulder").Errorf("context error when checking existence of %s: %v", key, ctx.Err())
 		return false, ctx.Err()
 	}
 
 	_, found := r.client.Get(key)
-	logger.GetLogger("boulder").Debugf("Cache item %s exists: %v", key, found)
+	logger.GetLogger("boulder").Debugf("cache item %s exists: %v", key, found)
 	return found, nil
 }
 
 // Clear 清空缓存
 func (r *Ristretto) Clear(ctx context.Context) error {
 	if ctx.Err() != nil {
-		logger.GetLogger("boulder").Errorf("Context error when clearing cache: %v", ctx.Err())
+		logger.GetLogger("boulder").Errorf("context error when clearing cache: %v", ctx.Err())
 		return ctx.Err()
 	}
 
@@ -188,18 +188,18 @@ func (r *Ristretto) Clear(ctx context.Context) error {
 		BufferItems: r.config.BufferItems,
 	})
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to create new cache during clear: %v", err)
+		logger.GetLogger("boulder").Errorf("failed to create new cache during clear: %v", err)
 		return err
 	}
 
 	r.client = newCache
-	logger.GetLogger("boulder").Debugf("Successfully cleared Ristretto cache")
+	logger.GetLogger("boulder").Debugf("successfully cleared ristretto cache")
 	return nil
 }
 
 // Close 关闭缓存连接
 func (r *Ristretto) Close() error {
 	// Ristretto不需要关闭
-	logger.GetLogger("boulder").Debugf("Ristretto cache connection closed")
+	logger.GetLogger("boulder").Debugf("ristretto cache connection closed")
 	return nil
 }

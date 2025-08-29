@@ -1,19 +1,4 @@
-/*
- * Copyright (C) 2025-2025 raochaoxun <raochaoxun@gmail.com>.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
+// Package meta /*
 package meta
 
 import (
@@ -29,33 +14,36 @@ type BlockChunk struct {
 	Data []byte `json:"-" msgpack:"-"`       // 仅用于内存操作，不持久化
 }
 
-// BlockData ，存放在磁盘上
-type BlockData struct {
-	ID         string       `json:"id" msgpack:"id"`                 // 唯一标识符
-	TotalSize  int64        `json:"total_size" msgpack:"total_size"` // 总大小(字节)
-	Compressed bool         `json:"compressed" msgpack:"compressed"` // 是否压缩
-	Encrypted  bool         `json:"encrypted" msgpack:"encrypted"`   // 是否加密
-	ChunkList  []BlockChunk `json:"chunklist" msgpack:"chunklist"`   // chunk 索引
-	Data       []byte       `json:"data" msgpack:"data"`             //数据块
+// BlockHeader BlockData ，存放在磁盘上只包含头信息，不含 Data
+type BlockHeader struct {
+	ID         string       `msgpack:"id"`
+	TotalSize  int64        `msgpack:"total_size"`
+	Compressed bool         `msgpack:"compressed"`
+	Encrypted  bool         `msgpack:"encrypted"`
+	ChunkList  []BlockChunk `msgpack:"chunklist"`
 }
 
-// Block 表示存储块, 存在元数据中
+// BlockData BlockData: 完整结构（包含 Data）
+type BlockData struct {
+	BlockHeader
+	Data []byte `msgpack:"data"`
+}
+
+// Block 表示存储块元数据, 存在元数据中
 type Block struct {
-	ID         string       `json:"id" msgpack:"id"`                 // 唯一标识符
-	TotalSize  int64        `json:"total_size" msgpack:"total_size"` // 总大小(字节)
-	Compressed bool         `json:"compressed" msgpack:"compressed"` // 是否压缩
-	Encrypted  bool         `json:"encrypted" msgpack:"encrypted"`   // 是否加密
-	RealSize   int64        `json:"real_size" msgpack:"real_size"`   // 实际占用大小
-	ChunkList  []BlockChunk `json:"chunk_list" msgpack:"chunk_list"` // 包含的块列表
-	StorageID  string       `json:"storage_id" msgpack:"storage_id"` // 存储后端ID
-	CreatedAt  time.Time    `json:"created_at" msgpack:"created_at"` // 创建时间
-	UpdatedAt  time.Time    `json:"updated_at" msgpack:"updated_at"` // 更新时间
+	BlockHeader
+	RealSize  int64     `json:"real_size" msgpack:"real_size"`   // 实际占用大小
+	StorageID string    `json:"storage_id" msgpack:"storage_id"` // 存储后端ID
+	CreatedAt time.Time `json:"created_at" msgpack:"created_at"` // 创建时间
+	UpdatedAt time.Time `json:"updated_at" msgpack:"updated_at"` // 更新时间
 }
 
 // NewBlock 创建新块
 func NewBlock(storageID string) *Block {
 	return &Block{
-		ID:        GenBlockID(),
+		BlockHeader: BlockHeader{
+			ID: GenBlockID(),
+		},
 		StorageID: storageID,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
@@ -64,4 +52,41 @@ func NewBlock(storageID string) *Block {
 
 func GenBlockID() string {
 	return utils.GenUUID()
+}
+
+// Clone 创建 Block 的深拷贝
+// 该方法创建一个新的 Block 实例，并复制所有字段的值
+// 对于引用类型字段（如 ChunkList），会创建新的切片并复制其中的元素
+func (b *Block) Clone() *Block {
+	if b == nil {
+		return nil
+	}
+
+	// 创建新的 Block 实例
+	clone := &Block{
+		BlockHeader: BlockHeader{
+			ID:         b.ID,
+			TotalSize:  b.TotalSize,
+			Compressed: b.Compressed,
+			Encrypted:  b.Encrypted,
+			// 深拷贝 ChunkList
+			ChunkList: make([]BlockChunk, len(b.ChunkList)),
+		},
+		RealSize:  b.RealSize,
+		StorageID: b.StorageID,
+		CreatedAt: b.CreatedAt,
+		UpdatedAt: b.UpdatedAt,
+	}
+
+	// 复制 ChunkList 中的每个元素
+	for i, chunk := range b.ChunkList {
+		newChunk := chunk
+		if chunk.Data != nil {
+			newChunk.Data = make([]byte, len(chunk.Data))
+			copy(newChunk.Data, chunk.Data)
+		}
+		clone.ChunkList[i] = newChunk
+	}
+
+	return clone
 }

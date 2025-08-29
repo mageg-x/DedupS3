@@ -21,6 +21,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/mageg-x/boulder/service/storage"
+	gc2 "github.com/mageg-x/boulder/service/task"
 	"math/rand"
 	"os"
 	"os/signal"
@@ -108,19 +109,32 @@ func main() {
 
 	// 初始化 缺省block存储
 	bs := storage.GetStorageService()
-	strore, _ := bs.AddStorage("disk", "STANDARD", config.BlockConfig{
+	store, _ := bs.AddStorage("disk", "STANDARD", config.BlockConfig{
 		Disk: config.DiskConfig{
 			Path: "./data/blocks",
 		},
 	})
-	strores := bs.ListStorages()
-	logger.GetLogger("boulder").Tracef("list store %v strores %+v", strore, strores)
+	stores := bs.ListStorages()
+
+	logger.GetLogger("boulder").Infof("list store %v strores %#v", store, stores)
+
+	// 初始化 垃圾回收后台服务
+	gc := gc2.GetGCService()
+	if gc == nil {
+		logger.GetLogger("boulder").Error("failed to init task service")
+		panic(err)
+	}
+	err = gc.Start()
+	if err != nil {
+		logger.GetLogger("boulder").Error("failed to start task service", zap.Error(err))
+		panic(err)
+	}
 
 	// 制造一些测试数据
 	//iamService := iam.GetIamService()
 	//account, _ := iamService.CreateAccount("stevenrao", "Abcd@1234")
 	//ak, err := iamService.CreateAccessKey(account.AccountID, account.Name, time.Now().Add(time.Hour*24*365))
-	//logger.GetLogger("boulder").Tracef("create account %v ak %v ", account, ak)
+	//logger.GetLogger("boulder").Infof("create account %v ak %v ", account, ak)
 
 	// 3. 创建路由处理器
 	mux := router.SetupRouter()
@@ -135,7 +149,7 @@ func main() {
 		RecvBufSize: cfg.Server.RecvBufSize,
 		SendBufSize: cfg.Server.SendBufSize,
 		Trace: func(msg string) {
-			logger.GetLogger("boulder").Infof(msg)
+			logger.GetLogger("boulder").Tracef(msg)
 		},
 		UserTimeout: int(cfg.Server.ConnUserTimeout.Milliseconds()),
 	}

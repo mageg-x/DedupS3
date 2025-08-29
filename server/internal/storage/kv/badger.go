@@ -44,18 +44,18 @@ func InitBadgerStore(cfg xconf.BadgerConfig) (*BadgerStore, error) {
 
 	db, err := badger.Open(opts)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to open BadgerDB: %v", err)
+		logger.GetLogger("boulder").Errorf("failed to open badgerdb: %v", err)
 		return nil, fmt.Errorf("failed to open badger db: %w", err)
 	}
 
-	logger.GetLogger("boulder").Infof("BadgerDB store initialized successfully")
+	logger.GetLogger("boulder").Infof("badgerdb store initialized successfully")
 	return &BadgerStore{db: db}, nil
 }
 
 func (b *BadgerStore) Get(key string, value interface{}) (bool, error) {
 	txn, err := b.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to initialize TiKV txn: %v", err)
+		logger.GetLogger("boulder").Errorf("failed to initialize tikv txn: %v", err)
 		return false, err
 	}
 	defer txn.Rollback()
@@ -65,7 +65,7 @@ func (b *BadgerStore) Get(key string, value interface{}) (bool, error) {
 func (b *BadgerStore) GetRaw(key string) ([]byte, bool, error) {
 	txn, err := b.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to initialize TiKV txn: %v", err)
+		logger.GetLogger("boulder").Errorf("failed to initialize tikv txn: %v", err)
 		return nil, false, err
 	}
 	defer txn.Rollback()
@@ -75,7 +75,7 @@ func (b *BadgerStore) GetRaw(key string) ([]byte, bool, error) {
 func (b *BadgerStore) BatchGet(keys []string) (map[string][]byte, error) {
 	txn, err := b.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to initialize TiKV txn: %v", err)
+		logger.GetLogger("boulder").Errorf("failed to initialize tikv txn: %v", err)
 		return nil, err
 	}
 	defer txn.Rollback()
@@ -85,13 +85,13 @@ func (b *BadgerStore) BatchGet(keys []string) (map[string][]byte, error) {
 func (b *BadgerStore) Set(key string, value interface{}) error {
 	txn, err := b.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to initialize TiKV txn: %v", err)
+		logger.GetLogger("boulder").Errorf("failed to initialize tikv txn: %v", err)
 		return err
 	}
 	defer txn.Rollback()
 	err = txn.Set(key, value)
 	if err == nil {
-		logger.GetLogger("boulder").Infof("Setting key %s with value %v", key, value)
+		logger.GetLogger("boulder").Infof("setting key %s with value %v", key, value)
 		err = txn.Commit()
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
@@ -109,16 +109,16 @@ func (b *BadgerStore) BeginTxn(_ context.Context, _ *TxnOpt) (Txn, error) {
 // Close 关闭数据库
 func (b *BadgerStore) Close() error {
 	if b.db == nil {
-		logger.GetLogger("boulder").Errorf("Database already closed")
+		logger.GetLogger("boulder").Errorf("database already closed")
 		return errors.New("database already closed")
 	}
 
 	if err := b.db.Close(); err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to close BadgerDB: %v", err)
+		logger.GetLogger("boulder").Errorf("failed to close badgerdb: %v", err)
 		return fmt.Errorf("failed to close badger db: %w", err)
 	}
 
-	logger.GetLogger("boulder").Debugf("BadgerDB store closed successfully")
+	logger.GetLogger("boulder").Debugf("badgerdb store closed successfully")
 	return nil
 }
 
@@ -126,19 +126,19 @@ func (b *BadgerStore) Close() error {
 func (t *BadgerTxn) Get(key string, value interface{}) (bool, error) {
 	data, exists, err := t.GetRaw(key)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Error getting key %s: %v", key, err)
+		logger.GetLogger("boulder").Errorf("error getting key %s: %v", key, err)
 		return false, err
 	}
 	if !exists {
-		logger.GetLogger("boulder").Debugf("Key not found: %s", key)
+		logger.GetLogger("boulder").Debugf("key not found: %s", key)
 		return false, nil
 	}
 
 	if err := json.Unmarshal(data, value); err != nil {
-		logger.GetLogger("boulder").Errorf("JSON unmarshal error for key %s: %v", key, err)
+		logger.GetLogger("boulder").Errorf("json unmarshal error for key %s: %v", key, err)
 		return true, fmt.Errorf("json unmarshal error: %w", err)
 	}
-	logger.GetLogger("boulder").Debugf("Successfully got value for key: %s", key)
+	logger.GetLogger("boulder").Debugf("successfully got value %#v for key: %s, data len %d", value, key, len(data))
 	return true, nil
 }
 
@@ -148,7 +148,7 @@ func (t *BadgerTxn) GetRaw(key string) ([]byte, bool, error) {
 	item, err := t.txn.Get([]byte(key))
 	if err != nil {
 		if errors.Is(err, badger.ErrKeyNotFound) {
-			logger.GetLogger("boulder").Debugf("Key not found: %s", key)
+			logger.GetLogger("boulder").Debugf("key not found: %s", key)
 			return nil, false, nil
 		}
 		return nil, false, err
@@ -160,8 +160,9 @@ func (t *BadgerTxn) GetRaw(key string) ([]byte, bool, error) {
 		return nil
 	})
 	if err == nil {
-		logger.GetLogger("boulder").Debugf("Successfully got raw data for key: %s", key)
+		logger.GetLogger("boulder").Debugf("successfully got raw data for key: %s", key)
 	}
+	logger.GetLogger("boulder").Debugf("successfully get key %s data %d", key, len(data))
 	return data, true, err
 }
 
@@ -197,20 +198,21 @@ func (t *BadgerTxn) BatchGet(keys []string) (map[string][]byte, error) {
 func (t *BadgerTxn) Set(key string, value interface{}) error {
 	data, err := json.Marshal(value)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("JSON marshal error for key %s: %v", key, err)
+		logger.GetLogger("boulder").Errorf("json marshal error for key %s: %v", key, err)
 		return fmt.Errorf("json marshal error: %w", err)
 	}
 	err = t.txn.Set([]byte(key), data)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to put key %s: %v", key, err)
+		logger.GetLogger("boulder").Errorf("failed to put key %s: %v", key, err)
 	}
+	logger.GetLogger("boulder").Debugf("successfully set key %s data %d", key, len(data))
 	return err
 }
 
 func (t *BadgerTxn) SetNX(key string, value interface{}) error {
 	data, err := json.Marshal(value)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("JSON marshal error for key %s: %v", key, err)
+		logger.GetLogger("boulder").Errorf("json marshal error for key %s: %v", key, err)
 		return fmt.Errorf("json marshal error: %w", err)
 	}
 	_, err = t.txn.Get([]byte(key))
@@ -231,14 +233,14 @@ func (t *BadgerTxn) BatchSet(kvs map[string]interface{}) error {
 		// 序列化值
 		data, err := json.Marshal(value)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("JSON marshal error for key %s: %v", key, err)
+			logger.GetLogger("boulder").Errorf("json marshal error for key %s: %v", key, err)
 			return fmt.Errorf("json marshal error for key %s: %w", key, err)
 		}
 
 		// 设置键值对
 		err = t.txn.Set([]byte(key), data)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("Failed to set key %s: %v", key, err)
+			logger.GetLogger("boulder").Errorf("failed to set key %s: %v", key, err)
 			return fmt.Errorf("failed to set key %s: %w", key, err)
 		}
 	}
@@ -249,7 +251,7 @@ func (t *BadgerTxn) BatchSet(kvs map[string]interface{}) error {
 func (t *BadgerTxn) Delete(key string) error {
 	err := t.txn.Delete([]byte(key))
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to delete key %s: %v", key, err)
+		logger.GetLogger("boulder").Errorf("failed to delete key %s: %v", key, err)
 	}
 	return err
 }
@@ -275,7 +277,7 @@ func (t *BadgerTxn) DeletePrefix(prefix string, limit int32) error {
 		// 删除键
 		err := t.txn.Delete(key)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("Failed to delete key %s: %v", string(key), err)
+			logger.GetLogger("boulder").Errorf("failed to delete key %s: %v", string(key), err)
 			return fmt.Errorf("failed to delete key %s: %w", string(key), err)
 		}
 	}
@@ -309,7 +311,7 @@ func (t *BadgerTxn) Scan(prefix string, startKey string, limit int) ([]string, s
 	for ; it.Valid() && count < limit; it.Next() {
 		item := it.Item()
 		key := item.Key()
-
+		//logger.GetLogger("boulder").Errorf("found key %s in prefix %s", string(key), string(seekKey))
 		// 检查是否仍然在指定前缀范围内
 		if len(key) < prefixLen || !bytes.Equal(key[:prefixLen], prefixBytes) {
 			break
