@@ -18,6 +18,7 @@ package handler
 
 import (
 	"encoding/xml"
+	"errors"
 	"net/http"
 	"regexp"
 	"strings"
@@ -412,9 +413,9 @@ func PutBucketHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed create bucket err: %v", err)
 
-		if err.Error() == xhttp.ToError(xhttp.ErrBucketAlreadyOwnedByYou).Error() {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrBucketAlreadyOwnedByYou)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrBucketAlreadyOwnedByYou)
-		} else if err.Error() == xhttp.ToError(xhttp.ErrBucketAlreadyExists).Error() {
+		} else if errors.Is(err, xhttp.ToError(xhttp.ErrBucketAlreadyExists)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrBucketAlreadyExists)
 		} else {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrBucketMetadataNotInitialized)
@@ -445,7 +446,7 @@ func HeadBucketHandler(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil || _bucket == nil {
 		logger.GetLogger("boulder").Errorf("bucket %s does not exist: %v", bucket, err)
-		if err.Error() == xhttp.ToError(xhttp.ErrNoSuchBucket).Error() {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
 			return
 		}

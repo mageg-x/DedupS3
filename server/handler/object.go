@@ -17,6 +17,7 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -58,11 +59,11 @@ func HeadObjectHandler(w http.ResponseWriter, r *http.Request) {
 		AccessKeyID: accessKeyID,
 	})
 	if err != nil {
-		if err.Error() == xhttp.ToError(xhttp.ErrAccessDenied).Error() {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
 			return
 		}
-		if err.Error() == xhttp.ToError(xhttp.ErrNoSuchBucket).Error() {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
 			return
 		}
@@ -303,11 +304,11 @@ func PutObjectHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
-		if err.Error() == xhttp.ToError(xhttp.ErrAccessDenied).Error() {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
 			return
 		}
-		if err.Error() == xhttp.ToError(xhttp.ErrNoSuchBucket).Error() {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
 			return
 		}

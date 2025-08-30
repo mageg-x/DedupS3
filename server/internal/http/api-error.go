@@ -7,6 +7,53 @@ import (
 )
 
 type APIErrorCode int
+type errorCodeMap map[APIErrorCode]APIError
+
+// APIError structure
+type APIError struct {
+	Code           string
+	Description    string
+	HTTPStatusCode int
+	ObjectSize     string
+	RangeRequested string
+}
+
+func (e APIError) Error() string {
+	return e.Description
+}
+
+func (e APIError) Is(target error) bool {
+	// 情况1：target 是 APIError 值或指针（直接比较）
+	if tgt, ok := target.(APIError); ok {
+		return e.Code == tgt.Code
+	}
+	if tgt, ok := target.(*APIError); ok {
+		return e.Code == tgt.Code
+	}
+
+	// 情况2：target 是包装错误（如 fmt.Errorf("%w", ...)），尝试提取
+	var extracted APIError
+	if errors.As(target, &extracted) {
+		return e.Code == extracted.Code
+	}
+
+	return false
+}
+
+func ToApiErr(code APIErrorCode) APIError {
+	if apiErr, ok := errorCodes[code]; ok {
+		return apiErr
+	}
+	return APIError{
+		Code:           "InternalError",
+		Description:    "Internal error",
+		HTTPStatusCode: http.StatusInternalServerError,
+	}
+}
+
+func ToError(code APIErrorCode) error {
+	return fmt.Errorf("%w", ToApiErr(code))
+}
 
 // Error codes, non exhaustive list - http://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html
 const (
@@ -385,17 +432,6 @@ const (
 	ERRNotModify
 	apiErrCodeEnd // This is used only for the testing code
 )
-
-// APIError structure
-type APIError struct {
-	Code           string
-	Description    string
-	HTTPStatusCode int
-	ObjectSize     string
-	RangeRequested string
-}
-
-type errorCodeMap map[APIErrorCode]APIError
 
 // error code to APIError structure, these fields carry respective
 // descriptions for all the error responses.
@@ -2083,21 +2119,4 @@ var errorCodes = errorCodeMap{
 		Description:    "Content not modify",
 		HTTPStatusCode: http.StatusNotModified,
 	},
-}
-
-func ToApiErr(code APIErrorCode) APIError {
-	apiErr, ok := errorCodes[code]
-	if !ok {
-		return APIError{
-			Code:           "InternalError",
-			Description:    "Internal error",
-			HTTPStatusCode: http.StatusInternalServerError,
-		}
-	}
-	return apiErr
-}
-
-func ToError(code APIErrorCode) error {
-	apiErr := ToApiErr(code)
-	return errors.New(apiErr.Description)
 }

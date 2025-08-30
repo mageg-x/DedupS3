@@ -19,8 +19,10 @@ package kv
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
+	tikverr "github.com/tikv/client-go/v2/error"
 	"github.com/tikv/client-go/v2/tikv"
 	pd "github.com/tikv/pd/client"
 
@@ -67,7 +69,7 @@ func (t *TiKVStore) Get(key string, value interface{}) (bool, error) {
 
 	data, err := snapshot.Get(context.Background(), []byte(key))
 	if err != nil {
-		if err.Error() == "not exist" {
+		if errors.Is(err, tikverr.ErrNotExist) {
 			return false, nil
 		}
 		logger.GetLogger("boulder").Errorf("Error getting key %s: %v", key, err)
@@ -97,7 +99,7 @@ func (t *TiKVStore) GetRaw(key string) ([]byte, bool, error) {
 
 	data, err := snapshot.Get(context.Background(), []byte(key))
 	if err != nil {
-		if err.Error() == "not exist" {
+		if errors.Is(err, tikverr.ErrNotExist) {
 			return nil, false, nil
 		}
 		logger.GetLogger("boulder").Errorf("Error getting key %s: %v", key, err)
@@ -190,7 +192,7 @@ func (t *TiKVTxn) Rollback() error {
 func (t *TiKVTxn) Get(key string, value interface{}) (bool, error) {
 	data, err := t.txn.Get(context.Background(), []byte(key))
 	if err != nil {
-		if err.Error() == "not exist" {
+		if errors.Is(err, tikverr.ErrNotExist) {
 			return false, nil
 		}
 		logger.GetLogger("boulder").Errorf("Error getting key %s: %v", key, err)
@@ -213,7 +215,7 @@ func (t *TiKVTxn) Get(key string, value interface{}) (bool, error) {
 func (t *TiKVTxn) GetRaw(key string) ([]byte, bool, error) {
 	data, err := t.txn.Get(context.Background(), []byte(key))
 	if err != nil {
-		if err.Error() == "not exist" {
+		if errors.Is(err, tikverr.ErrNotExist) {
 			return nil, false, nil
 		}
 		logger.GetLogger("boulder").Errorf("Error getting raw data for key %s: %v", key, err)

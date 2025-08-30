@@ -28,20 +28,15 @@ import (
 	"time"
 )
 
-type ObjChunk struct {
-	Hash    string `json:"hash"`     // 内容的哈希
-	BlockID string `json:"block_id"` // 所属BlockID
-}
-
 // Object 表示存储桶中的一个对象
 type Object struct {
 	// 对象标识信息
-	Bucket    string     `json:"bucket" xml:"Bucket"`       // 所属存储桶
-	Key       string     `json:"key" xml:"Key"`             // 对象键
-	VersionID string     `json:"versionId" xml:"VersionId"` // 版本ID（如果启用版本控制）
-	ETag      string     `json:"etag" xml:"ETag"`           // 对象的ETag
-	Size      int64      `json:"size" xml:"Size"`           // 对象大小（字节）
-	Chunks    []ObjChunk `json:"chunks" xml:"Chunk"`        // chunk 索引
+	Bucket    string   `json:"bucket" xml:"Bucket"`       // 所属存储桶
+	Key       string   `json:"key" xml:"Key"`             // 对象键
+	VersionID string   `json:"versionId" xml:"VersionId"` // 版本ID（如果启用版本控制）
+	ETag      string   `json:"etag" xml:"ETag"`           // 对象的ETag
+	Size      int64    `json:"size" xml:"Size"`           // 对象大小（字节）
+	Chunks    []string `json:"chunks" xml:"Chunk"`        // chunk 索引
 
 	// 时间信息
 	LastModified time.Time `json:"lastModified" xml:"LastModified"` // 最后修改时间
@@ -432,7 +427,7 @@ func (o *Object) Copy() *Object {
 	}
 
 	// 深拷贝Chunks数组
-	cp.Chunks = make([]ObjChunk, len(o.Chunks))
+	cp.Chunks = make([]string, len(o.Chunks))
 	copy(cp.Chunks, o.Chunks)
 
 	return cp

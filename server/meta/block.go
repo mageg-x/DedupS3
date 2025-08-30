@@ -16,11 +16,12 @@ type BlockChunk struct {
 
 // BlockHeader BlockData ，存放在磁盘上只包含头信息，不含 Data
 type BlockHeader struct {
-	ID         string       `msgpack:"id"`
-	TotalSize  int64        `msgpack:"total_size"`
-	Compressed bool         `msgpack:"compressed"`
-	Encrypted  bool         `msgpack:"encrypted"`
-	ChunkList  []BlockChunk `msgpack:"chunklist"`
+	ID         string       `json:"id" msgpack:"id"`
+	TotalSize  int64        `json:"total_size" msgpack:"total_size"`
+	RealSize   int64        `json:"real_size" msgpack:"real_size"`   // 实际占用大小
+	Compressed bool         `json:"compressed" msgpack:"compressed"` // 是否压缩
+	Encrypted  bool         `json:"encrypted" msgpack:"encrypted"`   // 是否加密
+	ChunkList  []BlockChunk `json:"chunk_list" msgpack:"chunk_list"` // 块列表
 }
 
 // BlockData BlockData: 完整结构（包含 Data）
@@ -32,7 +33,6 @@ type BlockData struct {
 // Block 表示存储块元数据, 存在元数据中
 type Block struct {
 	BlockHeader
-	RealSize  int64     `json:"real_size" msgpack:"real_size"`   // 实际占用大小
 	StorageID string    `json:"storage_id" msgpack:"storage_id"` // 存储后端ID
 	CreatedAt time.Time `json:"created_at" msgpack:"created_at"` // 创建时间
 	UpdatedAt time.Time `json:"updated_at" msgpack:"updated_at"` // 更新时间
@@ -67,12 +67,12 @@ func (b *Block) Clone() *Block {
 		BlockHeader: BlockHeader{
 			ID:         b.ID,
 			TotalSize:  b.TotalSize,
+			RealSize:   b.RealSize,
 			Compressed: b.Compressed,
 			Encrypted:  b.Encrypted,
 			// 深拷贝 ChunkList
 			ChunkList: make([]BlockChunk, len(b.ChunkList)),
 		},
-		RealSize:  b.RealSize,
 		StorageID: b.StorageID,
 		CreatedAt: b.CreatedAt,
 		UpdatedAt: b.UpdatedAt,

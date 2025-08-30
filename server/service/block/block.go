@@ -2,6 +2,7 @@ package block
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	sb "github.com/mageg-x/boulder/internal/storage/block"
 	"github.com/mageg-x/boulder/internal/utils"
@@ -53,8 +54,8 @@ func GetBlockService() *BlockService {
 	return instance
 }
 
-func (s *BlockService) PutChunk(chunk *meta.Chunk, storageID, bucket, objKey string) (*meta.Block, error) {
-	h := murmur3.Sum32([]byte(bucket + objKey))
+func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.Object) (*meta.Block, error) {
+	h := murmur3.Sum32([]byte(obj.Bucket + obj.Key))
 	i := h % PRE_UPLOAD_BLOCK_NUM
 	var flushBlock *meta.Block
 
@@ -62,15 +63,16 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, storageID, bucket, objKey str
 		utils.WithLock(&s.muxtext, func() {
 			flushBlock = s.preBlocks[i]
 		})
-		// 结束了
-		if flushBlock != nil {
-			logger.GetLogger("boulder").Warnf("ready to flush block %s", flushBlock.ID)
-		}
 	} else {
+		if chunk.Data == nil {
+			logger.GetLogger("boulder").Errorf("chunk data is nil: %#v", chunk)
+			return nil, fmt.Errorf("chunk data is nil: %#v", chunk)
+		}
+
 		utils.WithLock(&s.muxtext, func() {
 			curBlock := s.preBlocks[i]
 			if curBlock == nil {
-				curBlock = meta.NewBlock(storageID)
+				curBlock = meta.NewBlock(obj.DataLocation)
 				s.preBlocks[i] = curBlock
 			}
 			chunk.BlockID = curBlock.ID
@@ -82,11 +84,11 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, storageID, bucket, objKey str
 				flushBlock = curBlock
 				s.preBlocks[i] = nil
 			}
-
 		})
 	}
 
 	if flushBlock != nil {
+		logger.GetLogger("boulder").Warnf("ready to flush one block %s,  %d chunks", flushBlock.ID, len(flushBlock.ChunkList))
 		err := s.FlushBlock(flushBlock)
 		if err != nil {
 			logger.GetLogger("boulder").Warnf("failed to flush block %s: %v", flushBlock.ID, err)
@@ -113,11 +115,12 @@ func (s *BlockService) FlushBlock(block *meta.Block) error {
 		BlockHeader: meta.BlockHeader{
 			ID:        block.ID,
 			TotalSize: block.TotalSize,
-			ChunkList: make([]meta.BlockChunk, 0),
+			ChunkList: make([]meta.BlockChunk, len(block.ChunkList)),
 		},
 
 		Data: make([]byte, 0),
 	}
+
 	for i := 0; i < len(block.ChunkList); i++ {
 		_chunk := meta.BlockChunk{
 			Hash: block.ChunkList[i].Hash,
@@ -127,12 +130,15 @@ func (s *BlockService) FlushBlock(block *meta.Block) error {
 		blockData.Data = append(blockData.Data, block.ChunkList[i].Data...)
 		block.ChunkList[i].Data = nil
 	}
+
 	// 压缩Data
 	compress, err := utils.Compress(blockData.Data)
 	if err == nil && compress != nil {
 		block.Compressed = true
 		block.RealSize = int64(len(compress))
 		blockData.Data = compress
+		blockData.Compressed = true
+		blockData.RealSize = int64(len(compress))
 	}
 
 	// 加密Data
@@ -141,9 +147,12 @@ func (s *BlockService) FlushBlock(block *meta.Block) error {
 		block.Encrypted = true
 		block.RealSize = int64(len(encrypt))
 		blockData.Data = encrypt
+		blockData.Encrypted = true
+		blockData.RealSize = int64(len(encrypt))
 	}
 
-	logger.GetLogger("boulder").Debugf("pre flush block data size %d:%d", blockData.TotalSize, len(blockData.Data))
+	logger.GetLogger("boulder").Debugf("flush block data size %d:%d, compress rata %.2f%%",
+		blockData.TotalSize, blockData.RealSize, float64(blockData.TotalSize)/float64(blockData.RealSize))
 
 	data, err := msgpack.Marshal(&blockData)
 	if err != nil {
@@ -252,7 +261,7 @@ func (s *BlockService) RemoveBlock(storageID, blockID string) error {
 
 	err = st.Instance.DeleteBlock(blockID)
 	if err != nil {
-		if err.Error() == sb.ErrBlockNotFound.Error() {
+		if errors.Is(err, sb.ErrBlockNotFound) {
 			return nil
 		}
 		logger.GetLogger("boulder").Debugf("failed to remove block %s: %v", blockID, err)
