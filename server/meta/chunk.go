@@ -43,8 +43,9 @@ func NewChunk(data []byte) *Chunk {
 		Size:     int32(size),
 		RefCount: 0,
 		BlockID:  "",
-		Data:     data,
+		Data:     make([]byte, size),
 	}
+	copy(c.Data, data)
 	c.Hash = c.CalcChunkHash()
 	return &c
 }

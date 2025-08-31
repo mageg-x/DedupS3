@@ -68,7 +68,7 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.Object) (*meta.Bloc
 
 	if chunk == nil {
 		utils.WithLock(&s.muxtext, func() {
-			flushBlock = s.preBlocks[i]
+			flushBlock = s.preBlocks[i].Clone()
 		})
 	} else {
 		if chunk.Data == nil {
@@ -137,16 +137,21 @@ func (s *BlockService) FlushBlock(block *meta.Block) error {
 		blockData.Data = append(blockData.Data, block.ChunkList[i].Data...)
 		block.ChunkList[i].Data = nil
 	}
+	blockData.RealSize = block.TotalSize
+	block.RealSize = block.TotalSize
 
 	logger.GetLogger("boulder").Infof("flush block data %s total size %d real size %d etag %+v", blockData.ID, blockData.TotalSize, blockData.RealSize, md5.Sum(blockData.Data))
+
 	// 压缩Data
-	compress, err := utils.Compress(blockData.Data)
-	if err == nil && compress != nil {
-		block.Compressed = true
-		block.RealSize = int64(len(compress))
-		blockData.Data = compress
-		blockData.Compressed = true
-		blockData.RealSize = int64(len(compress))
+	if len(blockData.Data) > 1024 && utils.IsCompressible(blockData.Data, 64*1024, 0.9) {
+		compress, err := utils.Compress(blockData.Data)
+		if err == nil && compress != nil {
+			block.Compressed = true
+			block.RealSize = int64(len(compress))
+			blockData.Data = compress
+			blockData.Compressed = true
+			blockData.RealSize = int64(len(compress))
+		}
 	}
 
 	// 加密Data

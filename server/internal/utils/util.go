@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/xml"
 	"errors"
+	"github.com/mageg-x/boulder/internal/logger"
 	"io"
 	"strings"
 	"sync"
@@ -155,6 +156,41 @@ func Decompress(data []byte) ([]byte, error) {
 	}
 
 	return decompressed.Bytes(), nil
+}
+
+// IsCompressibleZstd 判断数据是否值得用 zstd 压缩
+func IsCompressible(data []byte, sampleSize int, thresholdRatio float64) bool {
+	if len(data) == 0 {
+		return false
+	}
+
+	// 只采样前 N 字节
+	sample := data
+	if len(data) > sampleSize {
+		sample = data[:sampleSize]
+	}
+
+	// 使用最快的压缩等级进行试探
+	encoder, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedFastest))
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("zstd encoder create failed: %v, assuming compressible", err)
+		return false // 出错时保守压缩
+	}
+
+	compressed := encoder.EncodeAll(sample, nil)
+	encoder.Close()
+
+	originalSize := len(sample)
+	compressedSize := len(compressed)
+
+	if originalSize == 0 {
+		return false
+	}
+
+	ratio := float64(compressedSize) / float64(originalSize)
+
+	// ratio > threshold → 压缩效果差 → 不值得压缩
+	return ratio < thresholdRatio
 }
 
 // Encrypt 加密函数 - 使用AES-GCM

@@ -291,7 +291,7 @@ func (c *ChunkService) Dedup(ctx context.Context, inputChan, dedupChan chan *met
 							return nil, fmt.Errorf("%s/%s chunk unmarshal failed: %v", obj.Bucket, obj.Key, err)
 						}
 						chunkFilter[item.Hash] = _chunk.BlockID
-						logger.GetLogger("boulder").Infof("chunk %s/%s/%s [%d-%d] has already been dedupped in block %s between object", obj.Bucket, obj.Key, item.Hash, offset-int(item.Size), offset, _chunk.BlockID)
+						logger.GetLogger("boulder").Debugf("chunk %s/%s/%s [%d-%d] has already been dedupped in block %s between object", obj.Bucket, obj.Key, item.Hash, offset-int(item.Size), offset, _chunk.BlockID)
 						item.BlockID = _chunk.BlockID
 						item.Data = nil
 						dedupNum++
@@ -307,7 +307,7 @@ func (c *ChunkService) Dedup(ctx context.Context, inputChan, dedupChan chan *met
 						continue
 					}
 
-					logger.GetLogger("boulder").Infof("chunk %s/%s/%s has not found dedupped", obj.Bucket, obj.Key, item.Hash)
+					logger.GetLogger("boulder").Debugf("chunk %s/%s/%s has not found dedupped", obj.Bucket, obj.Key, item.Hash)
 					chunkFilter[item.Hash] = "000000000000000000000000"
 
 					dedupChan <- item
@@ -506,7 +506,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 			logger.GetLogger("boulder").Infof("%s/%s set gc chunk %s delay to proccess", obj.Bucket, obj.Key, gckey)
 		}
 	}
-	logger.GetLogger("boulder").Infof("set object %s etag %s , put meta %#v ..... ", objKey, obj.ETag, obj)
+	logger.GetLogger("boulder").Infof("set object %s etag %s , put meta %#v ..... ", objKey, obj.ETag, obj.Size)
 	err = txn.Set(objKey, obj)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("set object %s/%s meta info failed: %v", obj.Bucket, obj.Key, err)

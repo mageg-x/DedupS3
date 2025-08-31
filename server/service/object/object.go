@@ -353,7 +353,7 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 		start = s
 		end = s + l - 1
 	}
-	logger.GetLogger("boulder").Infof("read object %s meta %#v", objkey, object)
+	logger.GetLogger("boulder").Infof("read object %s meta %#v", objkey, object.ETag)
 	// 数据内联
 	if object.ChunksInline != nil && object.ChunksInline.Data != nil {
 		logger.GetLogger("boulder").Infof("read object %s data from inline", objkey)
