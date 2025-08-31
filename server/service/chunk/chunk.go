@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	xcache "github.com/mageg-x/boulder/internal/storage/cache"
 	"github.com/mageg-x/boulder/service/task"
 	"io"
 	"math/rand"
@@ -59,9 +60,17 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.Object) error {
 
 	// 配置分块器选项
 	opts := &fastcdc.ChunkerOpts{
-		MinSize:    8 * 1024,
-		MaxSize:    128 * 1024,
-		NormalSize: 16 * 1024,
+		MinSize:    1024 * 1024,
+		NormalSize: 2 * 1024 * 1024,
+		MaxSize:    4 * 1024 * 1024,
+	}
+	// 小文件分块切分粒度小一些
+	if obj.Size < 1024*1024 {
+		opts = &fastcdc.ChunkerOpts{
+			MinSize:    16 * 1024,
+			NormalSize: 128 * 1024,
+			MaxSize:    512 * 1024,
+		}
 	}
 
 	// 切分
@@ -497,7 +506,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 			logger.GetLogger("boulder").Infof("%s/%s set gc chunk %s delay to proccess", obj.Bucket, obj.Key, gckey)
 		}
 	}
-	logger.GetLogger("boulder").Infof("set object %s etag %s , put meta ..... ", objKey, obj.ETag)
+	logger.GetLogger("boulder").Infof("set object %s etag %s , put meta %#v ..... ", objKey, obj.ETag, obj)
 	err = txn.Set(objKey, obj)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("set object %s/%s meta info failed: %v", obj.Bucket, obj.Key, err)
@@ -513,4 +522,80 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 	}
 	logger.GetLogger("boulder").Infof("write object %s/%s  all meta data finish", obj.Bucket, obj.Key)
 	return nil
+}
+
+func (c *ChunkService) BatchGet(chunkIDs []string) ([]*meta.Chunk, error) {
+	chunkMap := make(map[string]*meta.Chunk)
+	keys := make([]string, 0, len(chunkIDs))
+	for _, chunkID := range chunkIDs {
+		chunkKey := "aws:chunk:" + chunkID
+		keys = append(keys, chunkKey)
+	}
+
+	batchSize := 100
+	for i := 0; i < len(keys); i += batchSize {
+		end := i + batchSize
+		if end > len(keys) {
+			end = len(keys)
+		}
+
+		batchKeys := keys[i:end]
+		if cache, err := xcache.GetCache(); err == nil && cache != nil {
+			result, err := cache.BatchGet(context.Background(), batchKeys)
+			if err == nil {
+				for k, item := range result {
+					chunk := item.(*meta.Chunk)
+					if chunk != nil {
+						chunkMap[chunk.Hash] = chunk
+					} else {
+						cache.Del(context.Background(), k)
+					}
+				}
+			}
+		}
+
+		newBatch := make([]string, 0, len(batchKeys))
+		for _, key := range batchKeys {
+			chunkID := key[len("aws:chunk:"):]
+			_, ok := chunkMap[chunkID]
+			if !ok {
+				newBatch = append(newBatch, key)
+			}
+		}
+		batchKeys = newBatch
+
+		result, err := c.kvstore.BatchGet(batchKeys)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("failed to batchGet chunks: %v", err)
+			return nil, fmt.Errorf("failed to batchGet chunks: %v", err)
+		}
+		for k, v := range result {
+			var chunk meta.Chunk
+			err := json.Unmarshal(v, &chunk)
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("failed to Unmarshal chunks %s err: %v", k, err)
+				return nil, fmt.Errorf("failed to Unmarshal chunks %s err: %v", k, err)
+			}
+			chunkMap[chunk.Hash] = &chunk
+
+			if cache, err := xcache.GetCache(); err == nil && cache != nil {
+				chunkKey := "aws:chunk:" + chunk.Hash
+				err := cache.Set(context.Background(), chunkKey, &chunk, time.Hour*24*7)
+				if err != nil {
+					logger.GetLogger("boulder").Errorf("set chunk %s to cache failed: %v", chunkKey, err)
+				}
+			}
+		}
+	}
+
+	chunks := make([]*meta.Chunk, 0, len(chunkIDs))
+	for _, chunkID := range chunkIDs {
+		chunk, ok := chunkMap[chunkID]
+		if !ok {
+			logger.GetLogger("boulder").Errorf("chunk %s not exist", chunkID)
+			return nil, fmt.Errorf("chunk %s not exist", chunkID)
+		}
+		chunks = append(chunks, chunk)
+	}
+	return chunks, nil
 }

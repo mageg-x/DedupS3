@@ -28,15 +28,21 @@ import (
 	"time"
 )
 
+type InlineChunk struct {
+	Compress bool   `json:"compress" xml:"Compress"`
+	Data     []byte `json:"data" xml:"Data"`
+}
+
 // Object 表示存储桶中的一个对象
 type Object struct {
 	// 对象标识信息
-	Bucket    string   `json:"bucket" xml:"Bucket"`       // 所属存储桶
-	Key       string   `json:"key" xml:"Key"`             // 对象键
-	VersionID string   `json:"versionId" xml:"VersionId"` // 版本ID（如果启用版本控制）
-	ETag      string   `json:"etag" xml:"ETag"`           // 对象的ETag
-	Size      int64    `json:"size" xml:"Size"`           // 对象大小（字节）
-	Chunks    []string `json:"chunks" xml:"Chunk"`        // chunk 索引
+	Bucket       string       `json:"bucket" xml:"Bucket"`            // 所属存储桶
+	Key          string       `json:"key" xml:"Key"`                  // 对象键
+	VersionID    string       `json:"versionId" xml:"VersionId"`      // 版本ID（如果启用版本控制）
+	ETag         string       `json:"etag" xml:"ETag"`                // 对象的ETag
+	Size         int64        `json:"size" xml:"Size"`                // 对象大小（字节）
+	Chunks       []string     `json:"chunks" xml:"Chunk"`             // chunk 索引
+	ChunksInline *InlineChunk `json:"chunk_inline" xml:"ChunkInline"` // inline chunk
 
 	// 时间信息
 	LastModified time.Time `json:"lastModified" xml:"LastModified"` // 最后修改时间
@@ -429,6 +435,14 @@ func (o *Object) Copy() *Object {
 	// 深拷贝Chunks数组
 	cp.Chunks = make([]string, len(o.Chunks))
 	copy(cp.Chunks, o.Chunks)
+
+	if o.ChunksInline != nil {
+		cp.ChunksInline = &InlineChunk{
+			Compress: o.ChunksInline.Compress,
+			Data:     make([]byte, len(o.ChunksInline.Data)),
+		}
+		copy(cp.ChunksInline.Data, o.ChunksInline.Data)
+	}
 
 	return cp
 }

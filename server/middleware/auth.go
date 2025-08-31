@@ -45,12 +45,13 @@ var (
 // AWS4SigningMiddleware 提供AWS4签名验证的中间件
 func AWS4SigningMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger.GetLogger("boulder").Infof("get req  header %#v", r.Header)
 		// 确保Host头存在
 		if r.Header.Get("Host") == "" {
 			r.Header.Set("Host", r.Host)
 		}
 		// 1. 从请求头中提取签名信息
-		authHeader := r.Header.Get("Authorization")
+		authHeader := r.Header.Get(xhttp.Authorization)
 		if authHeader == "" {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrMissingAuthenticationToken)
 			return
@@ -93,7 +94,7 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 		service := credentialParts[3]
 
 		// 3. 检查时间有效性
-		amzDate := r.Header.Get("X-Amz-Date")
+		amzDate := r.Header.Get(xhttp.AmzDate)
 		if amzDate == "" {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrMissingDateHeader)
 			return
@@ -212,7 +213,7 @@ func buildCanonicalRequest(r *http.Request, signedHeadersStr string) (string, st
 	signedHeaders := strings.ToLower(signedHeadersStr)
 
 	// 6. 有效载荷哈希
-	payloadHash := r.Header.Get("X-Amz-Content-Sha256")
+	payloadHash := r.Header.Get(xhttp.AmzContentSha256)
 	var bodyBytes []byte
 	var errRead error
 

@@ -19,6 +19,7 @@ package handler
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -140,7 +141,7 @@ func HeadObjectHandler(w http.ResponseWriter, r *http.Request) {
 func GetObjectAttributesHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: GetObjectAttributesHandler")
-	// TODO: 实现 GET Object Attributes 逻辑
+
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -216,12 +217,97 @@ func GetObjectLambdaHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// GetObjectHandler 处理 GET Object 请求
+// GetObjectHandler 获取对象
 func GetObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: GetObjectHandler")
-	// TODO: 实现 GET Object 逻辑
-	w.WriteHeader(http.StatusOK)
+	//logger.GetLogger("boulder").Infof("head obect header %#v", r.Header)
+	bucket, objectKey, _, accessKeyID := GetReqVar(r)
+	if err := utils.CheckValidObjectName(objectKey); err != nil {
+		logger.GetLogger("boulder").Errorf("invalid object name: %s", objectKey)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
+		return
+	}
+
+	_os := object.GetObjectService()
+	if _os == nil {
+		logger.GetLogger("boulder").Errorf("object service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	// 解析 Range 头
+	rangeHeadStr := r.Header.Get(xhttp.Range)
+	rangeHead, err := xhttp.ParseRequestRangeSpec(rangeHeadStr)
+	if err != nil && rangeHeadStr != "" {
+		logger.GetLogger("boulder").Errorf("invalid range header: %s, error: %v", rangeHeadStr, err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidRange)
+		return
+	}
+
+	obj, reader, err := _os.GetObject(r.Body, r.Header, &object.BaseObjectParams{
+		BucketName:  bucket,
+		ObjKey:      objectKey,
+		AccessKeyID: accessKeyID,
+		Range:       rangeHead,
+	})
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to fetch object %s: %v", objectKey, err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		return
+	}
+	// 只有成功才 defer
+	if reader != nil {
+		defer reader.Close()
+	}
+
+	w.Header().Set(xhttp.AcceptRanges, "bytes")
+	w.Header().Set(xhttp.ContentType, obj.ContentType)
+	w.Header().Set(xhttp.ETag, obj.ETag)
+	w.Header().Set(xhttp.LastModified, obj.LastModified.Format(http.TimeFormat))
+	if obj.ContentEncoding != "" {
+		w.Header().Set(xhttp.ContentEncoding, obj.ContentEncoding)
+	}
+	if obj.ContentLanguage != "" {
+		w.Header().Set(xhttp.ContentLanguage, obj.ContentLanguage)
+	}
+	if obj.ContentDisposition != "" {
+		w.Header().Set(xhttp.ContentDisposition, obj.ContentDisposition)
+	}
+	if obj.CacheControl != "" {
+		w.Header().Set(xhttp.CacheControl, obj.CacheControl)
+	}
+
+	// 设置用户元数据
+	for key, value := range obj.UserMetadata {
+		w.Header().Set(fmt.Sprintf("%s%s", xhttp.AMZMetPrefix, key), value)
+	}
+	//处理 Range
+	if rangeHead != nil {
+		start, length, err := rangeHead.GetOffsetLength(obj.Size)
+		if err != nil || length <= 0 {
+			logger.GetLogger("boulder").Errorf("invalid range head: %s, error: %v", rangeHeadStr, err)
+			// 返回 416
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidRange)
+			return
+		}
+
+		w.Header().Set(xhttp.ContentRange, fmt.Sprintf("bytes %d-%d/%d", start, start+length-1, obj.Size))
+		w.Header().Set(xhttp.ContentLength, strconv.FormatInt(length, 10))
+		w.WriteHeader(http.StatusPartialContent)
+	} else {
+		// 全量返回
+		w.Header().Set(xhttp.ContentLength, strconv.FormatInt(obj.Size, 10))
+		w.WriteHeader(http.StatusOK)
+	}
+
+	// 流式输出：防止大文件 OOM
+	_, err = io.Copy(w, reader)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("write response body failed: %v", err)
+		// 注意：此时可能已写 header，不能写 error
+		return
+	}
 }
 
 // CopyObjectHandler 处理 COPY Object 请求

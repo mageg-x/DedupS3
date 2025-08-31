@@ -27,7 +27,7 @@ type BlockHeader struct {
 // BlockData BlockData: 完整结构（包含 Data）
 type BlockData struct {
 	BlockHeader
-	Data []byte `msgpack:"data"`
+	Data []byte `json:"data"  msgpack:"data"`
 }
 
 // Block 表示存储块元数据, 存在元数据中

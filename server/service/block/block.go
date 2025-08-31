@@ -2,23 +2,30 @@ package block
 
 import (
 	"bytes"
+	"context"
+	"crypto/md5"
+	"encoding/json"
 	"errors"
 	"fmt"
-	sb "github.com/mageg-x/boulder/internal/storage/block"
-	"github.com/mageg-x/boulder/internal/utils"
-	"github.com/mageg-x/boulder/service/storage"
-	"github.com/twmb/murmur3"
-	"github.com/vmihailenco/msgpack/v5"
 	"sync"
 	"time"
 
+	"github.com/twmb/murmur3"
+	"github.com/vmihailenco/msgpack/v5"
+
 	"github.com/mageg-x/boulder/internal/logger"
+	sb "github.com/mageg-x/boulder/internal/storage/block"
+	xcache "github.com/mageg-x/boulder/internal/storage/cache"
 	"github.com/mageg-x/boulder/internal/storage/kv"
+	"github.com/mageg-x/boulder/internal/utils"
 	"github.com/mageg-x/boulder/meta"
+	"github.com/mageg-x/boulder/service/storage"
 )
 
 const (
-	PRE_UPLOAD_BLOCK_NUM = 16
+	PRE_UPLOAD_BLOCK_NUM   = 16
+	MAX_BUCKET_HEADER_SIZE = 200 * 1024
+	MAX_BUCKET_SIZE        = 64 * 1024 * 1024
 )
 
 var (
@@ -80,7 +87,7 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.Object) (*meta.Bloc
 			chunk.Data = nil
 			curBlock.TotalSize += int64(chunk.Size)
 			curBlock.UpdatedAt = time.Now()
-			if curBlock.TotalSize > 64*1024*1024 {
+			if curBlock.TotalSize > MAX_BUCKET_SIZE {
 				flushBlock = curBlock
 				s.preBlocks[i] = nil
 			}
@@ -131,6 +138,7 @@ func (s *BlockService) FlushBlock(block *meta.Block) error {
 		block.ChunkList[i].Data = nil
 	}
 
+	logger.GetLogger("boulder").Infof("flush block data %s total size %d real size %d etag %+v", blockData.ID, blockData.TotalSize, blockData.RealSize, md5.Sum(blockData.Data))
 	// 压缩Data
 	compress, err := utils.Compress(blockData.Data)
 	if err == nil && compress != nil {
@@ -151,8 +159,8 @@ func (s *BlockService) FlushBlock(block *meta.Block) error {
 		blockData.RealSize = int64(len(encrypt))
 	}
 
-	logger.GetLogger("boulder").Debugf("flush block data size %d:%d, compress rata %.2f%%",
-		blockData.TotalSize, blockData.RealSize, float64(blockData.TotalSize)/float64(blockData.RealSize))
+	logger.GetLogger("boulder").Infof("flush block data size %d:%d, compress rate %.2f%%",
+		blockData.TotalSize, blockData.RealSize, float64(100.0*blockData.RealSize)/float64(blockData.TotalSize))
 
 	data, err := msgpack.Marshal(&blockData)
 	if err != nil {
@@ -196,6 +204,15 @@ func (s *BlockService) ReadBlock(storageID, blockID string) (*meta.BlockData, er
 		logger.GetLogger("boulder").Errorf("read block %s id not match block %s ", blockID, blockData.ID)
 		return nil, fmt.Errorf("read block %s id not match block %s ", blockID, blockData.ID)
 	}
+	if blockData.Encrypted {
+		_d, err := utils.Decrypt(blockData.Data, blockID)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("decrypt block %s failed: %v", blockID, err)
+			return nil, fmt.Errorf("decrypt block %s failed: %v", blockID, err)
+		}
+		blockData.Data = _d
+	}
+
 	if blockData.Compressed {
 		_d, err := utils.Decompress(blockData.Data)
 		if err != nil {
@@ -204,14 +221,9 @@ func (s *BlockService) ReadBlock(storageID, blockID string) (*meta.BlockData, er
 		}
 		blockData.Data = _d
 	}
-
-	if blockData.Encrypted {
-		_d, err := utils.Decrypt(blockData.Data, blockID)
-		if err != nil {
-			logger.GetLogger("boulder").Errorf("decrypt block %s failed: %v", blockID, err)
-			return nil, fmt.Errorf("decrypt block %s failed: %v", blockID, err)
-		}
-		blockData.Data = _d
+	if blockData.TotalSize != int64(len(blockData.Data)) {
+		logger.GetLogger("boulder").Errorf("read block %s size not match %d:%d ", blockID, blockData.TotalSize, len(blockData.Data))
+		return nil, fmt.Errorf("block %s  data be damaged size not match %d:%d", blockID, blockData.TotalSize, len(blockData.Data))
 	}
 	return &blockData, nil
 }
@@ -229,7 +241,7 @@ func (s *BlockService) ReadBlockHead(storageID, blockID string) (*meta.BlockHead
 		return nil, fmt.Errorf("get nil storage instance")
 	}
 
-	data, err := st.Instance.ReadBlock(blockID, 0, 200*1024)
+	data, err := st.Instance.ReadBlock(blockID, 0, MAX_BUCKET_HEADER_SIZE)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("read block header %s failed: %v", blockID, err)
 		return nil, fmt.Errorf("read block header %s failed: %v", blockID, err)
@@ -268,4 +280,79 @@ func (s *BlockService) RemoveBlock(storageID, blockID string) error {
 		return fmt.Errorf("failed to remove block %s: %v", blockID, err)
 	}
 	return nil
+}
+
+func (s *BlockService) BatchGet(blockIds []string) ([]*meta.Block, error) {
+	blockMap := make(map[string]*meta.Block)
+	keys := make([]string, 0, len(blockIds))
+	for _, id := range blockIds {
+		key := "aws:block:" + id
+		keys = append(keys, key)
+	}
+	batchSize := 100
+	for i := 0; i < len(keys); i += batchSize {
+		end := i + batchSize
+		if end > len(keys) {
+			end = len(keys)
+		}
+
+		batchKeys := keys[i:end]
+		if cache, err := xcache.GetCache(); err == nil && cache != nil {
+			result, err := cache.BatchGet(context.Background(), batchKeys)
+			if err == nil {
+				for k, item := range result {
+					block := item.(*meta.Block)
+					if block != nil {
+						blockMap[block.ID] = block
+					} else {
+						cache.Del(context.Background(), k)
+					}
+				}
+			}
+		}
+
+		newBatch := make([]string, 0, len(batchKeys))
+		for _, key := range batchKeys {
+			blockID := key[len("aws:block:"):]
+			_, ok := blockMap[blockID]
+			if !ok {
+				newBatch = append(newBatch, key)
+			}
+		}
+		batchKeys = newBatch
+
+		result, err := s.kvstore.BatchGet(batchKeys)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("failed to batchGet blocks: %v", err)
+			return nil, fmt.Errorf("failed to batchGet blocks: %v", err)
+		}
+		for k, v := range result {
+			var block meta.Block
+			err := json.Unmarshal(v, &block)
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("failed to Unmarshal block %s err: %v", k, err)
+				return nil, fmt.Errorf("failed to Unmarshal block %s err: %v", k, err)
+			}
+			blockMap[block.ID] = &block
+
+			if cache, err := xcache.GetCache(); err == nil && cache != nil {
+				blockKey := "aws:block:" + block.ID
+				err := cache.Set(context.Background(), blockKey, &block, time.Hour*24*7)
+				if err != nil {
+					logger.GetLogger("boulder").Errorf("set block %s to cache failed: %v", blockKey, err)
+				}
+			}
+		}
+	}
+
+	blocks := make([]*meta.Block, 0, len(blockIds))
+	for _, blockID := range blockIds {
+		block, ok := blockMap[blockID]
+		if !ok {
+			logger.GetLogger("boulder").Errorf("block %s not exist", blockID)
+			return nil, fmt.Errorf("block %s not exist", blockID)
+		}
+		blocks = append(blocks, block)
+	}
+	return blocks, nil
 }

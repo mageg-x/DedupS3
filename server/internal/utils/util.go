@@ -106,25 +106,32 @@ func GenKey(password string, keyLen int) []byte {
 }
 
 // Compress 压缩函数 - 使用Zstd
+// Compress 压缩函数 - 使用Zstd
 func Compress(data []byte) ([]byte, error) {
 	if len(data) == 0 {
 		return data, nil
 	}
 
-	encoder, err := zstd.NewWriter(nil)
+	var compressed bytes.Buffer
+	encoder, err := zstd.NewWriter(&compressed) // 直接传 buffer
 	if err != nil {
 		return nil, err
 	}
-	defer encoder.Close()
 
-	var compressed bytes.Buffer
-	encoder.Reset(&compressed)
-
+	// 写入数据
 	_, err = encoder.Write(data)
 	if err != nil {
+		encoder.Close() // 尽量关闭
 		return nil, err
 	}
 
+	//关键：必须 Close 才会 flush 剩余数据
+	err = encoder.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	// 此时 compressed 里才有完整数据
 	return compressed.Bytes(), nil
 }
 
@@ -180,10 +187,7 @@ func Encrypt(data []byte, key string) ([]byte, error) {
 
 // Decrypt  解密函数
 func Decrypt(data []byte, key string) ([]byte, error) {
-	keyBytes := []byte(key)
-	if len(keyBytes) != 16 && len(keyBytes) != 24 && len(keyBytes) != 32 {
-		return nil, errors.New("invalid key size: must be 16, 24, or 32 bytes")
-	}
+	keyBytes := GenKey(key, 16)
 
 	block, err := aes.NewCipher(keyBytes)
 	if err != nil {
