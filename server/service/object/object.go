@@ -12,6 +12,7 @@ import (
 	"github.com/mageg-x/boulder/internal/utils"
 	"github.com/mageg-x/boulder/service/block"
 	"github.com/mageg-x/boulder/service/chunk"
+	"github.com/mageg-x/boulder/service/task"
 	"io"
 	"net/http"
 	"sync"
@@ -119,34 +120,6 @@ func (o *ObjectService) HeadObject(params *BaseObjectParams) (*meta.Object, erro
 	if err != nil || ak == nil {
 		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
 		return nil, xhttp.ToError(xhttp.ErrAccessDenied)
-	}
-
-	// 检查bucket是否存在
-	key := "aws:bucket:" + ak.AccountID + ":" + params.BucketName
-	var bucket *meta.BucketMetadata
-	if cache, err := xcache.GetCache(); err == nil && cache != nil {
-		data, ok, e := cache.Get(context.Background(), key)
-		if e == nil && ok {
-			_bucket, yes := data.(*meta.BucketMetadata)
-			if yes {
-				bucket = _bucket
-			} else {
-				// 缓存的数据类型错误，删除缓存
-			}
-		}
-	}
-	if bucket == nil {
-		var _bucket meta.BucketMetadata
-		exist, err := o.kvstore.Get(key, &_bucket)
-		if !exist || err != nil {
-			logger.GetLogger("boulder").Errorf("bucket %s does not exist", key)
-			return nil, xhttp.ToError(xhttp.ErrNoSuchBucket)
-		}
-		bucket = &_bucket
-		// 写入cache
-		if cache, e := xcache.GetCache(); e == nil && cache != nil {
-			cache.Set(context.Background(), key, bucket, time.Second*600)
-		}
 	}
 
 	// 检查object 是否存在
@@ -329,34 +302,6 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 	if err != nil || ak == nil {
 		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
 		return nil, nil, xhttp.ToError(xhttp.ErrAccessDenied)
-	}
-
-	// 检查bucket是否存在
-	bucketkey := "aws:bucket:" + ak.AccountID + ":" + params.BucketName
-	var bucket *meta.BucketMetadata
-	if cache, err := xcache.GetCache(); err == nil && cache != nil {
-		data, ok, e := cache.Get(context.Background(), bucketkey)
-		if e == nil && ok {
-			_bucket, yes := data.(*meta.BucketMetadata)
-			if yes {
-				bucket = _bucket
-			} else {
-				cache.Del(context.Background(), bucketkey)
-			}
-		}
-	}
-	if bucket == nil {
-		var _bucket meta.BucketMetadata
-		exist, err := o.kvstore.Get(bucketkey, &_bucket)
-		if !exist || err != nil {
-			logger.GetLogger("boulder").Errorf("bucket %s does not exist", params.BucketName)
-			return nil, nil, xhttp.ToError(xhttp.ErrNoSuchBucket)
-		}
-		bucket = &_bucket
-		// 写入cache
-		if cache, e := xcache.GetCache(); e == nil && cache != nil {
-			cache.Set(context.Background(), bucketkey, bucket, time.Second*600)
-		}
 	}
 
 	// 检查object 是否存在
@@ -672,4 +617,59 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 	}
 
 	return objects, nil
+}
+
+func (o *ObjectService) DeleteObject(params *BaseObjectParams) error {
+	iamService := iam.GetIamService()
+	if iamService == nil {
+		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		return errors.New("failed to get iam service")
+	}
+
+	ak, err := iamService.GetAccessKey(params.AccessKeyID)
+	if err != nil || ak == nil {
+		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	// 检查object 是否存在
+	txn, err := o.kvstore.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
+		return fmt.Errorf("failed to begin transaction: %v", err)
+	}
+	defer txn.Rollback()
+	objkey := "aws:object:" + ak.AccountID + ":" + params.BucketName + "/" + params.ObjKey
+	var _object meta.Object
+	exists, err := txn.Get(objkey, &_object)
+	if !exists || err != nil {
+		logger.GetLogger("boulder").Errorf("object %s does not exist", objkey)
+		return xhttp.ToError(xhttp.ErrNoSuchKey)
+	}
+	// 删除obj 关联的chunk
+	if exists && len(_object.Chunks) > 0 {
+		gckey := task.GCChunkPrefix + utils.GenUUID()
+		err = txn.Set(gckey, &_object.Chunks)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("%s/%s set task chunk failed: %v", _object.Bucket, _object.Key, err)
+			return fmt.Errorf("%s/%s set task chunk failed: %v", _object.Bucket, _object.Key, err)
+		} else {
+			logger.GetLogger("boulder").Infof("%s/%s set gc chunk %s delay to proccess", _object.Bucket, _object.Key, gckey)
+		}
+	}
+	err = txn.Delete(objkey)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("%s/%s delete object failed: %v", _object.Bucket, _object.Key, err)
+		return fmt.Errorf("%s/%s delete object failed: %v", _object.Bucket, _object.Key, err)
+	}
+
+	err = txn.Commit()
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("%s/%s commit object failed: %v", _object.Bucket, _object.Key, err)
+		return fmt.Errorf("%s/%s commit object failed: %v", _object.Bucket, _object.Key, err)
+	}
+	if cache, e := xcache.GetCache(); e == nil && cache != nil {
+		cache.Del(context.Background(), objkey)
+	}
+	return nil
 }

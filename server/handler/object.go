@@ -66,8 +66,8 @@ func HeadObjectHandler(w http.ResponseWriter, r *http.Request) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
 			return
 		}
-		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
-			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchKey)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchKey)
 			return
 		}
 		logger.GetLogger("boulder").Errorf("object %s not found err: %v", objectKey, err)
@@ -253,6 +253,15 @@ func GetObjectHandler(w http.ResponseWriter, r *http.Request) {
 		AccessKeyID: accessKeyID,
 		Range:       rangeHead,
 	})
+
+	if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchKey)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchKey)
+		return
+	}
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to fetch object %s: %v", objectKey, err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
@@ -312,7 +321,7 @@ func GetObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// CopyObjectHandler 处理 COPY Object 请求
+// CopyObjectHandler 复制对象
 func CopyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: CopyObjectHandler")
@@ -409,12 +418,40 @@ func PutObjectHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// DeleteObjectHandler 处理 DELETE Object 请求
+// DeleteObjectHandler 删除对象
 func DeleteObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: DeleteObjectHandler")
-	// TODO: 实现 DELETE Object 逻辑
-	w.WriteHeader(http.StatusOK)
+	logger.GetLogger("boulder").Infof("API called: PutObjectHandler")
+	//logger.GetLogger("boulder").Infof("putobect header %#v", r.Header)
+	bucket, objectKey, _, accessKeyID := GetReqVar(r)
+	if err := utils.CheckValidObjectName(objectKey); err != nil {
+		logger.GetLogger("boulder").Errorf("Invalid object name: %s", objectKey)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
+		return
+	}
+
+	_os := object.GetObjectService()
+	if _os == nil {
+		logger.GetLogger("boulder").Errorf("Object service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	err := _os.DeleteObject(&object.BaseObjectParams{
+		BucketName:  bucket,
+		ObjKey:      objectKey,
+		AccessKeyID: accessKeyID,
+	})
+	if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchKey)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchKey)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // PostRestoreObjectHandler 处理 POST Restore Object 请求
