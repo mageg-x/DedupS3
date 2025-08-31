@@ -5,6 +5,8 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"github.com/mageg-x/boulder/internal/utils"
@@ -42,6 +44,50 @@ type BaseObjectParams struct {
 	ContentLen   int64
 	ContentType  string
 	Range        *xhttp.HTTPRangeSpec
+}
+
+// ListObjectsResponse 对应 S3 ListObjects V1 响应
+type ListObjectsResponse struct {
+	XMLName xml.Name `xml:"ListBucketResult" json:"-"`
+	// 命名空间属性
+	XMLNS string `xml:"xmlns,attr,omitempty"`
+	Name  string `xml:"Name"` // Bucket 名称
+
+	// 可选字段（omitempty 控制：nil 或零值时不输出）
+	Prefix       *string `xml:"Prefix,omitempty"`
+	Marker       *string `xml:"Marker,omitempty"`
+	MaxKeys      *int    `xml:"MaxKeys,omitempty"`
+	Delimiter    *string `xml:"Delimiter,omitempty"`
+	IsTruncated  *bool   `xml:"IsTruncated,omitempty"`
+	NextMarker   *string `xml:"NextMarker,omitempty"`
+	EncodingType *string `xml:"EncodingType,omitempty"`
+
+	// Contents 列表（对象条目）
+	Contents []ObjectContent `xml:"Contents,omitempty"`
+}
+
+// ObjectContent 表示一个对象条目
+type ObjectContent struct {
+	Key               string         `xml:"Key"`
+	LastModified      time.Time      `xml:"LastModified"`
+	ETag              string         `xml:"ETag,omitempty"`
+	Size              int64          `xml:"Size,omitempty"`
+	StorageClass      string         `xml:"StorageClass,omitempty"`
+	Owner             *meta.Owner    `xml:"Owner,omitempty"`
+	RestoreStatus     *RestoreStatus `xml:"RestoreStatus,omitempty"`
+	ChecksumAlgorithm *string        `xml:"ChecksumAlgorithm,omitempty"`
+	ChecksumType      *string        `xml:"ChecksumType,omitempty"`
+}
+
+// RestoreStatus 恢复状态（用于 Glacier/Deep Archive）
+type RestoreStatus struct {
+	IsRestoreInProgress *bool      `xml:"IsRestoreInProgress,omitempty"`
+	RestoreExpiryDate   *time.Time `xml:"RestoreExpiryDate,omitempty"`
+}
+
+// CommonPrefix 表示一个公共前缀（如目录）
+type CommonPrefix struct {
+	Prefix string `xml:"Prefix"`
 }
 
 func GetObjectService() *ObjectService {
@@ -457,8 +503,8 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 		num := 0
 		blockDatas := make(map[string]*meta.BlockData, 0)
 		for _, _chunk := range chunks {
-			offset += int64(_chunk.Size)
-			if offset < start {
+			if offset+int64(_chunk.Size) < start {
+				offset += int64(_chunk.Size)
 				continue // 还没到起始位置
 			}
 
@@ -486,10 +532,21 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 				chunkData = _blockdata.Data[block_offset : block_offset+int64(item.Size)]
 				break
 			}
+			if offset+int64(len(chunkData)) > end+1 {
+				_size := end - offset + 1
+				chunkData = chunkData[:_size]
+			}
+			if start > offset {
+				_begin := start - offset
+				chunkData = chunkData[_begin:]
+			}
+
 			if len(chunkData) == 0 {
 				logger.GetLogger("boulder").Errorf("failed to get the chunk data from block %s", _chunk.BlockID)
 				return
 			}
+
+			offset += int64(_chunk.Size)
 
 			// 写入数据（同时写给 pw 和 hasher）
 			if _, err := writer.Write(chunkData); err != nil {
@@ -511,10 +568,108 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 		finalMD5Hex := hex.EncodeToString(finalMD5)
 		// 检查计算的MD5是否与对象的ETag一致
 		if object.ETag != finalMD5Hex {
-			logger.GetLogger("boulder").Errorf("MD5 mismatch: stored=%s calculated=%s  %+v", object.ETag, finalMD5Hex)
+			logger.GetLogger("boulder").Errorf("get object %s/%s MD5 mismatch: stored=%s calculated=%s range[%d-%d]", object.Bucket, object.Key, object.ETag, finalMD5Hex, start, end)
 		}
 	}()
 
 	logger.GetLogger("boulder").Debugf("put object %#v", object)
 	return object, pr, nil
+}
+
+// ListObjects 实现S3兼容的对象列表功能
+// 返回符合S3 ListObjects V1规范的响应结构
+func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimiter string, maxKeys int) ([]*meta.Object, error) {
+	// 验证参数
+	if maxKeys <= 0 || maxKeys > 1000 {
+		maxKeys = 1000 // S3默认值和最大值
+	}
+
+	logger.GetLogger("boulder").Debugf("ListObjects request: bucket=%s, prefix=%s, marker=%s, delimiter=%s, maxKeys=%d",
+		bucket, prefix, marker, delimiter, maxKeys)
+
+	// 验证访问密钥
+	iamService := iam.GetIamService()
+	if iamService == nil {
+		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		return nil, errors.New("failed to get iam service")
+	}
+
+	ak, err := iamService.GetAccessKey(accessKeyID)
+	if err != nil || ak == nil {
+		logger.GetLogger("boulder").Errorf("failed to get access key %s", accessKeyID)
+		return nil, xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	// 检查存储桶是否存在
+	bucketKey := "aws:bucket:" + ak.AccountID + ":" + bucket
+	var bucketMeta meta.BucketMetadata
+	if exists, err := o.kvstore.Get(bucketKey, &bucketMeta); !exists || err != nil {
+		logger.GetLogger("boulder").Errorf("bucket %s does not exist", bucket)
+		return nil, xhttp.ToError(xhttp.ErrNoSuchBucket)
+	}
+
+	// 构建对象键前缀
+	prefixKey := "aws:object:" + ak.AccountID + ":" + bucket + "/"
+	if prefix != "" {
+		prefixKey += prefix
+	}
+
+	// 设置标记
+	startKey := prefixKey
+	if marker != "" {
+		startKey = "aws:object:" + ak.AccountID + ":" + bucket + "/" + marker
+	}
+
+	// 使用KV存储的Scan方法获取对象键
+	txn, err := o.kvstore.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
+		return nil, fmt.Errorf("failed to begin transaction: %v", err)
+	}
+	defer txn.Rollback()
+
+	// 获取对象键列表
+	keys := make([]string, 0)
+	nextKey := startKey
+	for len(keys) < maxKeys+1 {
+		scanKeys, next, err := txn.Scan(prefixKey, nextKey, maxKeys+1-len(keys))
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("failed to scan objects prefix %s err: %v", prefixKey, err)
+			return nil, fmt.Errorf("failed to scan objects prefix %s err: %v", prefixKey, err)
+		}
+
+		keys = append(keys, scanKeys...)
+		if next == "" {
+			break
+		}
+		nextKey = next
+	}
+	txn.Rollback()
+
+	// 获取object meta 信息
+	objects := make([]*meta.Object, 0)
+	batchSize := 100
+	for i := 0; i < len(keys); i += batchSize {
+		end := i + batchSize
+		if end > len(keys) {
+			end = len(keys)
+		}
+		batchKeys := keys[i:end]
+		data, err := o.kvstore.BatchGet(batchKeys)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("failed to batch ge objects: %v", err)
+			return nil, fmt.Errorf("failed to batch get objects: %v", err)
+		}
+		for _, item := range data {
+			var _obj meta.Object
+			err := json.Unmarshal(item, &_obj)
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("failed to  arshal objects: %v", err)
+				return nil, fmt.Errorf("failed to  arshal objects: %v", err)
+			}
+			objects = append(objects, &_obj)
+		}
+	}
+
+	return objects, nil
 }

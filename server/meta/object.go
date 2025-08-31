@@ -82,8 +82,8 @@ type Object struct {
 
 // Owner 表示对象所有者信息
 type Owner struct {
-	ID          string `json:"id" xml:"ID"`                   // 所有者ID
-	DisplayName string `json:"displayName" xml:"DisplayName"` // 显示名称
+	ID          string `json:"id" xml:"ID,omitempty"`                   // 所有者ID
+	DisplayName string `json:"displayName" xml:"DisplayName,omitempty"` // 显示名称
 }
 
 // NewObject 创建新的对象

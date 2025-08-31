@@ -231,6 +231,8 @@ func SetupRouter() *mux.Router {
 				HandlerFunc(handler.NotImplementedHandler).
 				Queries(r.Queries...)
 		}
+		// S3 ListObjectsV1 (Legacy)
+		router.Methods(http.MethodGet).HandlerFunc(handler.ListObjectsV1Handler).Name("ListObjects")
 	}
 	// ListBuckets
 	sr.Methods(http.MethodGet).Path("/").HandlerFunc(handler.ListBucketsHandler).Name("ListBuckets")
