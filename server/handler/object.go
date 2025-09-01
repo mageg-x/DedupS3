@@ -45,9 +45,9 @@ func HeadObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	Range := r.Header.Get("Range")
-	ifMatch := r.Header.Get("If-Match")
-	ifnoneMatch := r.Header.Get("If-None-Match")
-	ifmodifiedSince := r.Header.Get("If-Modified-Since")
+	ifMatch := r.Header.Get(xhttp.IfMatch)
+	ifnoneMatch := r.Header.Get(xhttp.IfNoneMatch)
+	ifmodifiedSince := r.Header.Get(xhttp.IfModifiedSince)
 
 	_os := object.GetObjectService()
 	if _os == nil {
@@ -57,9 +57,12 @@ func HeadObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	objInfo, err := _os.HeadObject(&object.BaseObjectParams{
-		BucketName:  bucket,
-		ObjKey:      objectKey,
-		AccessKeyID: accessKeyID,
+		BucketName:      bucket,
+		ObjKey:          objectKey,
+		AccessKeyID:     accessKeyID,
+		IfMatch:         ifMatch,
+		IfNoneMatch:     ifnoneMatch,
+		IfModifiedSince: ifmodifiedSince,
 	})
 	if err != nil {
 		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
@@ -230,20 +233,19 @@ func GetObjectHandler(w http.ResponseWriter, r *http.Request) {
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
 		return
 	}
-
-	_os := object.GetObjectService()
-	if _os == nil {
-		logger.GetLogger("boulder").Errorf("object service not initialized")
-		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
-		return
-	}
-
 	// 解析 Range 头
 	rangeHeadStr := r.Header.Get(xhttp.Range)
 	rangeHead, err := xhttp.ParseRequestRangeSpec(rangeHeadStr)
 	if err != nil && rangeHeadStr != "" {
 		logger.GetLogger("boulder").Errorf("invalid range header: %s, error: %v", rangeHeadStr, err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidRange)
+		return
+	}
+
+	_os := object.GetObjectService()
+	if _os == nil {
+		logger.GetLogger("boulder").Errorf("object service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
 
@@ -325,8 +327,89 @@ func GetObjectHandler(w http.ResponseWriter, r *http.Request) {
 func CopyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: CopyObjectHandler")
-	// TODO: 实现 COPY Object 逻辑
-	w.WriteHeader(http.StatusOK)
+	bucket, objectKey, _, accessKeyID := GetReqVar(r)
+	if err := utils.CheckValidObjectName(objectKey); err != nil {
+		logger.GetLogger("boulder").Errorf("invalid object name: %s", objectKey)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
+		return
+	}
+
+	ifMatch := r.Header.Get(xhttp.IfMatch)
+	ifnoneMatch := r.Header.Get(xhttp.IfNoneMatch)
+	ifmodifiedSince := r.Header.Get(xhttp.IfModifiedSince)
+	CopySourceIfMatch := r.Header.Get(xhttp.AmzCopySourceIfMatch)
+	CopySourceIfNoneMatch := r.Header.Get(xhttp.AmzCopySourceIfNoneMatch)
+	CopySourceIfModifiedSince := r.Header.Get(xhttp.AmzCopySourceIfModifiedSince)
+	CopySourceIfUnmodifiedSince := r.Header.Get(xhttp.AmzCopySourceIfUnmodifiedSince)
+
+	// 获取源桶 和对象
+	cpSrcPath := r.Header.Get(xhttp.AmzCopySource)
+	if u, err := url.Parse(cpSrcPath); err == nil {
+		cpSrcPath = u.Path
+	}
+	cpSrcPath = strings.TrimPrefix(cpSrcPath, "/")
+	m := strings.Index(cpSrcPath, "/")
+	var srcBucket, srcObject string
+	if m > 2 {
+		srcBucket, srcObject = cpSrcPath[:m], cpSrcPath[m+len("/"):]
+	}
+	srcObject = utils.TrimLeadingSlash(srcObject)
+	if srcObject == "" || srcBucket == "" {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidCopySource)
+		return
+	}
+
+	dstSc := r.Header.Get(xhttp.AmzStorageClass)
+
+	_os := object.GetObjectService()
+	if _os == nil {
+		logger.GetLogger("boulder").Errorf("object service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+	obj, err := _os.CopyObject(srcBucket, srcObject, &object.BaseObjectParams{
+		BucketName:                  bucket,
+		ObjKey:                      objectKey,
+		AccessKeyID:                 accessKeyID,
+		StorageClass:                dstSc,
+		IfMatch:                     ifMatch,
+		IfNoneMatch:                 ifnoneMatch,
+		IfModifiedSince:             ifmodifiedSince,
+		CopySourceIfMatch:           CopySourceIfMatch,
+		CopySourceIfNoneMatch:       CopySourceIfNoneMatch,
+		CopySourceIfModifiedSince:   CopySourceIfModifiedSince,
+		CopySourceIfUnmodifiedSince: CopySourceIfUnmodifiedSince,
+	})
+	if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchKey)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchKey)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidObjectName)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
+		return
+	}
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to copy object %s: %v", objectKey, err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		return
+	}
+	type CopyObjResp struct {
+		ETag         string `xml:"ETag,omitempty"`
+		LastModified string `xml:"LastModified,omitempty"`
+	}
+	result := CopyObjResp{
+		ETag:         obj.ETag,
+		LastModified: obj.LastModified.Format("2006-01-02T15:04:05.000Z"),
+	}
+	xhttp.WriteAWSSuc(w, r, result)
 }
 
 // PutObjectRetentionHandler 处理 PUT Object Retention 请求
@@ -365,6 +448,10 @@ func PutObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ifMatch := r.Header.Get(xhttp.IfMatch)
+	ifnoneMatch := r.Header.Get(xhttp.IfNoneMatch)
+	ifmodifiedSince := r.Header.Get(xhttp.IfModifiedSince)
+
 	// content-type
 	ct := r.Header.Get(xhttp.ContentType)
 	if ct == "" {
@@ -392,12 +479,15 @@ func PutObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	obj, err := _os.PutObject(r.Body, r.Header, &object.BaseObjectParams{
-		BucketName:   bucket,
-		ObjKey:       objectKey,
-		ContentType:  ct,
-		ContentLen:   size,
-		AccessKeyID:  accessKeyID,
-		StorageClass: sc,
+		BucketName:      bucket,
+		ObjKey:          objectKey,
+		ContentType:     ct,
+		ContentLen:      size,
+		AccessKeyID:     accessKeyID,
+		StorageClass:    sc,
+		IfMatch:         ifMatch,
+		IfNoneMatch:     ifnoneMatch,
+		IfModifiedSince: ifmodifiedSince,
 	})
 
 	if err != nil {

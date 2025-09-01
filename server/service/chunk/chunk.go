@@ -7,12 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	xcache "github.com/mageg-x/boulder/internal/storage/cache"
-	"github.com/mageg-x/boulder/service/task"
 	"io"
 	"math/rand"
 	"sync"
 	"time"
+
+	xcache "github.com/mageg-x/boulder/internal/storage/cache"
+	"github.com/mageg-x/boulder/service/task"
 
 	"github.com/mageg-x/boulder/internal/utils"
 	"github.com/mageg-x/boulder/service/block"
@@ -270,7 +271,7 @@ func (c *ChunkService) Dedup(ctx context.Context, inputChan, dedupChan chan *met
 			if len(batchDedup) > 100 || (finished && len(batchDedup) > 0) {
 				keys := make([]string, 0)
 				for _, item := range batchDedup {
-					chunkKey := "aws:chunk:" + item.Hash
+					chunkKey := "aws:chunk:" + obj.DataLocation + ":" + item.Hash
 					keys = append(keys, chunkKey)
 				}
 				_chunks, err := c.kvstore.BatchGet(keys)
@@ -282,7 +283,7 @@ func (c *ChunkService) Dedup(ctx context.Context, inputChan, dedupChan chan *met
 				for _, item := range batchDedup {
 					offset += int(item.Size)
 					// 对象间去重
-					chunkKey := "aws:chunk:" + item.Hash
+					chunkKey := "aws:chunk:" + obj.DataLocation + ":" + item.Hash
 					if _chunks[chunkKey] != nil {
 						var _chunk meta.Chunk
 						err = json.Unmarshal(_chunks[chunkKey], &_chunk)
@@ -423,7 +424,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 	// 写入chunk元数据
 	for _, chunk := range allChunk {
 		//logger.GetLogger("boulder").Errorf("%s/%s write chunk %s:%s:%d ", obj.Bucket, obj.Key, chunk.Hash, chunk.BlockID, len(chunk.Data))
-		chunkey := "aws:chunk:" + chunk.Hash
+		chunkey := "aws:chunk:" + obj.DataLocation + ":" + chunk.Hash
 		var _chunk meta.Chunk
 		exists, e := txn.Get(chunkey, &_chunk)
 		if e != nil {
@@ -462,7 +463,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 	// 写入block的元数据
 	for _, item := range blocks {
 		//logger.GetLogger("boulder").Errorf("%s/%s write block meta inf : %s:%d:%d", obj.Bucket, obj.Key, item.ID, item.TotalSize, item.RealSize)
-		blockKey := "aws:block:" + item.ID
+		blockKey := "aws:block:" + obj.DataLocation + ":" + item.ID
 		var newChunkList []meta.BlockChunk
 		for _, _chunk := range item.ChunkList {
 			k := item.ID + ":" + _chunk.Hash
@@ -498,7 +499,12 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 	}
 	if exists && len(_obj.Chunks) > 0 {
 		gckey := task.GCChunkPrefix + utils.GenUUID()
-		err = txn.Set(gckey, &_obj.Chunks)
+		gcChunks := task.GCChunk{
+			StorageID: obj.DataLocation,
+			ChunkIDs:  append([]string(nil), _obj.Chunks...),
+		}
+
+		err = txn.Set(gckey, &gcChunks)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("%s/%s set task chunk failed: %v", obj.Bucket, obj.Key, err)
 			return fmt.Errorf("%s/%s set task chunk failed: %v", obj.Bucket, obj.Key, err)
@@ -524,11 +530,11 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 	return nil
 }
 
-func (c *ChunkService) BatchGet(chunkIDs []string) ([]*meta.Chunk, error) {
+func (c *ChunkService) BatchGet(storageID string, chunkIDs []string) ([]*meta.Chunk, error) {
 	chunkMap := make(map[string]*meta.Chunk)
 	keys := make([]string, 0, len(chunkIDs))
 	for _, chunkID := range chunkIDs {
-		chunkKey := "aws:chunk:" + chunkID
+		chunkKey := "aws:chunk:" + storageID + ":" + chunkID
 		keys = append(keys, chunkKey)
 	}
 
@@ -556,7 +562,7 @@ func (c *ChunkService) BatchGet(chunkIDs []string) ([]*meta.Chunk, error) {
 
 		newBatch := make([]string, 0, len(batchKeys))
 		for _, key := range batchKeys {
-			chunkID := key[len("aws:chunk:"):]
+			chunkID := key[len("aws:chunk:"+storageID+":"):]
 			_, ok := chunkMap[chunkID]
 			if !ok {
 				newBatch = append(newBatch, key)
@@ -579,7 +585,7 @@ func (c *ChunkService) BatchGet(chunkIDs []string) ([]*meta.Chunk, error) {
 			chunkMap[chunk.Hash] = &chunk
 
 			if cache, err := xcache.GetCache(); err == nil && cache != nil {
-				chunkKey := "aws:chunk:" + chunk.Hash
+				chunkKey := "aws:chunk:" + storageID + ":" + chunk.Hash
 				err := cache.Set(context.Background(), chunkKey, &chunk, time.Hour*24*7)
 				if err != nil {
 					logger.GetLogger("boulder").Errorf("set chunk %s to cache failed: %v", chunkKey, err)

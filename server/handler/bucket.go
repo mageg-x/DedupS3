@@ -43,6 +43,7 @@ func GetReqVar(r *http.Request) (string, string, string, string) {
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 	object := vars["object"]
+	object = utils.TrimLeadingSlash(object)
 	if object != "" {
 		// 处理多个连续的斜杠（可选，根据业务需求）
 		object = regexp.MustCompile(`/+`).ReplaceAllString(object, "/")

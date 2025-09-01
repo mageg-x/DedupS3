@@ -9,14 +9,15 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"github.com/mageg-x/boulder/internal/utils"
-	"github.com/mageg-x/boulder/service/block"
-	"github.com/mageg-x/boulder/service/chunk"
-	"github.com/mageg-x/boulder/service/task"
 	"io"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/mageg-x/boulder/internal/utils"
+	"github.com/mageg-x/boulder/service/block"
+	"github.com/mageg-x/boulder/service/chunk"
+	"github.com/mageg-x/boulder/service/task"
 
 	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/mageg-x/boulder/internal/logger"
@@ -37,14 +38,21 @@ type ObjectService struct {
 }
 
 type BaseObjectParams struct {
-	BucketName   string
-	ObjKey       string
-	AccessKeyID  string
-	StorageClass string
-	StorageID    string
-	ContentLen   int64
-	ContentType  string
-	Range        *xhttp.HTTPRangeSpec
+	BucketName                  string
+	ObjKey                      string
+	AccessKeyID                 string
+	StorageClass                string
+	StorageID                   string
+	ContentLen                  int64
+	ContentType                 string
+	Range                       *xhttp.HTTPRangeSpec
+	IfMatch                     string
+	IfNoneMatch                 string
+	IfModifiedSince             string
+	CopySourceIfMatch           string
+	CopySourceIfNoneMatch       string
+	CopySourceIfModifiedSince   string
+	CopySourceIfUnmodifiedSince string
 }
 
 // ListObjectsResponse 对应 S3 ListObjects V1 响应
@@ -89,6 +97,27 @@ type RestoreStatus struct {
 // CommonPrefix 表示一个公共前缀（如目录）
 type CommonPrefix struct {
 	Prefix string `xml:"Prefix"`
+}
+
+// CopyObjectConditions 所有条件参数
+type CopyObjectConditions struct {
+	// 目标条件
+	IfMatch         string
+	IfNoneMatch     string
+	IfModifiedSince string
+
+	// 源条件
+	CopySourceIfMatch           string
+	CopySourceIfNoneMatch       string
+	CopySourceIfModifiedSince   string
+	CopySourceIfUnmodifiedSince string
+}
+
+// CopyObjectInfo 对象元信息
+type CopyObjectInfo struct {
+	Exists       bool
+	ETag         string // 建议带引号，如 "abc123"
+	LastModified time.Time
 }
 
 func GetObjectService() *ObjectService {
@@ -191,6 +220,41 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 		}
 	}
 
+	// 检查目标对象是否已经存在
+	dskobjKey := "aws:object:" + ak.AccountID + ":" + params.BucketName + "/" + params.ObjKey
+	var _dstobj meta.Object
+	dstobiOk, _ := o.kvstore.Get(dskobjKey, &_dstobj)
+	// 	If-Match 只有当目标对象存在且 ETag 匹配时才允许上传
+	if params.IfMatch != "" {
+		if !dstobiOk || _dstobj.ETag != params.IfMatch {
+			logger.GetLogger("boulder").Errorf("object %s/%s if match not match %s:%s", params.BucketName, params.ObjKey, params.IfMatch, _dstobj.ETag)
+			return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
+		}
+	}
+	// If-None-Match: 只有当目标不存在（*）或 ETag 不匹配时才允许上传
+	if params.IfNoneMatch != "" {
+		if params.IfNoneMatch == "*" {
+			// * 表示：目标必须不存在
+			if dstobiOk {
+				logger.GetLogger("boulder").Errorf("object %s/%s already exists (If-None-Match: *)", params.BucketName, params.ObjKey)
+				return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
+			}
+		} else {
+			// 指定了 ETag：当目标存在且 ETag 匹配时，拒绝写入
+			if dstobiOk && _dstobj.ETag == params.IfNoneMatch {
+				logger.GetLogger("boulder").Errorf("object %s/%s ETag matches If-None-Match: %s", params.BucketName, params.ObjKey, params.IfNoneMatch)
+				return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
+			}
+		}
+	}
+
+	//If-Modified-Since	只有当目标对象存在且已修改（Last-Modified > 指定时间）才允许上传
+	if t, err := http.ParseTime(params.IfModifiedSince); err == nil {
+		if !dstobiOk || !_dstobj.LastModified.After(t) {
+			logger.GetLogger("boulder").Errorf("object %s/%s modified since %s", params.BucketName, params.ObjKey, t)
+			return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
+		}
+	}
 	// 寻找合适的后端存储点
 	storageClass := params.StorageClass
 	if storageClass == "" {
@@ -378,7 +442,7 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 		logger.GetLogger("boulder").Errorf("failed to get the chunk service")
 		return nil, nil, fmt.Errorf("failed to get the chunk service")
 	}
-	chunks, err := cs.BatchGet(object.Chunks)
+	chunks, err := cs.BatchGet(object.DataLocation, object.Chunks)
 	if err != nil || chunks == nil || len(chunks) != len(object.Chunks) {
 		logger.GetLogger("boulder").Errorf("failed to get the object %d chunks", len(object.Chunks))
 		return nil, nil, fmt.Errorf("failed to get the object %d chunks", len(object.Chunks))
@@ -404,7 +468,7 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 		logger.GetLogger("boulder").Errorf("failed to get the block service")
 		return nil, nil, fmt.Errorf("failed to get the block service")
 	}
-	blocks, err := bs.BatchGet(bids)
+	blocks, err := bs.BatchGet(object.DataLocation, bids)
 	if err != nil || blocks == nil || len(blocks) != len(bids) {
 		logger.GetLogger("boulder").Errorf("failed to get the block meta %d:%d", len(bids), len(blocks))
 		return nil, nil, fmt.Errorf("failed to get the block meta")
@@ -649,7 +713,11 @@ func (o *ObjectService) DeleteObject(params *BaseObjectParams) error {
 	// 删除obj 关联的chunk
 	if exists && len(_object.Chunks) > 0 {
 		gckey := task.GCChunkPrefix + utils.GenUUID()
-		err = txn.Set(gckey, &_object.Chunks)
+		gcChunks := task.GCChunk{
+			StorageID: _object.DataLocation,
+			ChunkIDs:  append([]string(nil), _object.Chunks...),
+		}
+		err = txn.Set(gckey, &gcChunks)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("%s/%s set task chunk failed: %v", _object.Bucket, _object.Key, err)
 			return fmt.Errorf("%s/%s set task chunk failed: %v", _object.Bucket, _object.Key, err)
@@ -672,4 +740,240 @@ func (o *ObjectService) DeleteObject(params *BaseObjectParams) error {
 		cache.Del(context.Background(), objkey)
 	}
 	return nil
+}
+
+func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObjectParams) (*meta.Object, error) {
+	iamService := iam.GetIamService()
+	if iamService == nil {
+		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		return nil, errors.New("failed to get iam service")
+	}
+
+	ak, err := iamService.GetAccessKey(params.AccessKeyID)
+	if err != nil || ak == nil {
+		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		return nil, xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	// 检查 源object 是否存在
+	srcobjkey := "aws:object:" + ak.AccountID + ":" + srcBucket + "/" + srcObject
+	var srcobj meta.Object
+	srcobjOK, err := o.kvstore.Get(srcobjkey, &srcobj)
+	if !srcobjOK || err != nil {
+		logger.GetLogger("boulder").Errorf("object %s does not exist", srcobjkey)
+		return nil, xhttp.ToError(xhttp.ErrNoSuchKey)
+	}
+
+	// 检查目标桶名是否 合法
+	if err := utils.CheckValidObjectName(params.ObjKey); err != nil {
+		logger.GetLogger("boulder").Errorf("invalid object name: %s", params.ObjKey)
+		return nil, xhttp.ToError(xhttp.ErrInvalidObjectName)
+	}
+	// 检查 目标桶是否存在
+	dstbucketkey := "aws:bucket:" + ak.AccountID + ":" + params.BucketName
+	var dstbucket meta.BucketMetadata
+	exists, err := o.kvstore.Get(dstbucketkey, &dstbucket)
+	if !exists || err != nil {
+		logger.GetLogger("boulder").Errorf("bucket %s does not exist", dstbucketkey)
+		return nil, xhttp.ToError(xhttp.ErrNoSuchBucket)
+	}
+	if srcobjkey == dstbucketkey {
+		logger.GetLogger("boulder").Errorf("same object %s copy", dstbucketkey)
+		return nil, fmt.Errorf("same object %s copy", dstbucketkey)
+	}
+
+	// 检查目标对象是否已经存在
+	dstobjkey := "aws:object:" + ak.AccountID + ":" + params.BucketName + "/" + params.ObjKey
+	var _dstobj meta.Object
+	dstobjOk, _ := o.kvstore.Get(dstobjkey, &_dstobj)
+	_dst := CopyObjectInfo{Exists: dstobjOk, ETag: _dstobj.ETag, LastModified: _dstobj.LastModified}
+	_src := CopyObjectInfo{Exists: srcobjOK, ETag: srcobj.ETag, LastModified: srcobj.LastModified}
+	_cond := CopyObjectConditions{
+		IfMatch:                     params.IfMatch,
+		IfNoneMatch:                 params.IfNoneMatch,
+		IfModifiedSince:             params.IfModifiedSince,
+		CopySourceIfMatch:           params.CopySourceIfMatch,
+		CopySourceIfNoneMatch:       params.CopySourceIfNoneMatch,
+		CopySourceIfModifiedSince:   params.CopySourceIfModifiedSince,
+		CopySourceIfUnmodifiedSince: params.CopySourceIfUnmodifiedSince,
+	}
+	ok, code := o.CanCopyObject(_dst, _src, _cond)
+	if !ok {
+		logger.GetLogger("boulder").Errorf("%s/%s can not copy object %d", _dstobj.Bucket, _dstobj.Key, code)
+		return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
+	}
+
+	// 检查目标 存储点是否存在
+	storageClass := params.StorageClass
+	if storageClass == "" {
+		storageClass = "STANDARD"
+	}
+
+	bs := storage.GetStorageService()
+	if bs == nil {
+		logger.GetLogger("boulder").Errorf("failed to get storage service")
+		return nil, fmt.Errorf("failed to get storage service")
+	}
+
+	scs := bs.GetStoragesByClass(storageClass)
+	if len(scs) == 0 {
+		logger.GetLogger("boulder").Errorf("no storage class %s", storageClass)
+		return nil, fmt.Errorf("no storage class %s", storageClass)
+	}
+	sc := scs[0]
+
+	// 复制 源对象 的 元数据
+	dstobj := srcobj.Clone()
+	dstobj.Bucket = params.BucketName
+	dstobj.Key = params.ObjKey
+	dstobj.StorageClass = storageClass
+	dstobj.DataLocation = sc.ID
+
+	if srcobj.DataLocation == dstobj.DataLocation {
+		txn, err := o.kvstore.BeginTxn(context.Background(), nil)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
+			return nil, fmt.Errorf("failed to begin transaction: %v", err)
+		}
+		defer txn.Rollback()
+		for _, chunkID := range dstobj.Chunks {
+			chunkey := "aws:chunk:" + srcobj.DataLocation + ":" + chunkID
+			var _chunk meta.Chunk
+			if exists, e := txn.Get(chunkey, &_chunk); e != nil || !exists {
+				logger.GetLogger("boulder").Errorf("%s/%s get chunk failed: %v", srcobj.Bucket, srcobj.Key, err)
+				return nil, fmt.Errorf("%s/%s get chunk %s failed: %v", srcobj.Bucket, srcobj.Key, chunkey, err)
+			}
+			// 引用计数加1
+			_chunk.RefCount += 1
+			if e := txn.Set(chunkey, &_chunk); e != nil {
+				logger.GetLogger("boulder").Errorf("%s/%s set chunk %s failed: %v", dstobj.Bucket, dstobj.Key, _chunk.Hash, err)
+				return nil, fmt.Errorf("%s/%s set chunk failed: %v", dstobj.Bucket, dstobj.Key, err)
+			} else {
+				logger.GetLogger("boulder").Debugf("%s/%s refresh set chunk: %s", dstobj.Bucket, dstobj.Key, _chunk.Hash)
+			}
+		}
+		dstobjKey := "aws:object:" + ak.AccountID + ":" + dstobj.Bucket + "/" + dstobj.Key
+		// 如果是覆盖，需要先删除旧的索引
+		var _dstobj meta.Object
+		exists, err = txn.Get(dstobjKey, &_dstobj)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("%s/%s get object failed: %v", _dstobj.Bucket, _dstobj.Key, err)
+			return nil, fmt.Errorf("%s/%s get object failed: %v", _dstobj.Bucket, _dstobj.Key, err)
+		}
+		if exists && len(_dstobj.Chunks) > 0 {
+			gckey := task.GCChunkPrefix + utils.GenUUID()
+			gcChunks := task.GCChunk{
+				StorageID: _dstobj.DataLocation,
+				ChunkIDs:  append([]string(nil), _dstobj.Chunks...),
+			}
+			err = txn.Set(gckey, &gcChunks)
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("%s/%s set task chunk failed: %v", _dstobj.Bucket, _dstobj.Key, err)
+				return nil, fmt.Errorf("%s/%s set task chunk failed: %v", _dstobj.Bucket, _dstobj.Key, err)
+			} else {
+				logger.GetLogger("boulder").Infof("%s/%s set gc chunk %s delay to proccess", _dstobj.Bucket, _dstobj.Key, gckey)
+			}
+		}
+
+		err = txn.Set(dstobjKey, dstobj)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("set object %s/%s meta info failed: %v", dstobj.Bucket, dstobj.Key, err)
+			return nil, fmt.Errorf("set object %s/%s meta info failed: %v", dstobj.Bucket, dstobj.Key, err)
+		} else {
+			logger.GetLogger("boulder").Debugf("set object %s/%s meta  ok", dstobj.Bucket, dstobj.Key)
+		}
+		err = txn.Commit()
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("%s/%s commit failed: %v", dstobj.Bucket, dstobj.Key, err)
+			return nil, kv.ErrTxnCommit
+		}
+		logger.GetLogger("boulder").Infof("write object %s/%s  all meta data finish", dstobj.Bucket, dstobj.Key)
+		if cache, err := xcache.GetCache(); err == nil && cache != nil {
+			cache.Del(context.Background(), dstobjKey)
+		}
+		return dstobj, nil
+	} else {
+		// 如果 存储点不一样，是要复制数据部分的 TODO
+		logger.GetLogger("boulder").Errorf("%s/%s copy object  storage class not same %s:%s", srcobj.Bucket, srcobj.Key, srcobj.StorageClass, dstobj.StorageClass)
+		return nil, fmt.Errorf("%s/%s copy object  storage class not same %s:%s", srcobj.Bucket, srcobj.Key, srcobj.StorageClass, dstobj.StorageClass)
+	}
+}
+
+// CanCopyObject 判断 CopyObject 是否允许
+// 返回：是否允许, HTTP状态码
+func (o *ObjectService) CanCopyObject(dest CopyObjectInfo, src CopyObjectInfo, cond CopyObjectConditions) (bool, int) {
+	// 解析时间的闭包
+	parse := func(t string) (time.Time, bool) {
+		if t == "" {
+			return time.Time{}, false
+		}
+		tm, err := http.ParseTime(t)
+		return tm, err == nil
+	}
+
+	// 所有条件检查都使用短路判断
+
+	// 1. 源：x-amz-copy-source-if-match
+	if cond.CopySourceIfMatch != "" {
+		if !src.Exists || src.ETag != cond.CopySourceIfMatch {
+			return false, http.StatusPreconditionFailed
+		}
+	}
+
+	// 2. 源：x-amz-copy-source-if-none-match
+	if cond.CopySourceIfNoneMatch != "" {
+		if cond.CopySourceIfNoneMatch == "*" {
+			if !src.Exists {
+				return false, http.StatusPreconditionFailed // 源必须存在
+			}
+		} else {
+			if src.Exists && src.ETag == cond.CopySourceIfNoneMatch {
+				return false, http.StatusPreconditionFailed
+			}
+		}
+	}
+
+	// 3. 源：x-amz-copy-source-if-modified-since
+	if t, ok := parse(cond.CopySourceIfModifiedSince); ok {
+		if !src.Exists || !src.LastModified.After(t) {
+			return false, http.StatusPreconditionFailed
+		}
+	}
+
+	// 4. 源：x-amz-copy-source-if-unmodified-since
+	if t, ok := parse(cond.CopySourceIfUnmodifiedSince); ok {
+		if !src.Exists || src.LastModified.After(t) {
+			return false, http.StatusPreconditionFailed
+		}
+	}
+
+	// 5. 目标：If-Match
+	if cond.IfMatch != "" {
+		if !dest.Exists || dest.ETag != cond.IfMatch {
+			return false, http.StatusPreconditionFailed
+		}
+	}
+
+	// 6. 目标：If-None-Match
+	if cond.IfNoneMatch != "" {
+		if cond.IfNoneMatch == "*" {
+			if dest.Exists {
+				return false, http.StatusPreconditionFailed // 目标必须不存在
+			}
+		} else {
+			if dest.Exists && dest.ETag == cond.IfNoneMatch {
+				return false, http.StatusPreconditionFailed
+			}
+		}
+	}
+
+	// 7. 目标：If-Modified-Since
+	if t, ok := parse(cond.IfModifiedSince); ok {
+		if !dest.Exists || !dest.LastModified.After(t) {
+			return false, http.StatusPreconditionFailed
+		}
+	}
+
+	// 所有通过
+	return true, http.StatusOK
 }

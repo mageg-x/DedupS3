@@ -10,6 +10,7 @@ import (
 	"errors"
 	"github.com/mageg-x/boulder/internal/logger"
 	"io"
+	"path"
 	"strings"
 	"sync"
 
@@ -17,6 +18,21 @@ import (
 	"github.com/klauspost/compress/zstd"
 	"golang.org/x/crypto/pbkdf2"
 )
+
+// TrimLeadingSlash 去前导 /   合并多个 /  处理 . 和 ..   规范化路径
+func TrimLeadingSlash(ep string) string {
+	if len(ep) > 0 && ep[0] == '/' {
+		// Path ends with '/' preserve it
+		if ep[len(ep)-1] == '/' && len(ep) > 1 {
+			ep = path.Clean(ep)
+			ep += "/"
+		} else {
+			ep = path.Clean(ep)
+		}
+		ep = ep[1:]
+	}
+	return ep
+}
 
 // SliceDiff 返回两个差集：
 // - onlyInA: 在 slice1 中有，但在 slice2 中没有的元素

@@ -287,11 +287,11 @@ func (s *BlockService) RemoveBlock(storageID, blockID string) error {
 	return nil
 }
 
-func (s *BlockService) BatchGet(blockIds []string) ([]*meta.Block, error) {
+func (s *BlockService) BatchGet(storageID string, blockIds []string) ([]*meta.Block, error) {
 	blockMap := make(map[string]*meta.Block)
 	keys := make([]string, 0, len(blockIds))
 	for _, id := range blockIds {
-		key := "aws:block:" + id
+		key := "aws:block:" + storageID + ":" + id
 		keys = append(keys, key)
 	}
 	batchSize := 100
@@ -318,7 +318,7 @@ func (s *BlockService) BatchGet(blockIds []string) ([]*meta.Block, error) {
 
 		newBatch := make([]string, 0, len(batchKeys))
 		for _, key := range batchKeys {
-			blockID := key[len("aws:block:"):]
+			blockID := key[len("aws:block:"+storageID+":"):]
 			_, ok := blockMap[blockID]
 			if !ok {
 				newBatch = append(newBatch, key)
@@ -341,7 +341,7 @@ func (s *BlockService) BatchGet(blockIds []string) ([]*meta.Block, error) {
 			blockMap[block.ID] = &block
 
 			if cache, err := xcache.GetCache(); err == nil && cache != nil {
-				blockKey := "aws:block:" + block.ID
+				blockKey := "aws:block:" + storageID + ":" + block.ID
 				err := cache.Set(context.Background(), blockKey, &block, time.Hour*24*7)
 				if err != nil {
 					logger.GetLogger("boulder").Errorf("set block %s to cache failed: %v", blockKey, err)

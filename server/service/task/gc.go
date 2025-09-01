@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/mageg-x/boulder/service/storage"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/mageg-x/boulder/service/storage"
 
 	"github.com/mageg-x/boulder/internal/logger"
 	"github.com/mageg-x/boulder/internal/storage/kv"
@@ -32,6 +33,11 @@ var (
 type GCBlock struct {
 	BlockID   string `json:"block_id" msgpack:"block_id"`
 	StorageID string `json:"storage_id" msgpack:"storage_id"`
+}
+
+type GCChunk struct {
+	StorageID string   `json:"storage_id" msgpack:"storage_id"`
+	ChunkIDs  []string `json:"chunk_ids" msgpack:"chunk_ids"`
 }
 
 type GCService struct {
@@ -173,8 +179,8 @@ func (g *GCService) cleanOne4Chunk(prefix string) (int, error) {
 		logger.GetLogger("boulder").Infof("found %s to clean ", keys[0])
 	}
 
-	var chunkIDs []string
-	exists, err := txn.Get(keys[0], &chunkIDs)
+	var gcChunks GCChunk
+	exists, err := txn.Get(keys[0], &gcChunks)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to get chunkids: %s  %v", keys[0], err)
 		return 0, fmt.Errorf("failed to get chunkIDs from %s: %w", keys[0], err)
@@ -185,8 +191,8 @@ func (g *GCService) cleanOne4Chunk(prefix string) (int, error) {
 	}
 
 	var deletedCount int
-	for _, chunkID := range chunkIDs {
-		chunkKey := "aws:chunk:" + chunkID
+	for _, chunkID := range gcChunks.ChunkIDs {
+		chunkKey := "aws:chunk:" + gcChunks.StorageID + ":" + chunkID
 		var chunk meta.Chunk
 		exists, err := txn.Get(chunkKey, &chunk)
 		if err != nil {
@@ -273,7 +279,7 @@ func (g *GCService) cleanOne4Block(prefix string) (int, error) {
 
 	var deletedCount int
 	for _, gcBlock := range gcBlocks {
-		blockKey := "aws:block:" + gcBlock.BlockID
+		blockKey := "aws:block:" + gcBlock.StorageID + ":" + gcBlock.BlockID
 		var _block meta.Block
 		exists, err := txn.Get(blockKey, &_block)
 		if err != nil {
@@ -294,7 +300,7 @@ func (g *GCService) cleanOne4Block(prefix string) (int, error) {
 		}
 		var chunkIDs []string
 		for _, chunk := range _block.ChunkList {
-			_key := "aws:chunk:" + chunk.Hash
+			_key := "aws:chunk:" + gcBlock.StorageID + ":" + chunk.Hash
 			chunkIDs = append(chunkIDs, _key)
 		}
 		chunks, err := txn.BatchGet(chunkIDs)
@@ -324,7 +330,7 @@ func (g *GCService) cleanOne4Block(prefix string) (int, error) {
 				break
 			} else {
 				// 顺手清理掉 引用为 0 的元数据
-				_key := "aws:chunk:" + k
+				_key := "aws:chunk:" + gcBlock.StorageID + ":" + k
 				err := txn.Delete(_key)
 				if err != nil {
 					logger.GetLogger("boulder").Errorf("failed to delete chunk %s: %v", k, err)
