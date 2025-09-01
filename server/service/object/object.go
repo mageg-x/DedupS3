@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/md5"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
@@ -70,6 +71,28 @@ type ListObjectsResponse struct {
 	IsTruncated  *bool   `xml:"IsTruncated,omitempty"`
 	NextMarker   *string `xml:"NextMarker,omitempty"`
 	EncodingType *string `xml:"EncodingType,omitempty"`
+
+	// Contents 列表（对象条目）
+	Contents []ObjectContent `xml:"Contents,omitempty"`
+}
+
+// ListObjectsV2Response 对应 S3 ListObjects V2 响应
+type ListObjectsV2Response struct {
+	XMLName xml.Name `xml:"ListBucketResult" json:"-"`
+	// 命名空间属性
+	XMLNS string `xml:"xmlns,attr,omitempty"`
+	Name  string `xml:"Name"` // Bucket 名称
+
+	// 可选字段（omitempty 控制：nil 或零值时不输出）
+	Prefix                *string `xml:"Prefix,omitempty"`
+	Delimiter             *string `xml:"Delimiter,omitempty"`
+	MaxKeys               *int    `xml:"MaxKeys,omitempty"`
+	EncodingType          *string `xml:"EncodingType,omitempty"`
+	IsTruncated           *bool   `xml:"IsTruncated,omitempty"`
+	KeyCount              int     `xml:"KeyCount"`
+	ContinuationToken     *string `xml:"ContinuationToken,omitempty"`
+	NextContinuationToken *string `xml:"NextContinuationToken,omitempty"`
+	StartAfter            *string `xml:"StartAfter,omitempty"`
 
 	// Contents 列表（对象条目）
 	Contents []ObjectContent `xml:"Contents,omitempty"`
@@ -681,6 +704,28 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 	}
 
 	return objects, nil
+}
+
+// ListObjectsV2 实现S3兼容的对象列表功能（V2版本）
+// 返回符合S3 ListObjects V2规范的响应结构
+func (o *ObjectService) ListObjectsV2(bucket, accessKeyID, prefix, continuationToken, startAfter, delimiter string, maxKeys int) ([]*meta.Object, error) {
+	// 1. 解码 continuationToken → 得到 marker
+	var marker string
+	// 优先使用 StartAfter
+	if startAfter != "" {
+		marker = startAfter
+	} else if continuationToken != "" {
+		decoded, err := base64.StdEncoding.DecodeString(continuationToken)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("failed to decode continuation token: %s", continuationToken)
+			return nil, xhttp.ToError(xhttp.ErrInvalidQueryParams)
+		}
+		marker = string(decoded)
+	}
+
+	// 调用V1版本的方法获取对象列表
+	objects, err := o.ListObjects(bucket, accessKeyID, prefix, marker, delimiter, maxKeys)
+	return objects, err
 }
 
 func (o *ObjectService) DeleteObject(params *BaseObjectParams) error {

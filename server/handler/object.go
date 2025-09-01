@@ -17,6 +17,8 @@
 package handler
 
 import (
+	"encoding/base64"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"github.com/mageg-x/boulder/meta"
@@ -601,6 +603,14 @@ func ListObjectsV1Handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	objects, err := _os.ListObjects(bucket, accessKeyID, prefix, marker, delimiter, maxkeys)
+	if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+		return
+	}
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("Error listing objects: %s", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
@@ -608,6 +618,7 @@ func ListObjectsV1Handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := object.ListObjectsResponse{
+		XMLName:  xml.Name{Local: "ListBucketResult"},
 		XMLNS:    "http://s3.amazonaws.com/doc/2006-03-01/",
 		Name:     bucket,
 		Contents: make([]object.ObjectContent, 0, len(objects)),
@@ -634,7 +645,9 @@ func ListObjectsV1Handler(w http.ResponseWriter, r *http.Request) {
 	if delimiter != "" {
 		resp.Delimiter = &delimiter
 	}
-
+	if encodingType != "" {
+		resp.Delimiter = &encodingType
+	}
 	for _, o := range objects {
 		content := object.ObjectContent{
 			Key:          o.Key,
@@ -683,16 +696,144 @@ func ListObjectsV1Handler(w http.ResponseWriter, r *http.Request) {
 func ListObjectsV2MHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: ListObjectsV2MHandler")
-	// TODO: 实现 List Objects V2 with metadata 逻辑
+	// TODO: 实现 List Objects V2 逻辑
 	w.WriteHeader(http.StatusOK)
 }
 
 // ListObjectsV2Handler 处理 List Objects V2 请求
 func ListObjectsV2Handler(w http.ResponseWriter, r *http.Request) {
-	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: ListObjectsV2Handler")
-	// TODO: 实现 List Objects V2 逻辑
-	w.WriteHeader(http.StatusOK)
+
+	bucket, _, _, accessKeyID := GetReqVar(r)
+	if err := utils.CheckValidBucketName(bucket); err != nil {
+		logger.GetLogger("boulder").Errorf("invalid bucket name: %s", bucket)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketName)
+		return
+	}
+	query := r.URL.Query()
+	maxkeys := 1000
+	if query.Get("max-keys") != "" {
+		var err error
+		if maxkeys, err = strconv.Atoi(query.Get("max-keys")); err != nil {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidMaxKeys)
+			return
+		}
+	}
+
+	prefix := query.Get("prefix")
+	continuationToken := query.Get("continuation-token")
+	startAfter := query.Get("start-after")
+	delimiter := query.Get("delimiter")
+	encodingType := query.Get("encoding-type")
+	logger.GetLogger("boulder").Infof("get query %#v", query)
+	if prefix != "" {
+		if err := utils.CheckValidObjectNamePrefix(prefix); err != nil {
+			logger.GetLogger("boulder").Errorf("invalid prefix: %s", prefix)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
+			return
+		}
+	}
+
+	if encodingType != "" {
+		if !strings.EqualFold(encodingType, "url") {
+			logger.GetLogger("boulder").Errorf("invalid encoding-type: %s", encodingType)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidEncodingMethod)
+			return
+		}
+		encodingType = "url" // ✅ 标准化
+	}
+
+	_os := object.GetObjectService()
+	if _os == nil {
+		logger.GetLogger("boulder").Errorf("object service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	objects, err := _os.ListObjectsV2(bucket, accessKeyID, prefix, continuationToken, startAfter, delimiter, maxkeys)
+	if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+		return
+	}
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("Error listing objects: %s", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+	resp := &object.ListObjectsV2Response{
+		XMLName:  xml.Name{Local: "ListBucketResult"},
+		XMLNS:    "http://s3.amazonaws.com/doc/2006-03-01/",
+		Name:     bucket,
+		KeyCount: 0,
+		Contents: make([]object.ObjectContent, 0),
+	}
+
+	isTruncated := len(objects) > maxkeys
+
+	resp.IsTruncated = &isTruncated
+	if isTruncated && len(objects) > 0 {
+		lastKey := objects[len(objects)-1].Key
+		token := base64.StdEncoding.EncodeToString([]byte(lastKey))
+		resp.NextContinuationToken = &token
+	}
+	if isTruncated {
+		objects = objects[:maxkeys]
+	}
+	resp.KeyCount = len(objects)
+	// 只设置非空的可选字段
+	if prefix != "" {
+		resp.Prefix = &prefix
+	}
+	if startAfter != "" {
+		resp.StartAfter = &startAfter
+	}
+	if delimiter != "" {
+		resp.Delimiter = &delimiter
+	}
+	if encodingType != "" {
+		resp.Delimiter = &encodingType
+	}
+	for _, o := range objects {
+		content := object.ObjectContent{
+			Key:          o.Key,
+			LastModified: o.LastModified.UTC(), // S3 使用 UTC
+			ETag:         o.ETag,
+			Size:         o.Size,
+			StorageClass: o.StorageClass,
+		}
+		content.Owner = &meta.Owner{
+			ID:          o.Owner.ID,
+			DisplayName: o.Owner.DisplayName,
+		}
+		resp.Contents = append(resp.Contents, content)
+	}
+
+	// 如果 encoding-type=url，对所有字符串进行 URL 编码
+	if encodingType == "url" {
+		encode := func(s string) string {
+			return url.QueryEscape(s)
+		}
+
+		if resp.Prefix != nil {
+			encoded := encode(*resp.Prefix)
+			resp.Prefix = &encoded
+		}
+		if resp.StartAfter != nil {
+			encoded := encode(*resp.StartAfter)
+			resp.StartAfter = &encoded
+		}
+
+		// 编码 Contents.Key
+		for i := range resp.Contents {
+			encoded := encode(resp.Contents[i].Key)
+			resp.Contents[i].Key = encoded
+		}
+	}
+	xhttp.WriteAWSSuc(w, r, resp)
 }
 
 // ListObjectVersionsMHandler 处理 List Object Versions with metadata 请求
