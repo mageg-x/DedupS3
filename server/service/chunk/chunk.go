@@ -5,10 +5,8 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"sync"
 	"time"
 
@@ -33,6 +31,7 @@ var (
 type ChunkService struct {
 	kvstore kv.KVStore
 }
+type WriteObjCB func(cs *ChunkService, chunks []*meta.Chunk, blocks map[string]*meta.Block, obj *meta.BaseObject) error
 
 func GetChunkService() *ChunkService {
 	mu.Lock()
@@ -53,7 +52,7 @@ func GetChunkService() *ChunkService {
 	return instance
 }
 
-func (c *ChunkService) DoChunk(r io.Reader, obj *meta.Object) error {
+func (c *ChunkService) DoChunk(r io.Reader, obj *meta.BaseObject, cb WriteObjCB) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	// 创建输出通道
@@ -123,40 +122,8 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.Object) error {
 	}
 
 	if !rollback {
-		var txErr error
-		maxRetry := 3
-		// 重试三次， 在文件相同时候，并发上传，会造成 事务冲突
-		for i := 0; i < maxRetry; i++ {
-			// 备份 allchunk, blocks, obj
-			bakAllChunks := make([]*meta.Chunk, 0, len(allChunk))
-			for _, ck := range allChunk {
-				newChunk := ck.Clone()
-				bakAllChunks = append(bakAllChunks, newChunk)
-			}
-
-			bakBlocks := make(map[string]*meta.Block, len(blocks))
-			for k, v := range blocks {
-				newBlock := v.Clone()
-				bakBlocks[k] = newBlock
-			}
-
-			bakObj := obj.Clone()
-
-			txErr = c.WriteMeta(ctx, obj.Owner.ID, bakAllChunks, bakBlocks, bakObj)
-			if txErr == nil {
-				break
-			} else if errors.Is(txErr, kv.ErrTxnCommit) && i < maxRetry-1 {
-				// 事务提交冲突
-				logger.GetLogger("boulder").Warnf("transmission write object %s/%s commit failed: %v, and  retry %d times", obj.Bucket, obj.Key, txErr, i+1)
-				baseDelay := 500 * time.Millisecond
-				jitter := time.Duration(rand.Int63n(100)) * time.Millisecond
-				sleep := baseDelay<<uint(i) + jitter
-				time.Sleep(sleep)
-			} else {
-				logger.GetLogger("boulder").Errorf("transmission write object %s/%s  meta info failed: %v，retry times %d", obj.Bucket, obj.Key, txErr, i+1)
-			}
-		}
-
+		// 开始写入 元数据
+		txErr := cb(c, allChunk, blocks, obj)
 		if txErr != nil {
 			rollback = true
 			cancel()
@@ -182,7 +149,7 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.Object) error {
 }
 
 // Split DoChunk 简单的CDC分块函数
-func (c *ChunkService) Split(ctx context.Context, r io.Reader, outputChan chan *meta.Chunk, opt *fastcdc.ChunkerOpts, obj *meta.Object) error {
+func (c *ChunkService) Split(ctx context.Context, r io.Reader, outputChan chan *meta.Chunk, opt *fastcdc.ChunkerOpts, obj *meta.BaseObject) error {
 	// 创建CDC分块器
 	chunker, err := fastcdc.NewChunker("fastcdc", r, opt)
 	if err != nil {
@@ -240,7 +207,7 @@ func (c *ChunkService) Split(ctx context.Context, r io.Reader, outputChan chan *
 	return nil
 }
 
-func (c *ChunkService) Dedup(ctx context.Context, inputChan, dedupChan chan *meta.Chunk, obj *meta.Object) ([]*meta.Chunk, error) {
+func (c *ChunkService) Dedup(ctx context.Context, inputChan, dedupChan chan *meta.Chunk, obj *meta.BaseObject) ([]*meta.Chunk, error) {
 	allChunk := make([]*meta.Chunk, 0)
 	chunkFilter := make(map[string]string)
 	// 初始化 MD5 哈希用于计算整个数据块的MD5
@@ -325,7 +292,7 @@ func (c *ChunkService) Dedup(ctx context.Context, inputChan, dedupChan chan *met
 	return allChunk, nil
 }
 
-func (c *ChunkService) Assemble(ctx context.Context, dedupChan chan *meta.Chunk, obj *meta.Object) (map[string]*meta.Block, error) {
+func (c *ChunkService) Assemble(ctx context.Context, dedupChan chan *meta.Chunk, obj *meta.BaseObject) (map[string]*meta.Block, error) {
 	blocks := make(map[string]*meta.Block)
 	finished := false
 	blockNum := 0
@@ -364,7 +331,7 @@ func (c *ChunkService) Assemble(ctx context.Context, dedupChan chan *meta.Chunk,
 }
 
 // Summary 主要用途是 修正 chunk 里面的blockid 索引信息, 统计 object 的实际大小
-func (c *ChunkService) Summary(ctx context.Context, allChan chan []*meta.Chunk, blocks map[string]*meta.Block, obj *meta.Object) ([]*meta.Chunk, error) {
+func (c *ChunkService) Summary(ctx context.Context, allChan chan []*meta.Chunk, blocks map[string]*meta.Block, obj *meta.BaseObject) ([]*meta.Chunk, error) {
 	allChunks := make([]*meta.Chunk, 0)
 	chunk2block := make(map[string]string)
 	for _, _block := range blocks {
@@ -407,7 +374,7 @@ func (c *ChunkService) Summary(ctx context.Context, allChan chan []*meta.Chunk, 
 	return allChunks, nil
 }
 
-func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk []*meta.Chunk, blocks map[string]*meta.Block, obj *meta.Object) error {
+func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk []*meta.Chunk, blocks map[string]*meta.Block, obj *meta.BaseObject, objPrefix, objSuffix string) error {
 	txn, err := c.kvstore.BeginTxn(ctx, nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("%s/%s create transaction failed: %v", obj.Bucket, obj.Key, err)
@@ -485,7 +452,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 	}
 
 	//写入object meta信息
-	objKey := "aws:object:" + accountID + ":" + obj.Bucket + "/" + obj.Key
+	objKey := objPrefix + accountID + ":" + obj.Bucket + "/" + obj.Key + objSuffix
 	for _, _chunk := range allChunk {
 		obj.Chunks = append(obj.Chunks, _chunk.Hash)
 	}

@@ -412,6 +412,71 @@ func ExtractMetadata(header http.Header) (map[string]string, error) {
 	return meta, nil
 }
 
+func ExtractTags(header http.Header) (map[string]string, error) {
+	tagHeader := header.Get(xhttp.AmzObjectTagging)
+	tags := make(map[string]string)
+
+	if tagHeader == "" {
+		return tags, nil
+	}
+
+	// URL 解码（因为 key 和 value 都可能被编码）
+	decoded, err := url.QueryUnescape(tagHeader)
+	if err != nil {
+		return nil, fmt.Errorf("invalid tagging: malformed URL encoding: %v", err)
+	}
+
+	// 按 & 分割
+	pairs := strings.Split(decoded, "&")
+	for _, pair := range pairs {
+		if pair == "" {
+			continue
+		}
+
+		// 按第一个 = 分割（value 中可能包含 =）
+		eqIdx := strings.Index(pair, "=")
+		if eqIdx == -1 {
+			return nil, fmt.Errorf("invalid tag: missing '=' in '%s'", pair)
+		}
+
+		key := strings.TrimSpace(pair[:eqIdx])
+		value := strings.TrimSpace(pair[eqIdx+1:])
+
+		if key == "" {
+			return nil, fmt.Errorf("invalid tag: empty key in '%s'", pair)
+		}
+
+		// S3 tag key 限制：
+		// - 1-128 字符
+		// - 不能以 `aws:` 开头（保留）
+		if len(key) < 1 || len(key) > 128 {
+			return nil, fmt.Errorf("tag key '%s' must be 1-128 characters long", key)
+		}
+		if strings.HasPrefix(strings.ToLower(key), "aws:") {
+			return nil, fmt.Errorf("tag key '%s' is reserved by AWS", key)
+		}
+
+		// S3 tag value 限制：
+		// - 0-256 字符
+		if len(value) > 256 {
+			return nil, fmt.Errorf("tag value for key '%s' exceeds 256 characters", key)
+		}
+
+		// S3 不允许重复 key
+		if _, exists := tags[key]; exists {
+			return nil, fmt.Errorf("duplicate tag key: '%s'", key)
+		}
+
+		tags[key] = value
+	}
+
+	// S3 最多支持 50 个标签
+	if len(tags) > 50 {
+		return nil, fmt.Errorf("too many tags: %d, maximum is 50", len(tags))
+	}
+
+	return tags, nil
+}
 func IsValidMetaKey(key string) bool {
 	for _, r := range key {
 		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' && r != '_' && r != '.' {

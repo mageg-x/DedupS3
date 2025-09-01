@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"sync"
 	"time"
@@ -46,6 +47,7 @@ type BaseObjectParams struct {
 	StorageID                   string
 	ContentLen                  int64
 	ContentType                 string
+	ContentMd5                  string
 	Range                       *xhttp.HTTPRangeSpec
 	IfMatch                     string
 	IfNoneMatch                 string
@@ -54,6 +56,8 @@ type BaseObjectParams struct {
 	CopySourceIfNoneMatch       string
 	CopySourceIfModifiedSince   string
 	CopySourceIfUnmodifiedSince string
+	UploadID                    string
+	PartNumber                  int64
 }
 
 // ListObjectsResponse 对应 S3 ListObjects V1 响应
@@ -318,9 +322,9 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 	}
 
 	defer func() {
-		chunkKey := "aws:object:" + ak.AccountID + ":" + params.BucketName + "/" + params.ObjKey
+		objKey := "aws:object:" + ak.AccountID + ":" + params.BucketName + "/" + params.ObjKey
 		if cache, err := xcache.GetCache(); err == nil && cache != nil {
-			cache.Del(context.Background(), chunkKey)
+			cache.Del(context.Background(), objKey)
 		}
 	}()
 
@@ -358,7 +362,9 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 			objectInfo.ETag = hex.EncodeToString(hash[:])
 			objectInfo.Size = int64(len(bodyBytes))
 			// 直接写meta
-			err = chunker.WriteMeta(context.Background(), ak.AccountID, nil, nil, objectInfo)
+			objPrefix := "aws:object:"
+			objSuffix := ""
+			err = chunker.WriteMeta(context.Background(), ak.AccountID, nil, nil, meta.ObjectToBaseObject(objectInfo), objPrefix, objSuffix)
 			if err != nil {
 				logger.GetLogger("boulder").Errorf("failed to write %s/%s object inline chunk %v", objectInfo.Bucket, objectInfo.Key, err)
 				return nil, fmt.Errorf("failed to write %s/%s object inline chunk %v", objectInfo.Bucket, objectInfo.Key, err)
@@ -370,12 +376,52 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 		}
 	}
 
-	err = chunker.DoChunk(r, objectInfo)
+	err = chunker.DoChunk(r, meta.ObjectToBaseObject(objectInfo), o.WriteObjectMeta)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to chunk object: %v", err)
 	}
 
 	return objectInfo, err
+}
+
+func (o *ObjectService) WriteObjectMeta(cs *chunk.ChunkService, chunks []*meta.Chunk, blocks map[string]*meta.Block, object *meta.BaseObject) error {
+	var txErr error
+	maxRetry := 3
+	obj := meta.BaseObjectToObject(object)
+
+	// 重试三次， 在文件相同时候，并发上传，会造成 事务冲突
+	for i := 0; i < maxRetry; i++ {
+		// 备份 allchunk, blocks, obj
+		bakAllChunks := make([]*meta.Chunk, 0, len(chunks))
+		for _, ck := range chunks {
+			newChunk := ck.Clone()
+			bakAllChunks = append(bakAllChunks, newChunk)
+		}
+
+		bakBlocks := make(map[string]*meta.Block, len(blocks))
+		for k, v := range blocks {
+			newBlock := v.Clone()
+			bakBlocks[k] = newBlock
+		}
+
+		bakObj := obj.Clone()
+		objPrefix := "aws:object:"
+		objSuffix := ""
+		txErr = cs.WriteMeta(context.Background(), obj.Owner.ID, bakAllChunks, bakBlocks, meta.ObjectToBaseObject(bakObj), objPrefix, objSuffix)
+		if txErr == nil {
+			break
+		} else if errors.Is(txErr, kv.ErrTxnCommit) && i < maxRetry-1 {
+			// 事务提交冲突
+			logger.GetLogger("boulder").Warnf("transmission write object %s/%s commit failed: %v, and  retry %d times", obj.Bucket, obj.Key, txErr, i+1)
+			baseDelay := 500 * time.Millisecond
+			jitter := time.Duration(rand.Int63n(100)) * time.Millisecond
+			sleep := baseDelay<<uint(i) + jitter
+			time.Sleep(sleep)
+		} else {
+			logger.GetLogger("boulder").Errorf("transmission write object %s/%s  meta info failed: %v，retry times %d", obj.Bucket, obj.Key, txErr, i+1)
+		}
+	}
+	return txErr
 }
 
 func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *BaseObjectParams) (*meta.Object, io.ReadCloser, error) {

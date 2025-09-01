@@ -36,8 +36,8 @@ var (
 type BlockService struct {
 	kvstore kv.KVStore
 
-	preBlocks []*meta.Block
-	muxtext   sync.Mutex
+	preBlocks  []*meta.Block
+	blockLocks []sync.Mutex // 为每个块单独设置锁
 }
 
 func GetBlockService() *BlockService {
@@ -53,45 +53,46 @@ func GetBlockService() *BlockService {
 		return nil
 	}
 	instance = &BlockService{
-		kvstore:   store,
-		preBlocks: make([]*meta.Block, PRE_UPLOAD_BLOCK_NUM),
-		muxtext:   sync.Mutex{},
+		kvstore:    store,
+		preBlocks:  make([]*meta.Block, PRE_UPLOAD_BLOCK_NUM),
+		blockLocks: make([]sync.Mutex, PRE_UPLOAD_BLOCK_NUM),
 	}
 
 	return instance
 }
 
-func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.Object) (*meta.Block, error) {
+func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.Block, error) {
 	h := murmur3.Sum32([]byte(obj.Bucket + obj.Key))
 	i := h % PRE_UPLOAD_BLOCK_NUM
 	var flushBlock *meta.Block
 
 	if chunk == nil {
-		utils.WithLock(&s.muxtext, func() {
-			flushBlock = s.preBlocks[i].Clone()
-		})
+		// 对象结束时候会发一个 nil chunk 表示 对象结束了，需要保存 blcok
+		s.blockLocks[i].Lock()
+		defer s.blockLocks[i].Unlock()
+		flushBlock = s.preBlocks[i]
 	} else {
 		if chunk.Data == nil {
 			logger.GetLogger("boulder").Errorf("chunk data is nil: %#v", chunk)
 			return nil, fmt.Errorf("chunk data is nil: %#v", chunk)
 		}
-
-		utils.WithLock(&s.muxtext, func() {
-			curBlock := s.preBlocks[i]
-			if curBlock == nil {
-				curBlock = meta.NewBlock(obj.DataLocation)
-				s.preBlocks[i] = curBlock
-			}
-			chunk.BlockID = curBlock.ID
-			curBlock.ChunkList = append(curBlock.ChunkList, meta.BlockChunk{Hash: chunk.Hash, Size: chunk.Size, Data: chunk.Data})
-			chunk.Data = nil
-			curBlock.TotalSize += int64(chunk.Size)
-			curBlock.UpdatedAt = time.Now()
-			if curBlock.TotalSize > MAX_BUCKET_SIZE {
-				flushBlock = curBlock
-				s.preBlocks[i] = nil
-			}
-		})
+		s.blockLocks[i].Lock()
+		defer s.blockLocks[i].Unlock()
+		curBlock := s.preBlocks[i]
+		if curBlock == nil {
+			curBlock = meta.NewBlock(obj.DataLocation)
+			s.preBlocks[i] = curBlock
+		}
+		chunk.BlockID = curBlock.ID
+		curBlock.ChunkList = append(curBlock.ChunkList, meta.BlockChunk{Hash: chunk.Hash, Size: chunk.Size, Data: chunk.Data})
+		chunk.Data = nil
+		curBlock.TotalSize += int64(chunk.Size)
+		curBlock.UpdatedAt = time.Now()
+		if curBlock.TotalSize > MAX_BUCKET_SIZE {
+			// 块超过大小，从缓存中摘出来，保存到存储
+			flushBlock = curBlock
+			s.preBlocks[i] = nil
+		}
 	}
 
 	if flushBlock != nil {

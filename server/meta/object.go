@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unsafe"
 )
 
 type InlineChunk struct {
@@ -33,20 +34,24 @@ type InlineChunk struct {
 	Data     []byte `json:"data" xml:"Data"`
 }
 
+type BaseObject struct {
+	Bucket       string    `json:"bucket"`                    // 所属存储桶
+	Key          string    `json:"key"`                       // 对象键
+	ETag         string    `json:"etag"`                      // 分段ETag
+	Size         int64     `json:"size"`                      // 分段大小
+	Chunks       []string  `json:"chunks" xml:"Chunk"`        // chunk 索引
+	LastModified time.Time `json:"lastModified"`              // 最后修改时间
+	CreatedAt    time.Time `json:"createdAt" xml:"CreatedAt"` // 创建时间
+	// 数据位置（实际存储系统中使用）
+	DataLocation string `json:"dataLocation" xml:"-"` // 对象数据存储位置
+}
+
 // Object 表示存储桶中的一个对象
 type Object struct {
 	// 对象标识信息
-	Bucket       string       `json:"bucket" xml:"Bucket"`            // 所属存储桶
-	Key          string       `json:"key" xml:"Key"`                  // 对象键
+	BaseObject                // 必须匿名嵌入，且是第一个字段
 	VersionID    string       `json:"versionId" xml:"VersionId"`      // 版本ID（如果启用版本控制）
-	ETag         string       `json:"etag" xml:"ETag"`                // 对象的ETag
-	Size         int64        `json:"size" xml:"Size"`                // 对象大小（字节）
-	Chunks       []string     `json:"chunks" xml:"Chunk"`             // chunk 索引
 	ChunksInline *InlineChunk `json:"chunk_inline" xml:"ChunkInline"` // inline chunk
-
-	// 时间信息
-	LastModified time.Time `json:"lastModified" xml:"LastModified"` // 最后修改时间
-	CreatedAt    time.Time `json:"createdAt" xml:"CreatedAt"`       // 创建时间
 
 	// 内容信息
 	ContentType        string `json:"contentType" xml:"ContentType"`               // MIME类型
@@ -75,9 +80,6 @@ type Object struct {
 	// 所有者信息
 	Owner Owner `json:"owner" xml:"Owner"` // 对象所有者
 	ACL   *ACL  `json:"acl" xml:"Acl"`     // 访问控制列表
-
-	// 数据位置（实际存储系统中使用）
-	DataLocation string `json:"dataLocation" xml:"-"` // 对象数据存储位置
 }
 
 // Owner 表示对象所有者信息
@@ -86,14 +88,24 @@ type Owner struct {
 	DisplayName string `json:"displayName" xml:"DisplayName,omitempty"` // 显示名称
 }
 
+func ObjectToBaseObject(obj *Object) *BaseObject {
+	return (*BaseObject)(unsafe.Pointer(obj))
+}
+
+func BaseObjectToObject(base *BaseObject) *Object {
+	return (*Object)(unsafe.Pointer(base))
+}
+
 // NewObject 创建新的对象
 func NewObject(bucket, key string) *Object {
 	now := time.Now().UTC()
 	return &Object{
-		Bucket:       bucket,
-		Key:          key,
-		CreatedAt:    now,
-		LastModified: now,
+		BaseObject: BaseObject{
+			Bucket:       bucket,
+			Key:          key,
+			CreatedAt:    now,
+			LastModified: now,
+		},
 		ContentType:  "application/octet-stream",
 		StorageClass: "STANDARD",
 		UserMetadata: make(map[string]string),
@@ -397,13 +409,16 @@ func (o *Object) Validate() error {
 // Copy 创建对象的副本
 func (o *Object) Copy() *Object {
 	cp := &Object{
-		Bucket:             o.Bucket,
-		Key:                o.Key,
+		BaseObject: BaseObject{
+			Bucket:       o.Bucket,
+			Key:          o.Key,
+			ETag:         o.ETag,
+			Size:         o.Size,
+			LastModified: o.LastModified,
+			CreatedAt:    o.CreatedAt,
+			DataLocation: o.DataLocation,
+		},
 		VersionID:          o.VersionID,
-		ETag:               o.ETag,
-		Size:               o.Size,
-		LastModified:       o.LastModified,
-		CreatedAt:          o.CreatedAt,
 		ContentType:        o.ContentType,
 		ContentEncoding:    o.ContentEncoding,
 		ContentLanguage:    o.ContentLanguage,
@@ -418,7 +433,6 @@ func (o *Object) Copy() *Object {
 		LegalHold:          o.LegalHold,
 		Owner:              o.Owner,
 		ACL:                o.ACL,
-		DataLocation:       o.DataLocation,
 	}
 
 	// 深拷贝map

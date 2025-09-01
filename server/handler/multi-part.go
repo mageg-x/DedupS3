@@ -17,25 +17,88 @@
 package handler
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
+	"strconv"
+
+	xhttp "github.com/mageg-x/boulder/internal/http"
+	"github.com/mageg-x/boulder/internal/utils"
+	"github.com/mageg-x/boulder/service/multipart"
+	"github.com/mageg-x/boulder/service/object"
 
 	"github.com/mageg-x/boulder/internal/logger"
 )
 
-// CompleteMultipartUploadHandler 处理 Complete Multipart Upload 请求
+// CompleteMultipartUploadHandler 完成分段上传
 func CompleteMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: CompleteMultipartUploadHandler")
-	// TODO: 实现 Complete Multipart Upload 逻辑
-	w.WriteHeader(http.StatusOK)
+	bucket, objectKey, _, accessKeyID := GetReqVar(r)
+	uploadID := r.URL.Query().Get("uploadId")
+	ifMatch := r.Header.Get(xhttp.IfMatch)
+	ifnoneMatch := r.Header.Get(xhttp.IfNoneMatch)
 }
 
-// NewMultipartUploadHandler 处理 New Multipart Upload 请求
+// NewMultipartUploadHandler 创建分段上传
 func NewMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: NewMultipartUploadHandler")
-	// TODO: 实现 New Multipart Upload 逻辑
-	w.WriteHeader(http.StatusOK)
+	bucket, objectKey, _, accessKeyID := GetReqVar(r)
+	if err := utils.CheckValidObjectName(objectKey); err != nil {
+		logger.GetLogger("boulder").Errorf("Invalid object name: %s", objectKey)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
+		return
+	}
+
+	if err := utils.CheckValidObjectName(objectKey); err != nil {
+		logger.GetLogger("boulder").Errorf("Invalid object name: %s", objectKey)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
+		return
+	}
+
+	_mps := multipart.GetMultiPartService()
+	if _mps == nil {
+		logger.GetLogger("boulder").Errorf("Object service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	upload, err := _mps.CreateMultipartUpload(r.Header, &object.BaseObjectParams{
+		AccessKeyID: accessKeyID,
+		BucketName:  bucket,
+		ObjKey:      objectKey,
+	})
+	if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidStorageClass)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidStorageClass)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrPreconditionFailed)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrPreconditionFailed)
+		return
+	}
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("Error creating multipart upload: %s", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	resp := &multipart.InitiateMultipartUploadResult{
+		XMLNS:    "http://s3.amazonaws.com/doc/2006-03-01/",
+		Bucket:   upload.Bucket,
+		Key:      upload.Key,
+		UploadId: upload.UploadID,
+	}
+
+	xhttp.WriteAWSSuc(w, r, resp)
 }
 
 // AbortMultipartUploadHandler 处理 Abort Multipart Upload 请求
@@ -67,11 +130,51 @@ func CopyObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// PutObjectPartHandler 处理 PUT Object Part 请求
+// PutObjectPartHandler UploadPart 请求
 func PutObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: PutObjectPartHandler")
-	// TODO: 实现 PUT Object Part 逻辑
+	bucket, objectKey, _, accessKeyID := GetReqVar(r)
+	uploadID := r.URL.Query().Get("uploadId")
+	partNumberStr := r.URL.Query().Get("partNumber")
+	partNumber, err := strconv.Atoi(partNumberStr)
+	if err != nil || partNumber < 1 || partNumber > 10000 {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidPartNumber)
+		return
+	}
+	contentLength := r.ContentLength
+	if contentLength <= 0 {
+		logger.GetLogger("boulder").Errorf("Invalid content length: %d", contentLength)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+	// content Md5
+	contentMd5 := r.Header.Get(xhttp.ContentMD5)
+
+	_mps := multipart.GetMultiPartService()
+	if _mps == nil {
+		logger.GetLogger("boulder").Errorf("Object service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	part, err := _mps.UploadPart(r.Body, &object.BaseObjectParams{
+		BucketName:  bucket,
+		ObjKey:      objectKey,
+		UploadID:    uploadID,
+		PartNumber:  int64(partNumber),
+		AccessKeyID: accessKeyID,
+		ContentLen:  contentLength,
+		ContentMd5:  contentMd5,
+	})
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("upload %s : %d failed: %s", uploadID, partNumber, err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	// 设置响应头
+	w.Header().Set(xhttp.ETag, fmt.Sprintf(`"%s"`, part.ETag))
 	w.WriteHeader(http.StatusOK)
 }
 
