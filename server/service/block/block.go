@@ -87,7 +87,7 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 		curBlock.ChunkList = append(curBlock.ChunkList, meta.BlockChunk{Hash: chunk.Hash, Size: chunk.Size, Data: chunk.Data})
 		chunk.Data = nil
 		curBlock.TotalSize += int64(chunk.Size)
-		curBlock.UpdatedAt = time.Now()
+		curBlock.UpdatedAt = time.Now().UTC()
 		if curBlock.TotalSize > MAX_BUCKET_SIZE {
 			// 块超过大小，从缓存中摘出来，保存到存储
 			flushBlock = curBlock

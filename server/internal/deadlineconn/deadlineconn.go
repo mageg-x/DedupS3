@@ -61,7 +61,7 @@ func (c *DeadlineConn) setReadDeadline() {
 		return
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 	if now.Sub(c.readSetAt) > updateInterval {
 		c.Conn.SetReadDeadline(now.Add(c.readDeadline + updateInterval))
 		c.readSetAt = now
@@ -79,7 +79,7 @@ func (c *DeadlineConn) setWriteDeadline() {
 	if c.abortWrites.Load() {
 		return
 	}
-	now := time.Now()
+	now := time.Now().UTC()
 	if now.Sub(c.writeSetAt) > updateInterval {
 		c.Conn.SetWriteDeadline(now.Add(c.writeDeadline + updateInterval))
 		c.writeSetAt = now

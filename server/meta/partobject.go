@@ -1,6 +1,7 @@
 package meta
 
 import (
+	"encoding/xml"
 	"time"
 	"unsafe"
 )
@@ -61,6 +62,23 @@ type EncryptionInfo struct {
 type PartETag struct {
 	PartNumber int    `json:"partNumber"` // 分段编号
 	ETag       string `json:"etag"`       // 分段ETag
+}
+
+type CompleteMultipartUpload struct {
+	XMLName xml.Name       `xml:"CompleteMultipartUpload"`
+	Parts   []CompletePart `xml:"Part"`
+}
+
+type CompletePart struct {
+	XMLName           xml.Name `xml:"Part"`
+	PartNumber        int      `xml:"PartNumber"`
+	ETag              string   `xml:"ETag"`
+	Size              int64    `xml:"Size,omitempty"`
+	ChecksumCRC32     string   `xml:"ChecksumCRC32,omitempty"`
+	ChecksumCRC32C    string   `xml:"ChecksumCRC32C,omitempty"`
+	ChecksumSHA1      string   `xml:"ChecksumSHA1,omitempty"`
+	ChecksumSHA256    string   `xml:"ChecksumSHA256,omitempty"`
+	ChecksumCRC64NVME string   `xml:"ChecksumCRC64NVME,omitempty"`
 }
 
 func PartToBaseObject(obj *PartObject) *BaseObject {

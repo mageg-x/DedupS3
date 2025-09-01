@@ -18,17 +18,18 @@ package middleware
 
 import (
 	"encoding/json"
-	xhttp "github.com/mageg-x/boulder/internal/http"
-	"github.com/mageg-x/boulder/internal/logger"
 	"net/http"
 	"time"
+
+	xhttp "github.com/mageg-x/boulder/internal/http"
+	"github.com/mageg-x/boulder/internal/logger"
 
 	"github.com/gorilla/mux"
 )
 
 func AuditMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
+		start := time.Now().UTC()
 
 		// 创建响应写入器以捕获状态码
 		rw := &responseWriter{ResponseWriter: w}

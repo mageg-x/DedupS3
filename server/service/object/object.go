@@ -311,7 +311,7 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 		ID:          ak.AccountID,
 		DisplayName: ak.Username,
 	}
-	objectInfo.LastModified = time.Now()
+	objectInfo.LastModified = time.Now().UTC()
 	logger.GetLogger("boulder").Debugf("put object %#v", objectInfo)
 
 	// 进行chunk切分

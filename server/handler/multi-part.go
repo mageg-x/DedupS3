@@ -17,10 +17,13 @@
 package handler
 
 import (
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
+
+	"github.com/mageg-x/boulder/meta"
 
 	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/mageg-x/boulder/internal/utils"
@@ -38,6 +41,76 @@ func CompleteMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 	uploadID := r.URL.Query().Get("uploadId")
 	ifMatch := r.Header.Get(xhttp.IfMatch)
 	ifnoneMatch := r.Header.Get(xhttp.IfNoneMatch)
+
+	// 解析请求体中的XML内容
+	defer r.Body.Close() // 先 defer，再读
+
+	var completeXML meta.CompleteMultipartUpload
+	err := xml.NewDecoder(r.Body).Decode(&completeXML)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to parse request body: %v", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedXML)
+		return
+	}
+
+	// 转换为PartETag数组
+	parts := make([]meta.PartETag, 0, len(completeXML.Parts))
+	for _, part := range completeXML.Parts {
+		parts = append(parts, meta.PartETag{
+			PartNumber: part.PartNumber,
+			ETag:       part.ETag,
+		})
+	}
+
+	_mps := multipart.GetMultiPartService()
+	if _mps == nil {
+		logger.GetLogger("boulder").Errorf("multipart service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	obj, err := _mps.CompleteMultipartUpload(parts, &object.BaseObjectParams{
+		BucketName:  bucket,
+		ObjKey:      objectKey,
+		AccessKeyID: accessKeyID,
+		UploadID:    uploadID,
+		IfMatch:     ifMatch,
+		IfNoneMatch: ifnoneMatch,
+	})
+
+	if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchUpload)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchUpload)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidPart)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidPart)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidQueryParams)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidQueryParams)
+		return
+	}
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("error completing multipart upload: %s", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	// 构建响应
+	w.Header().Set(xhttp.ETag, fmt.Sprintf(`"%s"`, obj.ETag))
+	w.Header().Set(xhttp.LastModified, obj.LastModified.Format(http.TimeFormat))
+	resp := multipart.CompleteMultipartUploadResult{
+		XMLNS:    "http://s3.amazonaws.com/doc/2006-03-01/",
+		Location: fmt.Sprintf("http://%s/%s", r.Host, utils.TrimLeadingSlash(objectKey)),
+		Bucket:   bucket,
+		Key:      objectKey,
+		ETag:     fmt.Sprintf(`"%s"`, obj.ETag),
+	}
+	xhttp.WriteAWSSuc(w, r, resp)
 }
 
 // NewMultipartUploadHandler 创建分段上传
@@ -45,9 +118,9 @@ func NewMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: NewMultipartUploadHandler")
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
-	if err := utils.CheckValidObjectName(objectKey); err != nil {
-		logger.GetLogger("boulder").Errorf("Invalid object name: %s", objectKey)
-		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
+	if err := utils.CheckValidBucketName(bucket); err != nil {
+		logger.GetLogger("boulder").Errorf("Invalid bucket name: %s", objectKey)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketName)
 		return
 	}
 
