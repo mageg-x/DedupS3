@@ -58,6 +58,13 @@ type BaseObjectParams struct {
 	CopySourceIfUnmodifiedSince string
 	UploadID                    string
 	PartNumber                  int64
+	MaxParts                    int64
+	UploadIDMarker              string
+	MaxUploads                  int64
+	Delimiter                   string
+	KeyMarker                   string
+	Encodingtype                string
+	Prefix                      string
 }
 
 // ListObjectsResponse 对应 S3 ListObjects V1 响应
@@ -704,7 +711,11 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
 		return nil, fmt.Errorf("failed to begin transaction: %v", err)
 	}
-	defer txn.Rollback()
+	defer func() {
+		if txn != nil {
+			_ = txn.Rollback()
+		}
+	}()
 
 	// 获取对象键列表
 	keys := make([]string, 0)
@@ -723,6 +734,7 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 		nextKey = next
 	}
 	txn.Rollback()
+	txn = nil
 
 	// 获取object meta 信息
 	objects := make([]*meta.Object, 0)
@@ -793,7 +805,11 @@ func (o *ObjectService) DeleteObject(params *BaseObjectParams) error {
 		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
 		return fmt.Errorf("failed to begin transaction: %v", err)
 	}
-	defer txn.Rollback()
+	defer func() {
+		if txn != nil {
+			_ = txn.Rollback()
+		}
+	}()
 	objkey := "aws:object:" + ak.AccountID + ":" + params.BucketName + "/" + params.ObjKey
 	var _object meta.Object
 	exists, err := txn.Get(objkey, &_object)
@@ -827,6 +843,8 @@ func (o *ObjectService) DeleteObject(params *BaseObjectParams) error {
 		logger.GetLogger("boulder").Errorf("%s/%s commit object failed: %v", _object.Bucket, _object.Key, err)
 		return fmt.Errorf("%s/%s commit object failed: %v", _object.Bucket, _object.Key, err)
 	}
+	txn = nil
+
 	if cache, e := xcache.GetCache(); e == nil && cache != nil {
 		cache.Del(context.Background(), objkey)
 	}
@@ -926,7 +944,11 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 			logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
 			return nil, fmt.Errorf("failed to begin transaction: %v", err)
 		}
-		defer txn.Rollback()
+		defer func() {
+			if txn != nil {
+				_ = txn.Rollback()
+			}
+		}()
 		for _, chunkID := range dstobj.Chunks {
 			chunkey := "aws:chunk:" + srcobj.DataLocation + ":" + chunkID
 			var _chunk meta.Chunk
@@ -978,6 +1000,8 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 			logger.GetLogger("boulder").Errorf("%s/%s commit failed: %v", dstobj.Bucket, dstobj.Key, err)
 			return nil, kv.ErrTxnCommit
 		}
+		txn = nil
+
 		logger.GetLogger("boulder").Infof("write object %s/%s  all meta data finish", dstobj.Bucket, dstobj.Key)
 		if cache, err := xcache.GetCache(); err == nil && cache != nil {
 			cache.Del(context.Background(), dstobjKey)

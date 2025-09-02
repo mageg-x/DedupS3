@@ -9,10 +9,12 @@ import (
 // PartObject 表示分段上传中的一个分段
 type PartObject struct {
 	// 对象标识信息
-	BaseObject        // 必须匿名嵌入，且是第一个字段
-	UploadID   string `json:"uploadId"`   // 所属上传任务ID
-	PartNumber int    `json:"partNumber"` // 分段编号
-	Owner      Owner  `json:"-"`          // 任务所有者
+	BaseObject             // 必须匿名嵌入，且是第一个字段
+	UploadID     string    `json:"uploadId"`               // 所属上传任务ID
+	PartNumber   int       `json:"partNumber"`             // 分段编号
+	Owner        Owner     `json:"-"`                      // 任务所有者
+	Initiator    Initiator `json:"initiator,omitempty"`    // 任务发起者
+	StorageClass string    `json:"storageClass,omitempty"` // 存储类别
 }
 
 // PartInfo 表示分段信息（用于列表操作）
@@ -21,6 +23,12 @@ type PartInfo struct {
 	ETag         string    `json:"etag" xml:"ETag"`
 	Size         int64     `json:"size" xml:"Size"`
 	LastModified time.Time `json:"lastModified" xml:"LastModified"`
+
+	// Checksum 字段（可选）
+	ChecksumCRC32  string `xml:"ChecksumCRC32,omitempty"`
+	ChecksumCRC32C string `xml:"ChecksumCRC32C,omitempty"`
+	ChecksumSHA1   string `xml:"ChecksumSHA1,omitempty"`
+	ChecksumSHA256 string `xml:"ChecksumSHA256,omitempty"`
 }
 
 // MultipartUpload 表示一个分段上传任务
@@ -28,7 +36,6 @@ type MultipartUpload struct {
 	UploadID           string            `json:"uploadId"`                     // 唯一上传ID
 	Bucket             string            `json:"bucket"`                       // 目标存储桶
 	Key                string            `json:"key"`                          // 对象键
-	Initiated          time.Time         `json:"initiated"`                    // 任务创建时间
 	StorageClass       string            `json:"storageClass,omitempty"`       // 存储类别
 	Owner              Owner             `json:"owner,omitempty"`              // 任务所有者
 	Initiator          Initiator         `json:"initiator,omitempty"`          // 任务发起者
@@ -99,9 +106,13 @@ func (p *PartObject) Clone() *PartObject {
 			LastModified: p.LastModified,
 			CreatedAt:    p.CreatedAt,
 			DataLocation: p.DataLocation,
+			Chunks:       append([]string(nil), p.Chunks...),
 		},
-		UploadID:   p.UploadID,
-		PartNumber: p.PartNumber,
+		UploadID:     p.UploadID,
+		PartNumber:   p.PartNumber,
+		Owner:        p.Owner,
+		Initiator:    p.Initiator,
+		StorageClass: p.StorageClass,
 	}
 
 	return cp

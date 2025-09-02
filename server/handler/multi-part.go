@@ -21,7 +21,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/mageg-x/boulder/meta"
 
@@ -174,33 +177,266 @@ func NewMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 	xhttp.WriteAWSSuc(w, r, resp)
 }
 
-// AbortMultipartUploadHandler 处理 Abort Multipart Upload 请求
+// AbortMultipartUploadHandler AbortMultipartUpload  中止分段上传
 func AbortMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: AbortMultipartUploadHandler")
-	// TODO: 实现 Abort Multipart Upload 逻辑
-	w.WriteHeader(http.StatusOK)
+	bucket, objectKey, _, accessKeyID := GetReqVar(r)
+	uploadID := r.URL.Query().Get("uploadId")
+
+	_mps := multipart.GetMultiPartService()
+	if _mps == nil {
+		logger.GetLogger("boulder").Errorf("Object service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+	err := _mps.AbortMultipartUpload(&object.BaseObjectParams{
+		BucketName:  bucket,
+		ObjKey:      objectKey,
+		AccessKeyID: accessKeyID,
+		UploadID:    uploadID,
+	})
+	if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchUpload)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchUpload)
+		return
+	}
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("Error aborting multipart upload: %s", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
-// ListMultipartUploadsHandler 处理 List Multipart Uploads 请求
+// ListMultipartUploadsHandler  ListMultipartUploads 列出bucket下所有的正在上传的uploadid
 func ListMultipartUploadsHandler(w http.ResponseWriter, r *http.Request) {
 	logger.GetLogger("boulder").Infof("API called: ListMultipartUploadsHandler")
-	// TODO: 实现 List Multipart Uploads 逻辑
-	w.WriteHeader(http.StatusOK)
+	bucket, objectKey, _, accessKeyID := GetReqVar(r)
+	// 验证bucket名称
+	if err := utils.CheckValidBucketName(bucket); err != nil || accessKeyID == "" {
+		logger.GetLogger("boulder").Errorf("Invalid bucket name: %s", bucket)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketName)
+		return
+	}
+	// 解析查询参数
+	query := r.URL.Query()
+	prefix := query.Get("prefix")
+	delimiter := query.Get("delimiter")
+	keyMarker := query.Get("key-marker")
+	uploadIDMarker := query.Get("upload-id-marker")
+	maxUploadsStr := query.Get("max-uploads")
+	encodingType := query.Get("encoding-type")
+
+	// 解析MaxUploads参数
+	maxUploads := int64(1000) // S3默认值
+	if maxUploadsStr != "" {
+		parsedMaxUploads, err := strconv.ParseInt(maxUploadsStr, 10, 64)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("Invalid max-uploads: %s", maxUploadsStr)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
+			return
+		}
+		// S3限制max-uploads最大为1000
+		if parsedMaxUploads > 0 && parsedMaxUploads <= 1000 {
+			maxUploads = parsedMaxUploads
+		}
+	}
+	// 设置默认的MaxUploads值
+	if maxUploads < 0 || maxUploads > 1000 {
+		maxUploads = 1000
+	}
+	// 验证encoding-type参数
+	if encodingType != "" && encodingType != "url" {
+		logger.GetLogger("boulder").Errorf("Invalid encoding-type: %s", encodingType)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
+		return
+	}
+
+	// 获取MultiPartService实例
+	_mps := multipart.GetMultiPartService()
+	if _mps == nil {
+		logger.GetLogger("boulder").Errorf("multipart service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	// 调用ListMultipartUploads方法
+	uploads, err := _mps.ListMultipartUploads(&object.BaseObjectParams{
+		BucketName:     bucket,
+		ObjKey:         objectKey,
+		AccessKeyID:    accessKeyID,
+		UploadIDMarker: uploadIDMarker,
+		MaxUploads:     maxUploads,
+		Delimiter:      delimiter,
+		Prefix:         prefix,
+		Encodingtype:   encodingType,
+		KeyMarker:      keyMarker,
+	})
+
+	// 处理错误
+	if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidQueryParams)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidQueryParams)
+		return
+	}
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("Error listing multipart uploads: %s", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	// 构造响应结构
+	result := multipart.ListMultipartUploadsResult{
+		Bucket:         bucket,
+		MaxUploads:     int(maxUploads),
+		Prefix:         prefix,
+		Delimiter:      delimiter,
+		EncodingType:   encodingType,
+		KeyMarker:      keyMarker,
+		UploadIdMarker: uploadIDMarker,
+	}
+
+	var xmlUploads []*multipart.Upload
+	for _, u := range uploads {
+		xmlUploads = append(xmlUploads, &multipart.Upload{
+			Key:          u.Key,
+			UploadId:     u.UploadID,
+			StorageClass: u.StorageClass,
+			Initiated:    u.Created.Format(time.RFC3339),
+			Initiator:    u.Initiator,
+			Owner:        u.Owner,
+		})
+	}
+	result.Upload = xmlUploads
+
+	if int64(len(uploads)) >= maxUploads && maxUploads > 0 && len(uploads) > 0 {
+		result.IsTruncated = true
+		last := uploads[len(uploads)-1]
+		result.NextKeyMarker = last.Key
+		result.NextUploadIdMarker = last.UploadID
+	} else {
+		result.IsTruncated = false
+		result.NextKeyMarker = ""
+		result.NextUploadIdMarker = ""
+	}
+
+	if encodingType == "url" {
+		encoder := func(s string) string {
+			return url.QueryEscape(s)
+		}
+		if result.Prefix != "" {
+			result.Prefix = encoder(result.Prefix)
+		}
+		if result.KeyMarker != "" {
+			result.KeyMarker = encoder(result.KeyMarker)
+		}
+		if result.NextKeyMarker != "" {
+			result.NextKeyMarker = encoder(result.NextKeyMarker)
+		}
+		// 数据字段
+		for _, u := range result.Upload {
+			u.Key = encoder(u.Key) // Key 需要编码
+			// UploadId 通常不含特殊字符，但 S3 也会编码
+			u.UploadId = encoder(u.UploadId)
+		}
+	}
+
+	xhttp.WriteAWSSuc(w, r, result)
 }
 
-// DeleteMultipleObjectsHandler 处理 Delete Multiple Objects 请求
-func DeleteMultipleObjectsHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("boulder").Infof("API called: DeleteMultipleObjectsHandler")
-	// TODO: 实现 Delete Multiple Objects 逻辑
-	w.WriteHeader(http.StatusOK)
-}
-
-// CopyObjectPartHandler 处理 COPY Object Part 请求
+// CopyObjectPartHandler  UploadPartCopy
 func CopyObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 	logger.GetLogger("boulder").Infof("API called: CopyObjectPartHandler")
-	// TODO: 实现 COPY Object Part 逻辑
-	w.WriteHeader(http.StatusOK)
+	bucket, objectKey, _, accessKeyID := GetReqVar(r)
+
+	// 验证bucket名称
+	if err := utils.CheckValidBucketName(bucket); err != nil || accessKeyID == "" {
+		logger.GetLogger("boulder").Errorf("Invalid bucket name: %s", bucket)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketName)
+		return
+	}
+	// 解析查询参数
+	uploadID := r.URL.Query().Get("uploadId")
+	partNumberStr := r.URL.Query().Get("partNumber")
+	partNumber, err := strconv.Atoi(partNumberStr)
+	if err != nil || partNumber < 1 || partNumber > 10000 {
+		logger.GetLogger("boulder").Errorf("Invalid part number: %s", partNumberStr)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidPartNumber)
+		return
+	}
+	// 获取源对象信息
+	source := r.Header.Get(xhttp.AmzCopySource)
+	if source == "" {
+		logger.GetLogger("boulder").Errorf("Missing x-amz-copy-source header")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
+		return
+	}
+	// 解析源对象路径，格式通常为 "/bucket/key"
+	sourceParts := strings.SplitN(source, "/", 3)
+	if len(sourceParts) < 3 {
+		logger.GetLogger("boulder").Errorf("Invalid x-amz-copy-source format: %s", source)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
+		return
+	}
+	sourceBucket := sourceParts[1]
+	sourceKey := sourceParts[2]
+
+	// 获取可选的范围参数
+	rangeHeadStr := r.Header.Get(xhttp.AmzCopySourceRange)
+	// 不支持 range 复制
+	if rangeHeadStr != "" {
+		logger.GetLogger("boulder").Errorf("invalid range header: %s, error: %v", rangeHeadStr, err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidRange)
+		return
+	}
+
+	CopySourceIfMatch := r.Header.Get(xhttp.AmzCopySourceIfMatch)
+	CopySourceIfNoneMatch := r.Header.Get(xhttp.AmzCopySourceIfNoneMatch)
+	CopySourceIfModifiedSince := r.Header.Get(xhttp.AmzCopySourceIfModifiedSince)
+	CopySourceIfUnmodifiedSince := r.Header.Get(xhttp.AmzCopySourceIfUnmodifiedSince)
+
+	// 获取MultiPartService实例
+	_mps := multipart.GetMultiPartService()
+	if _mps == nil {
+		logger.GetLogger("boulder").Errorf("multipart service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	part, err := _mps.UploadPartCopy(sourceBucket, sourceKey, &object.BaseObjectParams{
+		BucketName:                  bucket,
+		ObjKey:                      objectKey,
+		AccessKeyID:                 accessKeyID,
+		UploadIDMarker:              uploadID,
+		PartNumber:                  int64(partNumber),
+		CopySourceIfMatch:           CopySourceIfMatch,
+		CopySourceIfNoneMatch:       CopySourceIfNoneMatch,
+		CopySourceIfUnmodifiedSince: CopySourceIfUnmodifiedSince,
+		CopySourceIfModifiedSince:   CopySourceIfModifiedSince,
+	})
+
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("%s/%s/%s/%d copy object part  failed : %v", bucket, objectKey, uploadID, partNumber, err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	resp := multipart.CopyPartResult{
+		XMLName:      xml.Name{Local: "CopyPartResult"},
+		XMLNS:        "http://s3.amazonaws.com/doc/2006-03-01/",
+		ETag:         part.ETag,
+		LastModified: part.LastModified,
+	}
+	xhttp.WriteAWSSuc(w, r, &resp)
 }
 
 // PutObjectPartHandler UploadPart 请求
@@ -251,10 +487,106 @@ func PutObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// ListObjectPartsHandler 处理 List Object Parts 请求
+// ListObjectPartsHandler 处理 ListParts请求  列出uploadid中已上传的分段
 func ListObjectPartsHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: ListObjectPartsHandler")
-	// TODO: 实现 List Object Parts 逻辑
-	w.WriteHeader(http.StatusOK)
+	bucket, objectKey, _, accessKeyID := GetReqVar(r)
+	// 解析查询参数
+	query := r.URL.Query()
+	uploadID := query.Get("uploadId")
+	maxPartsStr := query.Get("max-parts")
+	partNumberMarkerStr := query.Get("part-number-marker")
+
+	// 解析 MaxParts
+	maxParts := 1000 // 默认值
+	if maxPartsStr != "" {
+		parsedMaxParts, err := strconv.Atoi(maxPartsStr)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("invalid max-parts: %s", maxPartsStr)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
+			return
+		}
+		maxParts = parsedMaxParts
+	}
+	// 设置默认值
+	if maxParts <= 0 || maxParts > 1000 {
+		maxParts = 1000 // S3默认值和最大值
+	}
+	// 解析 PartNumberMarker
+	partNumberMarker := 0 // 默认值
+	if partNumberMarkerStr != "" {
+		parsedMarker, err := strconv.Atoi(partNumberMarkerStr)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("invalid part-number-marker: %s", partNumberMarkerStr)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
+			return
+		}
+		partNumberMarker = parsedMarker
+	}
+
+	// 调用MultiPartService获取分段列表
+	_mps := multipart.GetMultiPartService()
+	if _mps == nil {
+		logger.GetLogger("boulder").Errorf("multipart service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+	// 调用ListParts方法
+	upload, parts, err := _mps.ListParts(&object.BaseObjectParams{
+		BucketName:  bucket,
+		ObjKey:      objectKey,
+		AccessKeyID: accessKeyID,
+		UploadID:    uploadID,
+		PartNumber:  int64(partNumberMarker),
+		MaxParts:    int64(maxParts),
+	})
+
+	// 处理错误
+	if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchUpload)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchUpload)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidQueryParams)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidQueryParams)
+		return
+	}
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("error listing object parts: %s", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	resp := multipart.ListPartsResult{
+		XMLName:          xml.Name{Local: "ListPartsResult"},
+		XMLNS:            "http://s3.amazonaws.com/doc/2006-03-01/",
+		Bucket:           upload.Bucket,
+		Key:              upload.Key,
+		UploadId:         upload.UploadID,
+		Initiator:        upload.Initiator,
+		Owner:            upload.Owner,
+		StorageClass:     upload.StorageClass,
+		PartNumberMarker: partNumberMarker,
+		MaxParts:         maxParts,
+	}
+	if len(parts) > maxParts {
+		resp.IsTruncated = true
+		resp.NextPartNumberMarker = parts[maxParts-1].PartNumber
+		parts = parts[:maxParts]
+	}
+	for _, p := range parts {
+		partInfo := meta.PartInfo{
+			PartNumber:   p.PartNumber,
+			ETag:         p.ETag,
+			Size:         p.Size,
+			LastModified: p.LastModified,
+		}
+		resp.Part = append(resp.Part, &partInfo)
+	}
+
+	xhttp.WriteAWSSuc(w, r, resp)
 }

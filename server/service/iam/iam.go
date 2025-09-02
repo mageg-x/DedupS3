@@ -67,7 +67,11 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IAMAccount,
 		return nil, fmt.Errorf("failed to initialize kvstore txn: %v", err)
 	}
 
-	defer txn.Rollback()
+	defer func() {
+		if txn != nil {
+			_ = txn.Rollback()
+		}
+	}()
 
 	// 检查账户是否已存在
 	_, exists, err := txn.GetRaw(key)
@@ -101,6 +105,7 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IAMAccount,
 		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
 		return nil, err
 	}
+	txn = nil
 	logger.GetLogger("boulder").Infof("account %s created with user %s", account.AccountID, username)
 	return account, nil
 }
@@ -145,7 +150,11 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IAMAc
 		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
 		return false, fmt.Errorf("failed to initialize kvstore txn: %v", err)
 	}
-	defer txn.Rollback()
+	defer func() {
+		if txn != nil {
+			_ = txn.Rollback()
+		}
+	}()
 
 	key := "aws:iam:account:id:" + accountID
 	var account meta.IAMAccount
@@ -203,6 +212,7 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IAMAc
 		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
 		return false, err
 	}
+	txn = nil
 
 	if cache, err := xcache.GetCache(); err == nil && cache != nil {
 		cache.Del(context.Background(), key)
@@ -225,7 +235,11 @@ func (s *IamService) DeleteAccount(accountID string) error {
 		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
 		return fmt.Errorf("failed to initialize kvstore txn: %v", err)
 	}
-	defer txn.Rollback()
+	defer func() {
+		if txn != nil {
+			_ = txn.Rollback()
+		}
+	}()
 
 	// 删除与之相关的所有 accesskey
 	var account meta.IAMAccount
@@ -262,6 +276,7 @@ func (s *IamService) DeleteAccount(accountID string) error {
 		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
 		return err
 	}
+	txn = nil
 
 	// 还要删除与之相关的所有  block, chunk，bucket，和 object 元数据索引 todo
 	return nil

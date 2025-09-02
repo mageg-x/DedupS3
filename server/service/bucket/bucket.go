@@ -5,10 +5,11 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	xhttp "github.com/mageg-x/boulder/internal/http"
-	xcache "github.com/mageg-x/boulder/internal/storage/cache"
 	"sync"
 	"time"
+
+	xhttp "github.com/mageg-x/boulder/internal/http"
+	xcache "github.com/mageg-x/boulder/internal/storage/cache"
 
 	"github.com/mageg-x/boulder/internal/logger"
 	"github.com/mageg-x/boulder/internal/storage/kv"
@@ -87,7 +88,11 @@ func (b *BucketService) CreateBucket(params BaseBucketParams) error {
 		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
 		return fmt.Errorf("failed to initialize kvstore txn: %v", err)
 	}
-	defer txn.Rollback()
+	defer func() {
+		if txn != nil {
+			_ = txn.Rollback()
+		}
+	}()
 
 	// 先判断bucket 是否已经存在
 	key := "aws:bucket:" + ac.AccountID + ":" + params.BucketName
@@ -119,6 +124,7 @@ func (b *BucketService) CreateBucket(params BaseBucketParams) error {
 		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
 		return fmt.Errorf("failed to commit transaction: %v", err)
 	}
+	txn = nil
 
 	// 删除cache
 	if cache, e := xcache.GetCache(); e == nil && cache != nil {

@@ -255,30 +255,29 @@ func (t *BadgerTxn) Delete(key string) error {
 	}
 	return err
 }
-
 func (t *BadgerTxn) DeletePrefix(prefix string, limit int32) error {
-	// 创建迭代选项，只迭代指定前缀的键
 	opts := badger.DefaultIteratorOptions
 	opts.Prefix = []byte(prefix)
 
-	// 创建迭代器
 	it := t.txn.NewIterator(opts)
 	defer it.Close()
 
-	count := int32(0)
-	// 遍历所有匹配前缀的键
+	var count int32
 	for it.Rewind(); it.Valid(); it.Next() {
 		item := it.Item()
 		key := item.Key()
-		count += 1
-		if count > limit {
-			break
-		}
-		// 删除键
-		err := t.txn.Delete(key)
-		if err != nil {
+
+		// 删除当前 key
+		if err := t.txn.Delete(key); err != nil {
 			logger.GetLogger("boulder").Errorf("failed to delete key %s: %v", string(key), err)
 			return fmt.Errorf("failed to delete key %s: %w", string(key), err)
+		}
+
+		count++
+
+		// 如果设置了 limit 且已达到数量，退出
+		if limit > 0 && count >= limit {
+			break
 		}
 	}
 

@@ -85,7 +85,11 @@ func (s *StorageService) AddStorage(strType, strClass string, conf config.BlockC
 		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
 		return nil, err
 	}
-	defer txn.Rollback()
+	defer func() {
+		if txn != nil {
+			_ = txn.Rollback()
+		}
+	}()
 
 	key := "aws:storage:" + id
 	var existing meta.Storage
@@ -111,6 +115,8 @@ func (s *StorageService) AddStorage(strType, strClass string, conf config.BlockC
 		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
 		return nil, err
 	}
+	txn = nil
+
 	logger.GetLogger("boulder").Infof("successfully added storage with id: %s, type: %s", id, strType)
 	return storage, nil
 }
@@ -263,7 +269,11 @@ func (s *StorageService) RemoveStorage(id string) bool {
 		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
 		return false
 	}
-	defer txn.Rollback()
+	defer func() {
+		if txn != nil {
+			_ = txn.Rollback()
+		}
+	}()
 
 	key := "aws:storage:" + id
 	if err := txn.Delete(key); err != nil {
@@ -271,6 +281,8 @@ func (s *StorageService) RemoveStorage(id string) bool {
 		return false
 	}
 	if err = txn.Commit(); err == nil {
+		txn = nil
+
 		s.mutex.Lock()
 		defer s.mutex.Unlock()
 

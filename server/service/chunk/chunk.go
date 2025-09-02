@@ -380,7 +380,11 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 		logger.GetLogger("boulder").Errorf("%s/%s create transaction failed: %v", obj.Bucket, obj.Key, err)
 		return fmt.Errorf("%s/%s create transaction failed: %v", obj.Bucket, obj.Key, err)
 	}
-	defer txn.Rollback()
+	defer func() {
+		if txn != nil {
+			_ = txn.Rollback()
+		}
+	}()
 	type Pair struct {
 		BlockID string
 		ChunkID string
@@ -493,6 +497,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 		logger.GetLogger("boulder").Errorf("%s/%s commit failed: %v", obj.Bucket, obj.Key, err)
 		return kv.ErrTxnCommit
 	}
+	txn = nil
 	logger.GetLogger("boulder").Infof("write object %s/%s  all meta data finish", obj.Bucket, obj.Key)
 	return nil
 }

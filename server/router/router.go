@@ -68,11 +68,11 @@ func SetupRouter() *mux.Router {
 		router.Methods(http.MethodGet).Path("/{object:.+}").HandlerFunc(handler.GetObjectAttributesHandler).Queries("attributes", "").Name("GetObjectAttributes")
 
 		// CopyObjectPart
-		router.Methods(http.MethodPut).Path("/{object:.+}").HeadersRegexp(xhttp.AmzCopySource, ".*?(\\/|%2F).*?").HandlerFunc(handler.CopyObjectPartHandler).Queries("partNumber", "{partNumber:.*}", "uploadId", "{uploadId:.*}").Name("CopyObjectPart")
+		router.Methods(http.MethodPut).Path("/{object:.+}").HeadersRegexp(xhttp.AmzCopySource, ".*?(\\/|%2F).*?").HandlerFunc(handler.CopyObjectPartHandler).Queries("partNumber", "{partNumber:.*}", "uploadId", "{uploadId:.*}").Name("UploadPartCopy")
 		// PutObjectPart
 		router.Methods(http.MethodPut).Path("/{object:.+}").HandlerFunc(handler.PutObjectPartHandler).Queries("partNumber", "{partNumber:.*}", "uploadId", "{uploadId:.*}").Name("UploadPart")
 		// ListObjectParts
-		router.Methods(http.MethodGet).Path("/{object:.+}").HandlerFunc(handler.ListObjectPartsHandler).Queries("uploadId", "{uploadId:.*}").Name("ListObjectParts")
+		router.Methods(http.MethodGet).Path("/{object:.+}").HandlerFunc(handler.ListObjectPartsHandler).Queries("uploadId", "{uploadId:.*}").Name("ListParts")
 		// CompleteMultipartUpload
 		router.Methods(http.MethodPost).Path("/{object:.+}").HandlerFunc(handler.CompleteMultipartUploadHandler).Queries("uploadId", "{uploadId:.*}").Name("CompleteMultipartUpload")
 		// NewMultipartUpload

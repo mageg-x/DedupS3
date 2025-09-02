@@ -546,6 +546,13 @@ func DeleteObjectHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// DeleteMultipleObjectsHandler  批量删除多个对象 DeleteObjects
+func DeleteMultipleObjectsHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Infof("API called: DeleteMultipleObjectsHandler")
+	// TODO: 实现 Delete Multiple Objects 逻辑
+	w.WriteHeader(http.StatusOK)
+}
+
 // PostRestoreObjectHandler 处理 POST Restore Object 请求
 func PostRestoreObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称

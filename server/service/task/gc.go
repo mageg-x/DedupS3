@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/mageg-x/boulder/internal/utils"
+
 	"github.com/mageg-x/boulder/service/storage"
 
 	"github.com/mageg-x/boulder/internal/logger"
@@ -162,7 +164,11 @@ func (g *GCService) cleanOne4Chunk(prefix string) (int, error) {
 		logger.GetLogger("boulder").Errorf("failed to begin txn: %v", err)
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer txn.Rollback()
+	defer func() {
+		if txn != nil {
+			_ = txn.Rollback()
+		}
+	}()
 
 	// 扫描一个前缀条目
 	keys, _, err := txn.Scan(prefix, "", 1)
@@ -190,6 +196,7 @@ func (g *GCService) cleanOne4Chunk(prefix string) (int, error) {
 		return 0, nil
 	}
 
+	blockMap := make(map[string]bool)
 	var deletedCount int
 	for _, chunkID := range gcChunks.ChunkIDs {
 		chunkKey := "aws:chunk:" + gcChunks.StorageID + ":" + chunkID
@@ -218,6 +225,7 @@ func (g *GCService) cleanOne4Chunk(prefix string) (int, error) {
 			} else {
 				//logger.GetLogger("boulder").Infof("deleted chunk %s", chunkID)
 				deletedCount++
+				blockMap[chunk.BlockID] = true
 			}
 		}
 	}
@@ -233,6 +241,21 @@ func (g *GCService) cleanOne4Chunk(prefix string) (int, error) {
 		logger.GetLogger("boulder").Errorf("failed to commit txn: %v", err)
 		return 0, fmt.Errorf("failed to commit transaction: %w", err)
 	}
+	txn = nil
+
+	// 连带 block 也要清理
+
+	if len(blockMap) > 0 {
+		gcKey := GCBlockPrefix + utils.GenUUID()
+		var gcBlocks []*GCBlock
+		for blockID := range blockMap {
+			gcBlocks = append(gcBlocks, &GCBlock{BlockID: blockID, StorageID: gcChunks.StorageID})
+		}
+		err := g.kvstore.Set(gcKey, gcBlocks)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("failed to set gc blocks gcKey %s error : %v", gcKey, err)
+		}
+	}
 
 	return deletedCount, nil
 }
@@ -243,7 +266,11 @@ func (g *GCService) cleanOne4Block(prefix string) (int, error) {
 		logger.GetLogger("boulder").Errorf("failed to begin txn: %v", err)
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer txn.Rollback()
+	defer func() {
+		if txn != nil {
+			_ = txn.Rollback()
+		}
+	}()
 
 	// 扫描一个前缀条目
 	keys, _, err := txn.Scan(prefix, "", 1)
@@ -367,6 +394,7 @@ func (g *GCService) cleanOne4Block(prefix string) (int, error) {
 		logger.GetLogger("boulder").Errorf("failed to commit txn: %v", err)
 		return 0, fmt.Errorf("failed to commit transaction: %w", err)
 	}
+	txn = nil
 	return deletedCount, nil
 }
 

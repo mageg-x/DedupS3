@@ -338,7 +338,7 @@ func (t *TiKVTxn) DeletePrefix(prefix string, limit int32) error {
 
 	var count int32
 	// 遍历所有匹配前缀的键并删除
-	for iter.Valid() && count < limit {
+	for iter.Valid() && (limit == 0 || count < limit) {
 		key := iter.Key()
 		count += 1
 		// 删除键

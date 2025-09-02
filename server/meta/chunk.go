@@ -50,11 +50,6 @@ func NewChunk(data []byte) *Chunk {
 	return &c
 }
 
-// AddBlockRef 添加块引用
-func (c *Chunk) SetBlockId(blockID string) {
-	c.BlockID = blockID
-}
-
 // CalcChunkHash 计算数据的哈希
 func (c *Chunk) CalcChunkHash() string {
 	fp := blake3.Sum256(c.Data)
