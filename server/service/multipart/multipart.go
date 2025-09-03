@@ -33,7 +33,8 @@ import (
 )
 
 const (
-	UID_PREFIX = "u0118"
+	UID_PREFIX    = "u0118"
+	MAT_PART_SIZE = 5 * 1024 * 1024
 )
 
 var (
@@ -641,9 +642,9 @@ func (m *MultiPartService) UploadPartCopy(srcBucket, srcObject string, params *o
 	return part, nil
 }
 
-func (m *MultiPartService) CompleteMultipartUpload(parts []meta.PartETag, params *object.BaseObjectParams) (*meta.Object, error) {
+func (m *MultiPartService) CompleteMultipartUpload(cliParts []meta.PartETag, params *object.BaseObjectParams) (*meta.Object, error) {
 	// 参数校验
-	if params.AccessKeyID == "" || params.BucketName == "" || params.ObjKey == "" || params.UploadID == "" || len(parts) == 0 {
+	if params.AccessKeyID == "" || params.BucketName == "" || params.ObjKey == "" || params.UploadID == "" || len(cliParts) == 0 {
 		logger.GetLogger("boulder").Errorf("invalid parameters for CompleteMultipartUpload")
 		return nil, xhttp.ToError(xhttp.ErrInvalidQueryParams)
 	}
@@ -760,69 +761,55 @@ func (m *MultiPartService) CompleteMultipartUpload(parts []meta.PartETag, params
 		return allParts[i].PartNumber < allParts[j].PartNumber
 	})
 
-	// 校验 PartNumber 连续性、范围、去重
-	partMap := make(map[int]meta.PartETag)
-	seen := make(map[int]bool)
-	for _, p := range parts {
-		if p.PartNumber < 1 || p.PartNumber > 10000 {
-			logger.GetLogger("boulder").Errorf("invalid part number: %d", p.PartNumber)
-			return nil, xhttp.ToError(xhttp.ErrInvalidArgument)
-		}
-		if seen[p.PartNumber] {
-			logger.GetLogger("boulder").Errorf("duplicate part number: %d", p.PartNumber)
-			return nil, xhttp.ToError(xhttp.ErrInvalidArgument)
-		}
-		seen[p.PartNumber] = true
-		partMap[p.PartNumber] = p
-	}
-
-	// 检查是否所有 part 都提交了
-	if len(parts) != len(allParts) {
-		logger.GetLogger("boulder").Errorf("part count mismatch: expected %d, got %d", len(allParts), len(parts))
+	// 检查是否和客户端一致
+	sort.Slice(cliParts, func(i, j int) bool {
+		return cliParts[i].PartNumber < cliParts[j].PartNumber
+	})
+	if len(cliParts) != len(allParts) {
+		logger.GetLogger("boulder").Errorf("client part count mismatch: expected %d, got %d", len(allParts), len(cliParts))
 		return nil, xhttp.ToError(xhttp.ErrInvalidPart)
 	}
+	for i, p := range allParts {
+		if p.ETag != cliParts[i].ETag {
+			logger.GetLogger("boulder").Errorf("part etag not match expected %s, got %s", p.ETag, cliParts[i].ETag)
+			return nil, xhttp.ToError(xhttp.ErrInvalidPart)
+		}
+		//除了最后一个其他都要大于 5M
+		if i < len(allParts)-1 && p.Size < MAT_PART_SIZE {
+			logger.GetLogger("boulder").Errorf("the none last part size %d is smaller then %d", p.Size, MAT_PART_SIZE)
+			return nil, xhttp.ToError(xhttp.ErrInvalidPart)
+		}
+	}
 
-	// 验证分片顺序和 ETag，并计算最终 ETag
+	// 检查连续性
+	for idx, p := range allParts {
+		if (idx + 1) != p.PartNumber {
+			logger.GetLogger("boulder").Errorf("invalid sequence part number: %d", p.PartNumber)
+			return nil, xhttp.ToError(xhttp.ErrInvalidPartOrder)
+		}
+	}
+
+	// 验证 ETag，并计算最终 ETag
 	hash := md5.New()
 	totalSize := int64(0)
 	Chunks := make([]string, 0)
 
-	for i, p := range allParts {
-		// 检查顺序
-		if i > 0 && p.PartNumber <= allParts[i-1].PartNumber {
-			logger.GetLogger("boulder").Errorf("invalid part order: %v", allParts)
-			return nil, xhttp.ToError(xhttp.ErrInvalidPartOrder)
-		}
-
-		// 检查是否存在
-		clientPart, exists := partMap[p.PartNumber]
-		if !exists {
-			logger.GetLogger("boulder").Errorf("missing part %d in complete request", p.PartNumber)
-			return nil, xhttp.ToError(xhttp.ErrInvalidPart)
-		}
-
-		expectedETag := string(p.ETag)
-		actualETag := string(clientPart.ETag)
-		if p.ETag != clientPart.ETag {
-			logger.GetLogger("boulder").Errorf("ETag mismatch for part %d: expected %s, got %s", p.PartNumber, expectedETag, actualETag)
-			return nil, xhttp.ToError(xhttp.ErrInvalidPart)
-		}
-
+	for _, p := range allParts {
+		partETag := string(p.ETag)
 		// 解码原始 MD5 并写入 hash
-		binaryMD5, err := hex.DecodeString(expectedETag)
+		binaryMD5, err := hex.DecodeString(partETag)
 		if err != nil || len(binaryMD5) != 16 {
-			logger.GetLogger("boulder").Errorf("invalid ETag format for part %d: %s", p.PartNumber, expectedETag)
+			logger.GetLogger("boulder").Errorf("invalid ETag format for part %d: %s", p.PartNumber, partETag)
 			return nil, xhttp.ToError(xhttp.ErrInvalidPart)
 		}
 		hash.Write(binaryMD5)
-
 		Chunks = append(Chunks, p.Chunks...)
 		totalSize += p.Size
 	}
 
 	// 生成最终 ETag
 	compositeMD5 := hex.EncodeToString(hash.Sum(nil))
-	finalETag := fmt.Sprintf("%s-%d", compositeMD5, len(parts))
+	finalETag := fmt.Sprintf("%s-%d", compositeMD5, len(allParts))
 
 	// 构造最终对象
 	obj := &meta.Object{
@@ -868,7 +855,7 @@ func (m *MultiPartService) CompleteMultipartUpload(parts []meta.PartETag, params
 	txn = nil // 防止 defer rollback
 
 	logger.GetLogger("boulder").Infof("completed multipart upload: bucket=%s, key=%s, uploadID=%s, parts=%d, size=%d",
-		obj.Bucket, obj.Key, params.UploadID, len(parts), totalSize)
+		obj.Bucket, obj.Key, params.UploadID, len(cliParts), totalSize)
 
 	return obj, nil
 }

@@ -95,6 +95,10 @@ func CompleteMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidPart)
 		return
 	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidPartOrder)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidPartOrder)
+		return
+	}
 	if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidQueryParams)) {
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidQueryParams)
 		return

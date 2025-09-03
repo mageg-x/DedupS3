@@ -142,12 +142,13 @@ func (s *BlockService) FlushBlock(block *meta.Block) error {
 	blockData.RealSize = block.TotalSize
 	block.RealSize = block.TotalSize
 
-	logger.GetLogger("boulder").Infof("flush block data %s total size %d real size %d etag %+v", blockData.ID, blockData.TotalSize, blockData.RealSize, md5.Sum(blockData.Data))
+	logger.GetLogger("boulder").Infof("flush block data %s total size %d real size %d data size %d etag %+v",
+		blockData.ID, blockData.TotalSize, blockData.RealSize, len(blockData.Data), md5.Sum(blockData.Data))
 
 	// 压缩Data
-	if len(blockData.Data) > 1024 && utils.IsCompressible(blockData.Data, 64*1024, 0.9) {
+	if len(blockData.Data) > 1024 {
 		compress, err := utils.Compress(blockData.Data)
-		if err == nil && compress != nil {
+		if err == nil && compress != nil && float64(len(compress))/float64(len(blockData.Data)) < 0.9 {
 			block.Compressed = true
 			block.RealSize = int64(len(compress))
 			blockData.Data = compress
@@ -157,13 +158,15 @@ func (s *BlockService) FlushBlock(block *meta.Block) error {
 	}
 
 	// 加密Data
-	encrypt, err := utils.Encrypt(blockData.Data, blockData.ID)
-	if err == nil && encrypt != nil {
-		block.Encrypted = true
-		block.RealSize = int64(len(encrypt))
-		blockData.Data = encrypt
-		blockData.Encrypted = true
-		blockData.RealSize = int64(len(encrypt))
+	if len(blockData.Data) > 0 {
+		encrypt, err := utils.Encrypt(blockData.Data, blockData.ID)
+		if err == nil && encrypt != nil {
+			block.Encrypted = true
+			block.RealSize = int64(len(encrypt))
+			blockData.Data = encrypt
+			blockData.Encrypted = true
+			blockData.RealSize = int64(len(encrypt))
+		}
 	}
 
 	logger.GetLogger("boulder").Infof("flush block data size %d:%d, compress rate %.2f%%",

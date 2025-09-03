@@ -115,6 +115,26 @@ func NewObject(bucket, key string) *Object {
 	}
 }
 
+// MarshalXML 实现：输出 <ETag>"actual-etag"</ETag>
+func (e Etag) MarshalXML(enc *xml.Encoder, start xml.StartElement) error {
+	// 我们要输出的是字符串内容为 "actual-etag" 的文本节点
+	quoted := `"` + string(e) + `"`
+	return enc.EncodeElement(quoted, start)
+}
+
+// UnmarshalXML 实现：输入 <ETag>"actual-etag"</ETag> → 存为 actual-etag
+func (e *Etag) UnmarshalXML(dec *xml.Decoder, start xml.StartElement) error {
+	var quoted string
+	if err := dec.DecodeElement(&quoted, &start); err != nil {
+		return err
+	}
+
+	// 去掉外层引号
+	unquoted := strings.Trim(quoted, `"`)
+	*e = Etag(unquoted)
+	return nil
+}
+
 // SetStorageClass 设置存储类别
 func (o *Object) SetStorageClass(storageClass string) error {
 	validClasses := map[string]bool{
@@ -260,30 +280,6 @@ func parseTaggingHeader(tagging string) map[string]string {
 	}
 
 	return tags
-}
-
-// ToXML 将对象元数据转换为XML格式（用于ListObjects等操作）
-func (o *Object) ToXML() []byte {
-	type Object struct {
-		Key          string    `xml:"Key"`
-		LastModified time.Time `xml:"LastModified"`
-		ETag         Etag      `xml:"ETag"`
-		Size         int64     `xml:"Size"`
-		StorageClass string    `xml:"StorageClass"`
-		Owner        Owner     `xml:"Owner"`
-	}
-
-	obj := Object{
-		Key:          o.Key,
-		LastModified: o.LastModified,
-		ETag:         o.ETag,
-		Size:         o.Size,
-		StorageClass: o.StorageClass,
-		Owner:        o.Owner,
-	}
-
-	data, _ := xml.Marshal(obj)
-	return data
 }
 
 // CalculateETag 计算对象的ETag
