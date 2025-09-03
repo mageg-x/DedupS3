@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -27,6 +28,9 @@ const (
 	DefaultScanInterval = 10 // 1分钟
 )
 
+var (
+	ErrNoMoreData = errors.New("no more data")
+)
 var (
 	instance *GCService
 	mu       = sync.Mutex{}
@@ -129,25 +133,19 @@ func (g *GCService) clean(prefix string) (int, error) {
 	var lastErr error
 
 	for {
-		var err error
 		var count int
+		finished := false
 		// 单次扫描并处理一个 GC 条目
 		switch prefix {
 		case GCChunkPrefix:
-			count, err = g.cleanOne4Chunk(prefix)
+			finished, count, _ = g.cleanOne4Chunk(prefix)
 		case GCBlockPrefix:
-			count, err = g.cleanOne4Block(prefix)
+			finished, count, _ = g.cleanOne4Block(prefix)
 		default:
 			logger.GetLogger("boulder").Debugf("cleaning up chunk prefix %s", prefix)
 		}
 
-		if err != nil {
-			lastErr = err
-			break
-		}
-
-		if count == 0 {
-			// 没有更多数据可处理
+		if finished {
 			break
 		}
 
@@ -158,11 +156,11 @@ func (g *GCService) clean(prefix string) (int, error) {
 }
 
 // cleanOne 处理一个 GC 条目（一个 keys[0] 对应的 chunkIDs）
-func (g *GCService) cleanOne4Chunk(prefix string) (int, error) {
+func (g *GCService) cleanOne4Chunk(prefix string) (bool, int, error) {
 	txn, err := g.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to begin txn: %v", err)
-		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+		return false, 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -174,26 +172,26 @@ func (g *GCService) cleanOne4Chunk(prefix string) (int, error) {
 	keys, _, err := txn.Scan(prefix, "", 1)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to scan keys: %v", err)
-		return 0, fmt.Errorf("failed to scan: %w", err)
+		return false, 0, fmt.Errorf("failed to scan: %w", err)
 	}
 
 	// 没有更多键了
 	if len(keys) == 0 {
 		//logger.GetLogger("boulder").Infof("no keys found, finish to task %s", prefix)
-		return 0, nil
+		return true, 0, nil
 	} else {
-		logger.GetLogger("boulder").Infof("found %s to clean ", keys[0])
+		logger.GetLogger("boulder").Infof("found chunk %s to clean ", keys[0])
 	}
 
 	var gcChunks GCChunk
 	exists, err := txn.Get(keys[0], &gcChunks)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to get chunkids: %s  %v", keys[0], err)
-		return 0, fmt.Errorf("failed to get chunkIDs from %s: %w", keys[0], err)
+		return false, 0, fmt.Errorf("failed to get chunkIDs from %s: %w", keys[0], err)
 	}
 
 	if !exists {
-		return 0, nil
+		return false, 0, fmt.Errorf("chunk %s does not exist", keys[0])
 	}
 
 	blockMap := make(map[string]bool)
@@ -204,7 +202,7 @@ func (g *GCService) cleanOne4Chunk(prefix string) (int, error) {
 		exists, err := txn.Get(chunkKey, &chunk)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to get chunk %s: %v", chunkID, err)
-			return 0, fmt.Errorf("failed to get chunk %s: %w", chunkKey, err)
+			return false, 0, fmt.Errorf("failed to get chunk %s: %w", chunkKey, err)
 		}
 
 		if !exists {
@@ -216,14 +214,14 @@ func (g *GCService) cleanOne4Chunk(prefix string) (int, error) {
 			chunk.RefCount--
 			if err := txn.Set(chunkKey, &chunk); err != nil {
 				logger.GetLogger("boulder").Errorf("failed to set chunk %s: %v", chunkID, err)
-				return 0, fmt.Errorf("failed to update refCount for chunk %s: %w", chunkKey, err)
+				return false, 0, fmt.Errorf("failed to update refCount for chunk %s: %w", chunkKey, err)
 			}
 		} else {
 			if err := txn.Delete(chunkKey); err != nil {
 				logger.GetLogger("boulder").Errorf("failed to delete chunk %s: %v", chunkID, err)
-				return 0, fmt.Errorf("failed to delete chunk %s: %w", chunkKey, err)
+				return false, 0, fmt.Errorf("failed to delete chunk %s: %w", chunkKey, err)
 			} else {
-				//logger.GetLogger("boulder").Infof("deleted chunk %s", chunkID)
+				logger.GetLogger("boulder").Infof("deleted chunk %s", chunkID)
 				deletedCount++
 				blockMap[chunk.BlockID] = true
 			}
@@ -233,18 +231,17 @@ func (g *GCService) cleanOne4Chunk(prefix string) (int, error) {
 	// 删除 GC 记录本身
 	if err := txn.Delete(keys[0]); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to delete chunk %s: %v", keys[0], err)
-		return 0, fmt.Errorf("failed to delete task key %s: %w", keys[0], err)
+		return false, 0, fmt.Errorf("failed to delete task key %s: %w", keys[0], err)
 	}
 
 	// 提交事务
 	if err := txn.Commit(); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to commit txn: %v", err)
-		return 0, fmt.Errorf("failed to commit transaction: %w", err)
+		return false, 0, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	txn = nil
 
 	// 连带 block 也要清理
-
 	if len(blockMap) > 0 {
 		gcKey := GCBlockPrefix + utils.GenUUID()
 		var gcBlocks []*GCBlock
@@ -257,14 +254,14 @@ func (g *GCService) cleanOne4Chunk(prefix string) (int, error) {
 		}
 	}
 
-	return deletedCount, nil
+	return false, deletedCount, nil
 }
 
-func (g *GCService) cleanOne4Block(prefix string) (int, error) {
+func (g *GCService) cleanOne4Block(prefix string) (bool, int, error) {
 	txn, err := g.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to begin txn: %v", err)
-		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+		return false, 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -276,32 +273,32 @@ func (g *GCService) cleanOne4Block(prefix string) (int, error) {
 	keys, _, err := txn.Scan(prefix, "", 1)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to scan keys: %v", err)
-		return 0, fmt.Errorf("failed to scan: %w", err)
+		return false, 0, fmt.Errorf("failed to scan: %w", err)
 	}
 
 	// 没有更多键了
 	if len(keys) == 0 {
 		//logger.GetLogger("boulder").Infof("no keys found, finish to task %s", prefix)
-		return 0, nil
+		return true, 0, nil
 	} else {
-		logger.GetLogger("boulder").Infof("found %s to clean ", keys[0])
+		logger.GetLogger("boulder").Infof("found block %s to clean ", keys[0])
 	}
 
 	var gcBlocks []*GCBlock
 	exists, err := txn.Get(keys[0], &gcBlocks)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to get blockIDs: %s  %v", keys[0], err)
-		return 0, fmt.Errorf("failed to get blockIDs from %s: %w", keys[0], err)
+		return false, 0, fmt.Errorf("failed to get blockIDs from %s: %w", keys[0], err)
 	}
 
 	if !exists {
 		logger.GetLogger("boulder").Infof("not found %s to clean ", keys[0])
-		return 0, nil
+		return false, 0, fmt.Errorf("block %s does not exist", keys[0])
 	}
 	bs := block.GetBlockService()
 	if bs == nil {
 		logger.GetLogger("boulder").Errorf("failed to get block service")
-		return 0, fmt.Errorf("failed to get block service")
+		return false, 0, fmt.Errorf("failed to get block service")
 	}
 
 	var deletedCount int
@@ -311,14 +308,14 @@ func (g *GCService) cleanOne4Block(prefix string) (int, error) {
 		exists, err := txn.Get(blockKey, &_block)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to get block %s: %v", blockKey, err)
-			return 0, fmt.Errorf("failed to get block %s: %w", blockKey, err)
+			return false, 0, fmt.Errorf("failed to get block %s: %w", blockKey, err)
 		}
 		if !exists {
 			// 索引元数据都不存在，就直接删除实际数据了
 			err := bs.RemoveBlock(gcBlock.StorageID, gcBlock.BlockID)
 			if err != nil {
 				logger.GetLogger("boulder").Errorf("failed to remove block %#v: %v", gcBlock, err)
-				return 0, fmt.Errorf("failed to remove block %#v: %w", gcBlock, err)
+				return false, 0, fmt.Errorf("failed to remove block %#v: %w", gcBlock, err)
 			} else {
 				logger.GetLogger("boulder").Infof("removed block %#v", gcBlock)
 			}
@@ -333,7 +330,7 @@ func (g *GCService) cleanOne4Block(prefix string) (int, error) {
 		chunks, err := txn.BatchGet(chunkIDs)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to batch get chunks: %v", err)
-			return 0, fmt.Errorf("failed to batch get chunks: %w", err)
+			return false, 0, fmt.Errorf("failed to batch get chunks: %w", err)
 		}
 		// 看看是否已经没有任何索引关联
 		canDel := true
@@ -371,13 +368,13 @@ func (g *GCService) cleanOne4Block(prefix string) (int, error) {
 			err := txn.Delete(blockKey)
 			if err != nil {
 				logger.GetLogger("boulder").Errorf("failed to delete block %s: %v", blockKey, err)
-				return 0, fmt.Errorf("failed to delete chunk %s: %w", blockKey, err)
+				return false, 0, fmt.Errorf("failed to delete chunk %s: %w", blockKey, err)
 			}
 			// 再删除实际数据
 			err = bs.RemoveBlock(gcBlock.StorageID, gcBlock.BlockID)
 			if err != nil {
 				logger.GetLogger("boulder").Errorf("failed to remove block %s: %v", gcBlock.BlockID, err)
-				return 0, fmt.Errorf("failed to remove block %s: %w", gcBlock.BlockID, err)
+				return false, 0, fmt.Errorf("failed to remove block %s: %w", gcBlock.BlockID, err)
 			}
 
 			deletedCount++
@@ -386,16 +383,16 @@ func (g *GCService) cleanOne4Block(prefix string) (int, error) {
 	// 删除 GC 记录本身
 	if err := txn.Delete(keys[0]); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to delete block %s: %v", keys[0], err)
-		return 0, fmt.Errorf("failed to delete task key %s: %w", keys[0], err)
+		return false, 0, fmt.Errorf("failed to delete task key %s: %w", keys[0], err)
 	}
 
 	// 提交事务
 	if err := txn.Commit(); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to commit txn: %v", err)
-		return 0, fmt.Errorf("failed to commit transaction: %w", err)
+		return false, 0, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	txn = nil
-	return deletedCount, nil
+	return false, deletedCount, nil
 }
 
 func (g *GCService) checkBlock() {

@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/mageg-x/boulder/service/task"
 
 	"github.com/mageg-x/boulder/service/chunk"
@@ -28,7 +30,10 @@ import (
 	"github.com/mageg-x/boulder/meta"
 	"github.com/mageg-x/boulder/service/iam"
 	"github.com/mageg-x/boulder/service/object"
-	"github.com/rs/xid"
+)
+
+const (
+	UID_PREFIX = "u0118"
 )
 
 var (
@@ -50,12 +55,12 @@ type InitiateMultipartUploadResult struct {
 }
 
 type CompleteMultipartUploadResult struct {
-	XMLName  xml.Name `xml:"CompleteMultipartUploadResult"`
-	XMLNS    string   `xml:"xmlns,attr"` // 命名空间
-	Location string   `xml:"Location"`
-	Bucket   string   `xml:"Bucket"`
-	Key      string   `xml:"Key"`
-	ETag     string   `xml:"ETag"`
+	XMLName  xml.Name  `xml:"CompleteMultipartUploadResult"`
+	XMLNS    string    `xml:"xmlns,attr"` // 命名空间
+	Location string    `xml:"Location"`
+	Bucket   string    `xml:"Bucket"`
+	Key      string    `xml:"Key"`
+	ETag     meta.Etag `xml:"ETag"`
 
 	ChecksumCRC32     string `xml:"ChecksumCRC32,omitempty"`
 	ChecksumCRC32C    string `xml:"ChecksumCRC32C,omitempty"`
@@ -104,7 +109,7 @@ type ListMultipartUploadsResult struct {
 	NextUploadIdMarker string    `xml:"NextUploadIdMarker,omitempty"`
 	EncodingType       string    `xml:"EncodingType,omitempty"`
 	Upload             []*Upload `xml:"Upload,omitempty"`
-	CommonPrefixes     []string  `xml:"CommonPrefixes>Prefix,omitempty"`
+	CommonPrefixes     *[]string `xml:"CommonPrefixes>Prefix,omitempty"`
 }
 
 // MultipartUpload 分片上传任务信息
@@ -122,7 +127,7 @@ type Upload struct {
 type CopyPartResult struct {
 	XMLName      xml.Name  `xml:"CopyPartResult"`
 	XMLNS        string    `xml:"xmlns,attr"`
-	ETag         string    `xml:"ETag"`
+	ETag         meta.Etag `xml:"ETag"`
 	LastModified time.Time `xml:"LastModified"`
 	// Checksum 相关字段（可选，根据需求启用）
 	ChecksumAlgorithm string `xml:"ChecksumAlgorithm,omitempty"`
@@ -245,7 +250,7 @@ func (m *MultiPartService) AbortMultipartUpload(params *object.BaseObjectParams)
 	txn = nil
 
 	if len(gcChunks.ChunkIDs) > 0 {
-		err = txn.Set(gckey, &gcChunks)
+		err = m.kvstore.Set(gckey, &gcChunks)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("aborted multipart upload %s/%s/%s set task chunk failed: %v", params.BucketName, params.ObjKey, params.UploadID, err)
 			return fmt.Errorf("aborted multipart upload %s/%s/%s set task chunk failed: %v", params.BucketName, params.ObjKey, params.UploadID, err)
@@ -281,8 +286,8 @@ func (m *MultiPartService) WritePartMeta(cs *chunk.ChunkService, chunks []*meta.
 
 		bakPart := part.Clone()
 		objPrefix := "aws:upload:"
-		objSuffix := fmt.Sprintf("/%s/%d", part.UploadID, part.PartNumber)
-		txErr = cs.WriteMeta(context.Background(), part.Owner.ID, bakAllChunks, bakBlocks, meta.PartToBaseObject(bakPart), objPrefix, objSuffix)
+
+		txErr = cs.WriteMeta(context.Background(), part.Owner.ID, bakAllChunks, bakBlocks, bakPart, objPrefix)
 		if txErr == nil {
 			break
 		} else if errors.Is(txErr, kv.ErrTxnCommit) && i < maxRetry-1 {
@@ -313,7 +318,9 @@ func (m *MultiPartService) CreateMultipartUpload(headers http.Header, params *ob
 	}
 
 	ifMatch := headers.Get(xhttp.IfMatch)
+	ifMatch = strings.Trim(ifMatch, "\"")
 	ifNoneMatch := headers.Get(xhttp.IfNoneMatch)
+	ifNoneMatch = strings.Trim(ifNoneMatch, "\"")
 	ifModifiedSince := headers.Get(xhttp.IfModifiedSince)
 	// content-type
 	ct := headers.Get(xhttp.ContentType)
@@ -378,7 +385,7 @@ func (m *MultiPartService) CreateMultipartUpload(headers http.Header, params *ob
 	// ==== 条件校验（Precondition Check）====
 	if ifMatch != "" {
 		// If-Match: 必须匹配当前对象 ETag
-		if !objOK || _object.ETag != strings.Trim(ifMatch, `"`) {
+		if !objOK || string(_object.ETag) != strings.Trim(ifMatch, `"`) {
 			logger.GetLogger("boulder").Errorf("multi part upload %s does not match ifMatch", params.BucketName)
 			return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 		}
@@ -393,7 +400,7 @@ func (m *MultiPartService) CreateMultipartUpload(headers http.Header, params *ob
 			}
 		} else {
 			// If-None-Match: "etag" → ETag 不能匹配
-			if objOK && _object.ETag == strings.Trim(ifNoneMatch, `"`) {
+			if objOK && string(_object.ETag) == strings.Trim(ifNoneMatch, `"`) {
 				logger.GetLogger("boulder").Errorf("multi part upload %s does not match ifNoneMatch", params.BucketName)
 				return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 			}
@@ -412,7 +419,10 @@ func (m *MultiPartService) CreateMultipartUpload(headers http.Header, params *ob
 	}
 
 	// 生成上传ID
-	uploadID := xid.New().String()
+	uploadID := uuid.New().String()
+	segs := strings.Split(uploadID, "-")
+	segs[0] = UID_PREFIX
+	uploadID = strings.Join(segs, "-")
 	upload := &meta.MultipartUpload{
 		UploadID:           uploadID,
 		Bucket:             params.BucketName,
@@ -451,6 +461,8 @@ func (m *MultiPartService) CreateMultipartUpload(headers http.Header, params *ob
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("create multi upload %s uploadid %s  failed to commit transaction", key, uploadID)
 		return nil, fmt.Errorf("create multi upload %s uploadid %s failed to commit transaction", key, uploadID)
+	} else {
+		logger.GetLogger("boulder").Infof("create multi upload %s uploadid %s success", key, uploadID)
 	}
 	txn = nil
 	return upload, nil
@@ -484,6 +496,7 @@ func (m *MultiPartService) UploadPart(r io.Reader, params *object.BaseObjectPara
 	}
 
 	uploadKey := "aws:upload:" + ak.AccountID + ":" + params.BucketName + "/" + params.ObjKey + "/" + params.UploadID
+
 	var upload meta.MultipartUpload
 	exists, err := m.kvstore.Get(uploadKey, &upload)
 	if err != nil {
@@ -498,12 +511,13 @@ func (m *MultiPartService) UploadPart(r io.Reader, params *object.BaseObjectPara
 	part := &meta.PartObject{
 		BaseObject: meta.BaseObject{
 			Bucket:       params.BucketName,
-			Key:          params.ObjKey,
-			ETag:         params.ContentMd5,
+			Key:          fmt.Sprintf("%s/%s/%d", params.ObjKey, params.UploadID, params.PartNumber),
+			ETag:         meta.Etag(params.ContentMd5),
 			Size:         params.ContentLen,
 			LastModified: time.Now().UTC(),
 			CreatedAt:    time.Now().UTC(),
 			Chunks:       make([]string, 0),
+			DataLocation: upload.DataLocation,
 		},
 		UploadID:     params.UploadID,
 		PartNumber:   int(params.PartNumber),
@@ -522,8 +536,9 @@ func (m *MultiPartService) UploadPart(r io.Reader, params *object.BaseObjectPara
 	err = chunker.DoChunk(r, meta.PartToBaseObject(part), m.WritePartMeta)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to chunk object: %v", err)
+		return nil, fmt.Errorf("failed to chunk object: %v", err)
 	}
-	return nil, nil
+	return part, nil
 }
 func (m *MultiPartService) UploadPartCopy(srcBucket, srcObject string, params *object.BaseObjectParams) (*meta.PartObject, error) {
 	iamService := iam.GetIamService()
@@ -681,9 +696,8 @@ func (m *MultiPartService) CompleteMultipartUpload(parts []meta.PartETag, params
 		if !exists {
 			return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 		}
-		expected := strings.Trim(params.IfMatch, "\"")
-		actual := strings.Trim(oldObj.ETag, "\"")
-		if expected != actual {
+
+		if params.IfMatch != string(oldObj.ETag) {
 			return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 		}
 	}
@@ -787,10 +801,9 @@ func (m *MultiPartService) CompleteMultipartUpload(parts []meta.PartETag, params
 			return nil, xhttp.ToError(xhttp.ErrInvalidPart)
 		}
 
-		// 去除 ETag 引号并解码
-		expectedETag := strings.Trim(p.ETag, "\"")
-		actualETag := strings.Trim(clientPart.ETag, "\"")
-		if expectedETag != actualETag {
+		expectedETag := string(p.ETag)
+		actualETag := string(clientPart.ETag)
+		if p.ETag != clientPart.ETag {
 			logger.GetLogger("boulder").Errorf("ETag mismatch for part %d: expected %s, got %s", p.PartNumber, expectedETag, actualETag)
 			return nil, xhttp.ToError(xhttp.ErrInvalidPart)
 		}
@@ -816,7 +829,7 @@ func (m *MultiPartService) CompleteMultipartUpload(parts []meta.PartETag, params
 		BaseObject: meta.BaseObject{
 			Bucket:       params.BucketName,
 			Key:          params.ObjKey,
-			ETag:         finalETag,
+			ETag:         meta.Etag(finalETag),
 			Size:         totalSize,
 			Chunks:       Chunks,
 			LastModified: time.Now().UTC(),
@@ -915,7 +928,8 @@ func (m *MultiPartService) ListParts(params *object.BaseObjectParams) (*meta.Mul
 			return nil, nil, fmt.Errorf("failed to get multipart upload part meta: %v", err)
 		}
 
-		for _, data := range partBytes {
+		for k, data := range partBytes {
+			logger.GetLogger("boulder").Infof("list get part  %s meta data %d", k, len(data))
 			var part meta.PartObject
 			if err := json.Unmarshal(data, &part); err != nil {
 				logger.GetLogger("boulder").Errorf("failed to unmarshal part meta: %v", err)
@@ -994,6 +1008,7 @@ func (m *MultiPartService) ListMultipartUploads(params *object.BaseObjectParams)
 	// 扫描循环
 	for {
 		keys, nextKey, err := txn.Scan(searchPrefix, startKey, 100)
+		logger.GetLogger("boulder").Infof("list multipart uploads keys %v, nextkey : %s", keys, nextKey)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to scan multipart uploads: %v", err)
 			return nil, fmt.Errorf("failed to scan multipart uploads: %v", err)
@@ -1018,25 +1033,30 @@ func (m *MultiPartService) ListMultipartUploads(params *object.BaseObjectParams)
 			// 所以我们检查：在 prefix 之后，是否只有两段（key 和 uploadID）
 			relKey := strings.TrimPrefix(key, prefix)
 			if relKey == key { // 不以 prefix 开头，跳过
+				logger.GetLogger("boulder").Infof("scan multipart uploads key %s relKey %s", key, relKey)
 				continue
 			}
 
 			// 分割相对路径
 			parts := strings.Split(relKey, "/")
-			// upload 元数据：必须是两段，且第二段是 uploadID
-			if len(parts) != 2 || parts[1] == "" {
+			// uploadid 是以 u0118-开头
+			if len(parts) >= 2 && strings.HasPrefix(parts[len(parts)-1], UID_PREFIX+"-") {
+				// pass
+			} else {
+				logger.GetLogger("boulder").Infof("key is a not a upload id: %#v", parts)
 				continue // 跳过 part 或无效格式
 			}
 
 			// 是 upload 元数据，尝试反序列化
 			var upload meta.MultipartUpload
 			if err := json.Unmarshal(raw, &upload); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to unmarshal upload %s: %v", key, err)
+				logger.GetLogger("boulder").Infof("failed to unmarshal upload %s: %v", key, err)
 				continue
 			}
 
 			// 再次确认 Key 匹配（防止 prefix 匹配错误）
 			if params.Prefix != "" && !strings.HasPrefix(upload.Key, params.Prefix) {
+				logger.GetLogger("boulder").Infof("failed to match multipart upload  %s, %s", params.Prefix, upload.Key)
 				continue
 			}
 
@@ -1062,10 +1082,6 @@ func (m *MultiPartService) ListMultipartUploads(params *object.BaseObjectParams)
 		return nil, fmt.Errorf("failed to commit transaction: %v", err)
 	}
 	txn = nil
-
-	// 返回最多 MaxUploads 个 upload
-	if int64(len(uploads)) > params.MaxUploads {
-		return uploads[:params.MaxUploads], nil
-	}
+	logger.GetLogger("boulder").Infof("list multipart uploads  %#v", uploads)
 	return uploads, nil
 }

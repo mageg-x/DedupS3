@@ -29,21 +29,23 @@ import (
 	"unsafe"
 )
 
+type Etag string
+
 type InlineChunk struct {
 	Compress bool   `json:"compress" xml:"Compress"`
 	Data     []byte `json:"data" xml:"Data"`
 }
 
 type BaseObject struct {
-	Bucket       string    `json:"bucket"`                    // 所属存储桶
-	Key          string    `json:"key"`                       // 对象键
-	ETag         string    `json:"etag"`                      // 分段ETag
-	Size         int64     `json:"size"`                      // 分段大小
-	Chunks       []string  `json:"chunks" xml:"Chunk"`        // chunk 索引
-	LastModified time.Time `json:"lastModified"`              // 最后修改时间
-	CreatedAt    time.Time `json:"createdAt" xml:"CreatedAt"` // 创建时间
+	Bucket       string    `json:"bucket" xml:"Bucket"`             // 所属存储桶
+	Key          string    `json:"key" xml:"Key"`                   // 对象键
+	ETag         Etag      `json:"etag" xml:"ETag"`                 // 分段ETag
+	Size         int64     `json:"size" xml:"Size"`                 // 分段大小
+	Chunks       []string  `json:"chunks" xml:"Chunks>Chunk"`       // chunk 索引（数组嵌套）
+	LastModified time.Time `json:"lastModified" xml:"LastModified"` // 最后修改时间
+	CreatedAt    time.Time `json:"createdAt" xml:"CreatedAt"`       // 创建时间
 	// 数据位置（实际存储系统中使用）
-	DataLocation string `json:"dataLocation" xml:"-"` // 对象数据存储位置
+	DataLocation string `json:"dataLocation" xml:"-"` // 对象数据存储位置，不序列化到 XML
 }
 
 // Object 表示存储桶中的一个对象
@@ -113,63 +115,6 @@ func NewObject(bucket, key string) *Object {
 	}
 }
 
-// SetContentType 设置内容类型
-func (o *Object) SetContentType(contentType string) {
-	o.ContentType = contentType
-}
-
-// SetUserMetadata 设置用户自定义元数据
-func (o *Object) SetUserMetadata(metadata map[string]string) {
-	o.UserMetadata = metadata
-}
-
-// AddUserMetadata 添加单个用户元数据项
-func (o *Object) AddUserMetadata(key, value string) {
-	o.UserMetadata[key] = value
-}
-
-// SetTags 设置对象标签
-func (o *Object) SetTags(tags map[string]string) {
-	o.Tags = tags
-}
-
-// AddTag 添加单个标签
-func (o *Object) AddTag(key, value string) {
-	o.Tags[key] = value
-}
-
-// RemoveTag 移除标签
-func (o *Object) RemoveTag(key string) {
-	delete(o.Tags, key)
-}
-
-// SetEncryption 设置加密信息
-func (o *Object) SetEncryption(encryptionType, kmsKeyID string) error {
-	if encryptionType != "" && encryptionType != "AES256" && encryptionType != "aws:kms" {
-		return errors.New("invalid encryption type")
-	}
-
-	o.EncryptionType = encryptionType
-	o.KMSKeyID = kmsKeyID
-	return nil
-}
-
-// SetLock 设置对象锁定信息
-func (o *Object) SetLock(mode string, retainUntil time.Time) error {
-	if mode != "" && mode != "GOVERNANCE" && mode != "COMPLIANCE" {
-		return errors.New("invalid lock mode")
-	}
-
-	o.LockMode = mode
-	o.LockRetainUntil = retainUntil
-	return nil
-}
-
-// SetLegalHold 设置法律保留状态
-func (o *Object) SetLegalHold(status bool) {
-	o.LegalHold = status
-}
-
 // SetStorageClass 设置存储类别
 func (o *Object) SetStorageClass(storageClass string) error {
 	validClasses := map[string]bool{
@@ -190,39 +135,6 @@ func (o *Object) SetStorageClass(storageClass string) error {
 	return nil
 }
 
-// SetRestoreStatus 设置恢复状态
-func (o *Object) SetRestoreStatus(status string) {
-	o.RestoreStatus = status
-}
-
-// SetOwner 设置对象所有者
-func (o *Object) SetOwner(ownerID, displayName string) {
-	o.Owner = Owner{
-		ID:          ownerID,
-		DisplayName: displayName,
-	}
-}
-
-// SetACL 设置访问控制列表
-func (o *Object) SetACL(acl *ACL) {
-	o.ACL = acl
-}
-
-// IsLocked 检查对象是否被锁定
-func (o *Object) IsLocked() bool {
-	return o.LockMode != "" && time.Now().UTC().Before(o.LockRetainUntil)
-}
-
-// IsRestored 检查对象是否已恢复
-func (o *Object) IsRestored() bool {
-	return o.RestoreStatus == "RESTORED"
-}
-
-// IsEncrypted 检查对象是否加密
-func (o *Object) IsEncrypted() bool {
-	return o.EncryptionType != ""
-}
-
 // ToHeaders 将元数据转换为HTTP头
 func (o *Object) ToHeaders() http.Header {
 	headers := make(http.Header)
@@ -235,7 +147,7 @@ func (o *Object) ToHeaders() http.Header {
 	headers.Set("Content-Disposition", o.ContentDisposition)
 	headers.Set("Cache-Control", o.CacheControl)
 	headers.Set("Last-Modified", o.LastModified.Format(time.RFC1123))
-	headers.Set("ETag", o.ETag)
+	headers.Set("ETag", string(o.ETag))
 
 	// S3特定头
 	headers.Set("x-amz-storage-class", o.StorageClass)
@@ -298,7 +210,9 @@ func (o *Object) ParseHeaders(headers http.Header) {
 	o.StorageClass = headers.Get("x-amz-storage-class")
 	o.RestoreStatus = headers.Get("x-amz-restore")
 	o.VersionID = headers.Get("x-amz-version-id")
-	o.ETag = headers.Get("ETag")
+	etag := headers.Get("ETag")
+	etag = strings.Trim(etag, "\"")
+	o.ETag = Etag(etag)
 
 	// 加密头
 	o.EncryptionType = headers.Get("x-amz-server-side-encryption")
@@ -353,7 +267,7 @@ func (o *Object) ToXML() []byte {
 	type Object struct {
 		Key          string    `xml:"Key"`
 		LastModified time.Time `xml:"LastModified"`
-		ETag         string    `xml:"ETag"`
+		ETag         Etag      `xml:"ETag"`
 		Size         int64     `xml:"Size"`
 		StorageClass string    `xml:"StorageClass"`
 		Owner        Owner     `xml:"Owner"`
@@ -381,33 +295,8 @@ func (o *Object) CalculateETag(data io.Reader) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-// Validate 验证对象元数据是否有效
-func (o *Object) Validate() error {
-	if o.Bucket == "" {
-		return errors.New("bucket name is required")
-	}
-
-	if o.Key == "" {
-		return errors.New("object key is required")
-	}
-
-	if o.Size < 0 {
-		return errors.New("object size must be non-negative")
-	}
-
-	if o.EncryptionType != "" && o.EncryptionType != "AES256" && o.EncryptionType != "aws:kms" {
-		return errors.New("invalid encryption type")
-	}
-
-	if o.LockMode != "" && (o.LockMode != "GOVERNANCE" && o.LockMode != "COMPLIANCE") {
-		return errors.New("invalid lock mode")
-	}
-
-	return nil
-}
-
 // Copy 创建对象的副本
-func (o *Object) Copy() *Object {
+func (o *Object) Clone() *Object {
 	cp := &Object{
 		BaseObject: BaseObject{
 			Bucket:       o.Bucket,
@@ -459,29 +348,4 @@ func (o *Object) Copy() *Object {
 	}
 
 	return cp
-}
-
-// Clone 创建对象的深拷贝
-// 这个方法与Copy方法功能相同，提供另一种命名方式以便符合不同的编程风格
-func (o *Object) Clone() *Object {
-	return o.Copy()
-}
-
-// IsDeletionAllowed 检查是否允许删除对象
-func (o *Object) IsDeletionAllowed(bypassGovernance bool) bool {
-	if !o.IsLocked() {
-		return true
-	}
-
-	// 合规模式：绝对不允许在保留期内删除
-	if o.LockMode == "COMPLIANCE" {
-		return false
-	}
-
-	// 治理模式：检查是否绕过治理模式
-	if o.LockMode == "GOVERNANCE" && !bypassGovernance {
-		return false
-	}
-
-	return true
 }

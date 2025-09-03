@@ -113,7 +113,7 @@ type ListObjectsV2Response struct {
 type ObjectContent struct {
 	Key               string         `xml:"Key"`
 	LastModified      time.Time      `xml:"LastModified"`
-	ETag              string         `xml:"ETag,omitempty"`
+	ETag              meta.Etag      `xml:"ETag,omitempty"`
 	Size              int64          `xml:"Size,omitempty"`
 	StorageClass      string         `xml:"StorageClass,omitempty"`
 	Owner             *meta.Owner    `xml:"Owner,omitempty"`
@@ -150,7 +150,7 @@ type CopyObjectConditions struct {
 // CopyObjectInfo 对象元信息
 type CopyObjectInfo struct {
 	Exists       bool
-	ETag         string // 建议带引号，如 "abc123"
+	ETag         meta.Etag // 建议带引号，如 "abc123"
 	LastModified time.Time
 }
 
@@ -260,7 +260,7 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 	dstobiOk, _ := o.kvstore.Get(dskobjKey, &_dstobj)
 	// 	If-Match 只有当目标对象存在且 ETag 匹配时才允许上传
 	if params.IfMatch != "" {
-		if !dstobiOk || _dstobj.ETag != params.IfMatch {
+		if !dstobiOk || string(_dstobj.ETag) != params.IfMatch {
 			logger.GetLogger("boulder").Errorf("object %s/%s if match not match %s:%s", params.BucketName, params.ObjKey, params.IfMatch, _dstobj.ETag)
 			return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 		}
@@ -275,7 +275,7 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 			}
 		} else {
 			// 指定了 ETag：当目标存在且 ETag 匹配时，拒绝写入
-			if dstobiOk && _dstobj.ETag == params.IfNoneMatch {
+			if dstobiOk && string(_dstobj.ETag) == params.IfNoneMatch {
 				logger.GetLogger("boulder").Errorf("object %s/%s ETag matches If-None-Match: %s", params.BucketName, params.ObjKey, params.IfNoneMatch)
 				return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 			}
@@ -313,6 +313,7 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 	objectInfo.StorageClass = storageClass
 	objectInfo.DataLocation = sc.ID
 	objectInfo.ContentType = params.ContentType
+	objectInfo.ETag = meta.Etag(params.ContentMd5)
 	objectInfo.Size = params.ContentLen
 	objectInfo.Owner = meta.Owner{
 		ID:          ak.AccountID,
@@ -366,12 +367,11 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 		if objectInfo.ChunksInline != nil {
 			// 计算etag
 			hash := md5.Sum(bodyBytes)
-			objectInfo.ETag = hex.EncodeToString(hash[:])
+			objectInfo.ETag = meta.Etag(hex.EncodeToString(hash[:]))
 			objectInfo.Size = int64(len(bodyBytes))
 			// 直接写meta
 			objPrefix := "aws:object:"
-			objSuffix := ""
-			err = chunker.WriteMeta(context.Background(), ak.AccountID, nil, nil, meta.ObjectToBaseObject(objectInfo), objPrefix, objSuffix)
+			err = chunker.WriteMeta(context.Background(), ak.AccountID, nil, nil, objectInfo, objPrefix)
 			if err != nil {
 				logger.GetLogger("boulder").Errorf("failed to write %s/%s object inline chunk %v", objectInfo.Bucket, objectInfo.Key, err)
 				return nil, fmt.Errorf("failed to write %s/%s object inline chunk %v", objectInfo.Bucket, objectInfo.Key, err)
@@ -413,8 +413,7 @@ func (o *ObjectService) WriteObjectMeta(cs *chunk.ChunkService, chunks []*meta.C
 
 		bakObj := obj.Clone()
 		objPrefix := "aws:object:"
-		objSuffix := ""
-		txErr = cs.WriteMeta(context.Background(), obj.Owner.ID, bakAllChunks, bakBlocks, meta.ObjectToBaseObject(bakObj), objPrefix, objSuffix)
+		txErr = cs.WriteMeta(context.Background(), obj.Owner.ID, bakAllChunks, bakBlocks, bakObj, objPrefix)
 		if txErr == nil {
 			break
 		} else if errors.Is(txErr, kv.ErrTxnCommit) && i < maxRetry-1 {
@@ -652,7 +651,7 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 		finalMD5 := hasher.Sum(nil) // []byte 类型，16 字节
 		finalMD5Hex := hex.EncodeToString(finalMD5)
 		// 检查计算的MD5是否与对象的ETag一致
-		if object.ETag != finalMD5Hex {
+		if string(object.ETag) != finalMD5Hex {
 			logger.GetLogger("boulder").Errorf("get object %s/%s MD5 mismatch: stored=%s calculated=%s range[%d-%d]", object.Bucket, object.Key, object.ETag, finalMD5Hex, start, end)
 		}
 	}()
@@ -1030,7 +1029,7 @@ func (o *ObjectService) CanCopyObject(dest CopyObjectInfo, src CopyObjectInfo, c
 
 	// 1. 源：x-amz-copy-source-if-match
 	if cond.CopySourceIfMatch != "" {
-		if !src.Exists || src.ETag != cond.CopySourceIfMatch {
+		if !src.Exists || string(src.ETag) != cond.CopySourceIfMatch {
 			return false, http.StatusPreconditionFailed
 		}
 	}
@@ -1042,7 +1041,7 @@ func (o *ObjectService) CanCopyObject(dest CopyObjectInfo, src CopyObjectInfo, c
 				return false, http.StatusPreconditionFailed // 源必须存在
 			}
 		} else {
-			if src.Exists && src.ETag == cond.CopySourceIfNoneMatch {
+			if src.Exists && string(src.ETag) == cond.CopySourceIfNoneMatch {
 				return false, http.StatusPreconditionFailed
 			}
 		}
@@ -1064,7 +1063,7 @@ func (o *ObjectService) CanCopyObject(dest CopyObjectInfo, src CopyObjectInfo, c
 
 	// 5. 目标：If-Match
 	if cond.IfMatch != "" {
-		if !dest.Exists || dest.ETag != cond.IfMatch {
+		if !dest.Exists || string(dest.ETag) != cond.IfMatch {
 			return false, http.StatusPreconditionFailed
 		}
 	}
@@ -1076,7 +1075,7 @@ func (o *ObjectService) CanCopyObject(dest CopyObjectInfo, src CopyObjectInfo, c
 				return false, http.StatusPreconditionFailed // 目标必须不存在
 			}
 		} else {
-			if dest.Exists && dest.ETag == cond.IfNoneMatch {
+			if dest.Exists && string(dest.ETag) == cond.IfNoneMatch {
 				return false, http.StatusPreconditionFailed
 			}
 		}

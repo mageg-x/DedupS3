@@ -43,7 +43,9 @@ func CompleteMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 	uploadID := r.URL.Query().Get("uploadId")
 	ifMatch := r.Header.Get(xhttp.IfMatch)
+	ifMatch = strings.Trim(ifMatch, "\"")
 	ifnoneMatch := r.Header.Get(xhttp.IfNoneMatch)
+	ifnoneMatch = strings.Trim(ifnoneMatch, "\"")
 
 	// 解析请求体中的XML内容
 	defer r.Body.Close() // 先 defer，再读
@@ -111,7 +113,7 @@ func CompleteMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 		Location: fmt.Sprintf("http://%s/%s", r.Host, utils.TrimLeadingSlash(objectKey)),
 		Bucket:   bucket,
 		Key:      objectKey,
-		ETag:     fmt.Sprintf(`"%s"`, obj.ETag),
+		ETag:     obj.ETag,
 	}
 	xhttp.WriteAWSSuc(w, r, resp)
 }
@@ -459,6 +461,8 @@ func PutObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// content Md5
 	contentMd5 := r.Header.Get(xhttp.ContentMD5)
+	// 去掉前后的双引号
+	contentMd5 = strings.Trim(contentMd5, "\"")
 
 	_mps := multipart.GetMultiPartService()
 	if _mps == nil {

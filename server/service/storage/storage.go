@@ -123,6 +123,9 @@ func (s *StorageService) AddStorage(strType, strClass string, conf config.BlockC
 
 // GetStorage 根据 ID 获取存储实例
 func (s *StorageService) GetStorage(id string) (*meta.Storage, error) {
+	if id == "" {
+		return nil, fmt.Errorf("empty storage id")
+	}
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 

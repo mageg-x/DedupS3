@@ -21,12 +21,13 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"github.com/mageg-x/boulder/meta"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/mageg-x/boulder/meta"
 
 	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/mageg-x/boulder/internal/utils"
@@ -48,7 +49,9 @@ func HeadObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	Range := r.Header.Get("Range")
 	ifMatch := r.Header.Get(xhttp.IfMatch)
+	ifMatch = strings.Trim(ifMatch, "\"")
 	ifnoneMatch := r.Header.Get(xhttp.IfNoneMatch)
+	ifnoneMatch = strings.Trim(ifnoneMatch, "\"")
 	ifmodifiedSince := r.Header.Get(xhttp.IfModifiedSince)
 
 	_os := object.GetObjectService()
@@ -88,14 +91,14 @@ func HeadObjectHandler(w http.ResponseWriter, r *http.Request) {
 	logger.GetLogger("boulder").Debugf("headObject object %#v", objInfo)
 
 	// If-Match
-	if ifMatch != "" && objInfo.ETag != ifMatch {
+	if ifMatch != "" && string(objInfo.ETag) != ifMatch {
 		logger.GetLogger("boulder").Errorf("Object %s is not matched with If-Match ETag %s:%s", objectKey, ifMatch, objInfo.ETag)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrPreconditionFailed)
 		return
 	}
 
 	// If-None-Match
-	if ifnoneMatch != "" && objInfo.ETag != ifnoneMatch {
+	if ifnoneMatch != "" && string(objInfo.ETag) != ifnoneMatch {
 		logger.GetLogger("boulder").Errorf("object %s is not matched with If-None-Match ETag %s:%s", objectKey, ifnoneMatch, objInfo.ETag)
 		xhttp.WriteAWSErr(w, r, xhttp.ERRNotModify)
 		return
@@ -115,7 +118,7 @@ func HeadObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 设置响应头
 	w.Header().Set(xhttp.ContentType, objInfo.ContentType)
 	w.Header().Set(xhttp.ContentLength, strconv.FormatInt(objInfo.Size, 10))
-	w.Header().Set(xhttp.ETag, objInfo.ETag)
+	w.Header().Set(xhttp.ETag, fmt.Sprintf("\"%s\"", objInfo.ETag))
 	w.Header().Set(xhttp.LastModified, objInfo.LastModified.Format(http.TimeFormat))
 
 	if objInfo.ContentEncoding != "" {
@@ -278,7 +281,7 @@ func GetObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set(xhttp.AcceptRanges, "bytes")
 	w.Header().Set(xhttp.ContentType, obj.ContentType)
-	w.Header().Set(xhttp.ETag, obj.ETag)
+	w.Header().Set(xhttp.ETag, fmt.Sprintf("\"%s\"", obj.ETag))
 	w.Header().Set(xhttp.LastModified, obj.LastModified.Format(http.TimeFormat))
 	if obj.ContentEncoding != "" {
 		w.Header().Set(xhttp.ContentEncoding, obj.ContentEncoding)
@@ -337,7 +340,9 @@ func CopyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ifMatch := r.Header.Get(xhttp.IfMatch)
+	ifMatch = strings.Trim(ifMatch, "\"")
 	ifnoneMatch := r.Header.Get(xhttp.IfNoneMatch)
+	ifnoneMatch = strings.Trim(ifnoneMatch, "\"")
 	ifmodifiedSince := r.Header.Get(xhttp.IfModifiedSince)
 	CopySourceIfMatch := r.Header.Get(xhttp.AmzCopySourceIfMatch)
 	CopySourceIfNoneMatch := r.Header.Get(xhttp.AmzCopySourceIfNoneMatch)
@@ -404,8 +409,8 @@ func CopyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type CopyObjResp struct {
-		ETag         string `xml:"ETag,omitempty"`
-		LastModified string `xml:"LastModified,omitempty"`
+		ETag         meta.Etag `xml:"ETag,omitempty"`
+		LastModified string    `xml:"LastModified,omitempty"`
 	}
 	result := CopyObjResp{
 		ETag:         obj.ETag,
@@ -460,6 +465,11 @@ func PutObjectHandler(w http.ResponseWriter, r *http.Request) {
 		ct = "application/octet-stream"
 	}
 
+	// content Md5
+	contentMd5 := r.Header.Get(xhttp.ContentMD5)
+	// 去掉前后的双引号
+	contentMd5 = strings.Trim(contentMd5, "\"")
+
 	// Validate storage class metadata if present
 	sc := r.Header.Get(xhttp.AmzStorageClass)
 	sc = strings.TrimSpace(sc)
@@ -484,6 +494,7 @@ func PutObjectHandler(w http.ResponseWriter, r *http.Request) {
 		BucketName:      bucket,
 		ObjKey:          objectKey,
 		ContentType:     ct,
+		ContentMd5:      contentMd5,
 		ContentLen:      size,
 		AccessKeyID:     accessKeyID,
 		StorageClass:    sc,
@@ -506,7 +517,7 @@ func PutObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set(xhttp.ETag, obj.ETag)
+	w.Header().Set(xhttp.ETag, fmt.Sprintf("\"%s\"", obj.ETag))
 	w.WriteHeader(http.StatusOK)
 }
 

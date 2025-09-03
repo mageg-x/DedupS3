@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"reflect"
 	"sync"
 	"time"
 
@@ -132,17 +133,20 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.BaseObject, cb WriteObjCB)
 
 	// 回滚处理，删除之前写入的block
 	if rollback {
-		gcKey := task.GCBlockPrefix + utils.GenUUID()
-		var gcBlocks []*task.GCBlock
-		for _, _block := range blocks {
-			gcBlocks = append(gcBlocks, &task.GCBlock{BlockID: _block.ID, StorageID: obj.DataLocation})
+		if len(blocks) > 0 {
+			gcKey := task.GCBlockPrefix + utils.GenUUID()
+			var gcBlocks []*task.GCBlock
+			for _, _block := range blocks {
+				gcBlocks = append(gcBlocks, &task.GCBlock{BlockID: _block.ID, StorageID: obj.DataLocation})
+			}
+			logger.GetLogger("boulder").Warnf("rollback for %s/%s delete blocks %#v ", obj.Bucket, obj.Key, gcBlocks)
+			err := c.kvstore.Set(gcKey, &gcBlocks)
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("%s/%s save blocks failed: %v", obj.Bucket, obj.Key, err)
+			}
 		}
-		logger.GetLogger("boulder").Warnf("rollback for %s/%s delete blocks %#v ", obj.Bucket, obj.Key, gcBlocks)
-		err := c.kvstore.Set(gcKey, &gcBlocks)
-		if err != nil {
-			logger.GetLogger("boulder").Errorf("%s/%s save blocks failed: %v", obj.Bucket, obj.Key, err)
-		}
-		return fmt.Errorf("dochunk %s/%s failed, then rollback block data", obj.Bucket, obj.Key)
+
+		return fmt.Errorf("dochunk %s/%s failed, then rollback %d block data", obj.Bucket, obj.Key, len(blocks))
 	}
 
 	return nil
@@ -287,7 +291,11 @@ func (c *ChunkService) Dedup(ctx context.Context, inputChan, dedupChan chan *met
 	// 计算整个数据块的 MD5
 	fullMD5Sum := fullMD5.Sum(nil)
 	fullMD5Hex := hex.EncodeToString(fullMD5Sum)
-	obj.ETag = fullMD5Hex
+	if string(obj.ETag) != "" && string(obj.ETag) != fullMD5Hex {
+		// 服务器计算出出来的md5 和 客户端上传的Content-MD5 不一致
+		return nil, fmt.Errorf("Content-MD5 mismatch for %s/%s: %s:%s", obj.Bucket, obj.Key, obj.ETag, fullMD5Hex)
+	}
+	obj.ETag = meta.Etag(fullMD5Hex)
 	logger.GetLogger("boulder").Infof("dedump object %s/%s finished, md5 is %s  all chunk num is %d dedup chunk num is %d", obj.Bucket, obj.Key, fullMD5Hex, len(allChunk), dedupNum)
 	return allChunk, nil
 }
@@ -374,7 +382,27 @@ func (c *ChunkService) Summary(ctx context.Context, allChan chan []*meta.Chunk, 
 	return allChunks, nil
 }
 
-func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk []*meta.Chunk, blocks map[string]*meta.Block, obj *meta.BaseObject, objPrefix, objSuffix string) error {
+func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk []*meta.Chunk, blocks map[string]*meta.Block, object interface{}, objPrefix string) error {
+	objType := reflect.TypeOf(object)
+	logger.GetLogger("boulder").Infof("write meta object type %s", objType.String())
+	var normalobj *meta.Object
+	var partobj *meta.PartObject
+	var obj *meta.BaseObject
+	// 根据类型做不同处理
+	switch v := object.(type) {
+	case *meta.Object:
+		logger.GetLogger("boulder").Infof("object is *meta.Object")
+		normalobj = v
+		obj = meta.ObjectToBaseObject(normalobj)
+	case *meta.PartObject:
+		logger.GetLogger("boulder").Infof("object is *meta.PartObject")
+		partobj = v
+		obj = meta.PartToBaseObject(partobj)
+	default:
+		fmt.Printf("object is unkown type: %s", objType.String())
+		return fmt.Errorf("object is unkown type: %s", objType.String())
+	}
+
 	txn, err := c.kvstore.BeginTxn(ctx, nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("%s/%s create transaction failed: %v", obj.Bucket, obj.Key, err)
@@ -456,23 +484,43 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 	}
 
 	//写入object meta信息
-	objKey := objPrefix + accountID + ":" + obj.Bucket + "/" + obj.Key + objSuffix
+	objKey := objPrefix + accountID + ":" + obj.Bucket + "/" + obj.Key
 	for _, _chunk := range allChunk {
 		obj.Chunks = append(obj.Chunks, _chunk.Hash)
 	}
-	//logger.GetLogger("boulder").Errorf("%s/%s write object meta %#v", obj.Bucket, obj.Key, obj)
+	logger.GetLogger("boulder").Infof("prepare to write object %s  meta %#v", obj.Key, obj)
 	// 如果是覆盖，需要先删除旧的索引
-	var _obj meta.Object
-	exists, err := txn.Get(objKey, &_obj)
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("%s/%s get object failed: %v", obj.Bucket, obj.Key, err)
-		return fmt.Errorf("%s/%s get object failed: %v", obj.Bucket, obj.Key, err)
+	gcChunks := make([]string, 0)
+	switch object.(type) {
+	case *meta.PartObject:
+		var _obj meta.PartObject
+		exists, err := txn.Get(objKey, &_obj)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("%s/%s get object failed: %v", obj.Bucket, obj.Key, err)
+			return fmt.Errorf("%s/%s get object failed: %v", obj.Bucket, obj.Key, err)
+		}
+		if exists && len(_obj.Chunks) > 0 {
+			gcChunks = append(gcChunks, _obj.Chunks...)
+		}
+	case *meta.Object:
+		var _obj meta.Object
+		exists, err := txn.Get(objKey, &_obj)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("%s/%s get object failed: %v", obj.Bucket, obj.Key, err)
+			return fmt.Errorf("%s/%s get object failed: %v", obj.Bucket, obj.Key, err)
+		}
+		if exists && len(_obj.Chunks) > 0 {
+			gcChunks = append(gcChunks, _obj.Chunks...)
+		}
+	default:
+		logger.GetLogger("boulder").Errorf("unsupport type %s", objType.String())
+		return fmt.Errorf("unsupport type %s", objType.String())
 	}
-	if exists && len(_obj.Chunks) > 0 {
+	if len(gcChunks) > 0 {
 		gckey := task.GCChunkPrefix + utils.GenUUID()
 		gcChunks := task.GCChunk{
 			StorageID: obj.DataLocation,
-			ChunkIDs:  append([]string(nil), _obj.Chunks...),
+			ChunkIDs:  append([]string(nil), gcChunks...),
 		}
 
 		err = txn.Set(gckey, &gcChunks)
@@ -484,7 +532,12 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 		}
 	}
 	logger.GetLogger("boulder").Infof("set object %s etag %s , put meta %#v ..... ", objKey, obj.ETag, obj.Size)
-	err = txn.Set(objKey, obj)
+	if normalobj != nil {
+		err = txn.Set(objKey, normalobj)
+	} else if partobj != nil {
+		err = txn.Set(objKey, partobj)
+	}
+
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("set object %s/%s meta info failed: %v", obj.Bucket, obj.Key, err)
 		return fmt.Errorf("set object %s/%s meta info failed: %v", obj.Bucket, obj.Key, err)

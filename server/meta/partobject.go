@@ -20,7 +20,7 @@ type PartObject struct {
 // PartInfo 表示分段信息（用于列表操作）
 type PartInfo struct {
 	PartNumber   int       `json:"partNumber" xml:"PartNumber"`
-	ETag         string    `json:"etag" xml:"ETag"`
+	ETag         Etag      `json:"etag" xml:"ETag"`
 	Size         int64     `json:"size" xml:"Size"`
 	LastModified time.Time `json:"lastModified" xml:"LastModified"`
 
@@ -67,8 +67,8 @@ type EncryptionInfo struct {
 
 // PartETag 表示分段ETag信息（用于完成上传）
 type PartETag struct {
-	PartNumber int    `json:"partNumber"` // 分段编号
-	ETag       string `json:"etag"`       // 分段ETag
+	PartNumber int  `json:"partNumber"` // 分段编号
+	ETag       Etag `json:"etag"`       // 分段ETag
 }
 
 type CompleteMultipartUpload struct {
@@ -79,7 +79,7 @@ type CompleteMultipartUpload struct {
 type CompletePart struct {
 	XMLName           xml.Name `xml:"Part"`
 	PartNumber        int      `xml:"PartNumber"`
-	ETag              string   `xml:"ETag"`
+	ETag              Etag     `xml:"ETag"`
 	Size              int64    `xml:"Size,omitempty"`
 	ChecksumCRC32     string   `xml:"ChecksumCRC32,omitempty"`
 	ChecksumCRC32C    string   `xml:"ChecksumCRC32C,omitempty"`

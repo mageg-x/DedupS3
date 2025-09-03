@@ -62,6 +62,7 @@ func GetBlockService() *BlockService {
 }
 
 func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.Block, error) {
+	// 分散目的是为了提高并发性， 同一个文件，多个multi part upload， 可以并发写
 	h := murmur3.Sum32([]byte(obj.Bucket + obj.Key))
 	i := h % PRE_UPLOAD_BLOCK_NUM
 	var flushBlock *meta.Block
