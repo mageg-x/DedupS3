@@ -407,7 +407,7 @@ func (o *ObjectService) WriteObjectMeta(cs *chunk.ChunkService, chunks []*meta.C
 
 		bakBlocks := make(map[string]*meta.Block, len(blocks))
 		for k, v := range blocks {
-			newBlock := v.Clone()
+			newBlock := v.Clone(false)
 			bakBlocks[k] = newBlock
 		}
 
@@ -587,7 +587,7 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 		num := 0
 		blockDatas := make(map[string]*meta.BlockData, 0)
 		for _, _chunk := range chunks {
-			if offset+int64(_chunk.Size) < start {
+			if offset+int64(_chunk.Size) <= start {
 				offset += int64(_chunk.Size)
 				continue // 还没到起始位置
 			}
@@ -624,12 +624,11 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 				_begin := start - offset
 				chunkData = chunkData[_begin:]
 			}
-
 			if len(chunkData) == 0 {
-				logger.GetLogger("boulder").Errorf("failed to get the chunk data from block %s", _chunk.BlockID)
+				logger.GetLogger("boulder").Errorf("failed to get the chunk data from block %s start %d end %d offset %d block_offset %d chunk size %d  block header",
+					_chunk.BlockID, start, end, offset, block_offset, _chunk.Size)
 				return
 			}
-
 			offset += int64(_chunk.Size)
 
 			// 写入数据（同时写给 pw 和 hasher）

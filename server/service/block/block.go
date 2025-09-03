@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	PRE_UPLOAD_BLOCK_NUM   = 16
+	PRE_UPLOAD_BLOCK_NUM   = 17
 	MAX_BUCKET_HEADER_SIZE = 200 * 1024
 	MAX_BUCKET_SIZE        = 64 * 1024 * 1024
 )
@@ -73,10 +73,16 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 		defer s.blockLocks[i].Unlock()
 		flushBlock = s.preBlocks[i]
 	} else {
+		if chunk.Size != int32(len(chunk.Data)) {
+			logger.GetLogger("boulder").Errorf("chunk %s/%s/%s size %d:%d not match", obj.Bucket, obj.Key, chunk.Hash, chunk.Size, len(chunk.Data))
+			return nil, fmt.Errorf("chunk %s/%s/%s size %d:%d not match", obj.Bucket, obj.Key, chunk.Hash, chunk.Size, len(chunk.Data))
+		}
+
 		if chunk.Data == nil {
 			logger.GetLogger("boulder").Errorf("chunk data is nil: %#v", chunk)
 			return nil, fmt.Errorf("chunk data is nil: %#v", chunk)
 		}
+
 		s.blockLocks[i].Lock()
 		defer s.blockLocks[i].Unlock()
 		curBlock := s.preBlocks[i]
@@ -95,7 +101,7 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 			s.preBlocks[i] = nil
 		}
 	}
-
+	var clone *meta.Block
 	if flushBlock != nil {
 		logger.GetLogger("boulder").Warnf("ready to flush one block %s,  %d chunks", flushBlock.ID, len(flushBlock.ChunkList))
 		err := s.FlushBlock(flushBlock)
@@ -103,8 +109,10 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 			logger.GetLogger("boulder").Warnf("failed to flush block %s: %v", flushBlock.ID, err)
 			return nil, fmt.Errorf("failed to flush block %s: %v", flushBlock.ID, err)
 		}
+		clone = flushBlock.Clone(false)
 	}
-	return flushBlock, nil
+
+	return clone, nil
 }
 
 func (s *BlockService) FlushBlock(block *meta.Block) error {
@@ -124,24 +132,33 @@ func (s *BlockService) FlushBlock(block *meta.Block) error {
 		BlockHeader: meta.BlockHeader{
 			ID:        block.ID,
 			TotalSize: block.TotalSize,
-			ChunkList: make([]meta.BlockChunk, len(block.ChunkList)),
+			ChunkList: make([]meta.BlockChunk, 0, len(block.ChunkList)),
 		},
 
 		Data: make([]byte, 0),
 	}
 
+	// 重新检查 size
+	size1, size2 := int32(0), int32(0)
 	for i := 0; i < len(block.ChunkList); i++ {
+		size1 += block.ChunkList[i].Size
+		size2 += int32(len(block.ChunkList[i].Data))
+		if block.ChunkList[i].Size != int32(len(block.ChunkList[i].Data)) {
+			logger.GetLogger("boulder").Errorf("chunk %s size not match %d:%d", block.ChunkList[i].Hash, block.ChunkList[i].Size, len(block.ChunkList[i].Data))
+		}
 		_chunk := meta.BlockChunk{
 			Hash: block.ChunkList[i].Hash,
 			Size: block.ChunkList[i].Size,
 		}
 		blockData.ChunkList = append(blockData.ChunkList, _chunk)
 		blockData.Data = append(blockData.Data, block.ChunkList[i].Data...)
-		block.ChunkList[i].Data = nil
 	}
 	blockData.RealSize = block.TotalSize
 	block.RealSize = block.TotalSize
-
+	if size1 != size2 || blockData.TotalSize != blockData.RealSize {
+		logger.GetLogger("boulder").Errorf("flush block %s size mot match %d:%d:%d:%d", block.ID, size1, size2, blockData.RealSize, blockData.RealSize)
+		return fmt.Errorf("flush block %s size mot match %d:%d:%d:%d", block.ID, size1, size2, blockData.RealSize, blockData.RealSize)
+	}
 	logger.GetLogger("boulder").Infof("flush block data %s total size %d real size %d data size %d etag %+v",
 		blockData.ID, blockData.TotalSize, blockData.RealSize, len(blockData.Data), md5.Sum(blockData.Data))
 

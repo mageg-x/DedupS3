@@ -250,7 +250,7 @@ func (s *IamService) DeleteAccount(accountID string) error {
 	}
 
 	allAccessKeys := account.GetAllAccessKeys()
-	allDel := make([]string, len(allAccessKeys))
+	allDel := make([]string, 0, len(allAccessKeys))
 	for _, accessKey := range allAccessKeys {
 		if accessKey != nil {
 			k := "aws:iam:account:ak:" + accessKey.AccessKeyID

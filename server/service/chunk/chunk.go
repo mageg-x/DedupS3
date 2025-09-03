@@ -66,14 +66,20 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.BaseObject, cb WriteObjCB)
 		MaxSize:    4 * 1024 * 1024,
 	}
 	// 小文件分块切分粒度小一些
-	if obj.Size < 1024*1024 {
+	if obj.Size < 16*1024*1024 {
 		opts = &fastcdc.ChunkerOpts{
 			MinSize:    16 * 1024,
 			NormalSize: 128 * 1024,
 			MaxSize:    512 * 1024,
 		}
 	}
-
+	if obj.Size < 1024*1024 {
+		opts = &fastcdc.ChunkerOpts{
+			MinSize:    8 * 1024,
+			NormalSize: 16 * 1024,
+			MaxSize:    64 * 1024,
+		}
+	}
 	// 切分
 	go func() {
 		defer close(chunkChan)
@@ -432,7 +438,8 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 		}
 
 		if exists {
-			// 这里要检查 同一个 chunk 存在多个重复存放问题
+			// 这里要检查 同一个 chunk 关联多个 block 问题，理论上 一个chunk 只属于一个block，但是并发情况下，会发生一个chunk 关联多个
+			// 从block 中删除一个chunk 太复杂，这个问题无法解决，只能尽量去避免，带来的也只是数据冗余问题
 			if _chunk.BlockID != chunk.BlockID {
 				logger.GetLogger("boulder").Warnf("%s/%s  chunk %s has multi bolock %s:%s", obj.Bucket, obj.Key, chunk.Hash, _chunk.BlockID, chunk.BlockID)
 				fixed[chunk.BlockID+":"+chunk.Hash] = &Pair{BlockID: _chunk.BlockID, ChunkID: chunk.Hash}
@@ -488,7 +495,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 	for _, _chunk := range allChunk {
 		obj.Chunks = append(obj.Chunks, _chunk.Hash)
 	}
-	logger.GetLogger("boulder").Infof("prepare to write object %s  meta %#v", obj.Key, obj)
+	logger.GetLogger("boulder").Infof("prepare to write object %s  meta ...", obj.Key)
 	// 如果是覆盖，需要先删除旧的索引
 	gcChunks := make([]string, 0)
 	switch object.(type) {

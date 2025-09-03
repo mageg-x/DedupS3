@@ -57,7 +57,7 @@ func GenBlockID() string {
 // Clone 创建 Block 的深拷贝
 // 该方法创建一个新的 Block 实例，并复制所有字段的值
 // 对于引用类型字段（如 ChunkList），会创建新的切片并复制其中的元素
-func (b *Block) Clone() *Block {
+func (b *Block) Clone(cloneData bool) *Block {
 	if b == nil {
 		return nil
 	}
@@ -81,7 +81,7 @@ func (b *Block) Clone() *Block {
 	// 复制 ChunkList 中的每个元素
 	for i, chunk := range b.ChunkList {
 		newChunk := chunk
-		if chunk.Data != nil {
+		if chunk.Data != nil && cloneData {
 			newChunk.Data = make([]byte, len(chunk.Data))
 			copy(newChunk.Data, chunk.Data)
 		}

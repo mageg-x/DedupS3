@@ -281,7 +281,7 @@ func (m *MultiPartService) WritePartMeta(cs *chunk.ChunkService, chunks []*meta.
 
 		bakBlocks := make(map[string]*meta.Block, len(blocks))
 		for k, v := range blocks {
-			newBlock := v.Clone()
+			newBlock := v.Clone(false)
 			bakBlocks[k] = newBlock
 		}
 
