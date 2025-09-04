@@ -25,15 +25,15 @@ const (
 	GCBlockPrefix = "aws:gc:blocks:"
 
 	// DefaultScanInterval 扫描间隔默认值（秒）
-	DefaultScanInterval = 10 // 1分钟
+	DefaultGCScanInterval = 10 * time.Second // 1分钟
 )
 
 var (
 	ErrNoMoreData = errors.New("no more data")
 )
 var (
-	instance *GCService
-	mu       = sync.Mutex{}
+	gcInst *GCService
+	gcMu   = sync.Mutex{}
 )
 
 type GCBlock struct {
@@ -54,10 +54,10 @@ type GCService struct {
 
 // GetGCService 获取全局GC服务实例
 func GetGCService() *GCService {
-	mu.Lock()
-	defer mu.Unlock()
-	if instance != nil {
-		return instance
+	gcMu.Lock()
+	defer gcMu.Unlock()
+	if gcInst != nil {
+		return gcInst
 	}
 	logger.GetLogger("boulder").Infof("initializing garbage collection service")
 	kvStore, err := kv.GetKvStore()
@@ -65,14 +65,14 @@ func GetGCService() *GCService {
 		logger.GetLogger("boulder").Errorf("failed to get kv store for task: %v", err)
 		return nil
 	}
-	instance = &GCService{
+	gcInst = &GCService{
 		kvstore: kvStore,
 		running: atomic.Bool{},
 		mutex:   sync.Mutex{},
 	}
 	logger.GetLogger("boulder").Infof("garbage collection service initialized successfully")
 
-	return instance
+	return gcInst
 }
 
 // Start 启动垃圾回收服务
@@ -103,7 +103,7 @@ func (g *GCService) loop() {
 	for g.running.Load() {
 		g.doGC()
 		//g.checkBlock()
-		time.Sleep(DefaultScanInterval * time.Second)
+		time.Sleep(DefaultGCScanInterval)
 	}
 }
 

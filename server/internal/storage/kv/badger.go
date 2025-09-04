@@ -91,7 +91,7 @@ func (b *BadgerStore) Set(key string, value interface{}) error {
 	defer txn.Rollback()
 	err = txn.Set(key, value)
 	if err == nil {
-		logger.GetLogger("boulder").Infof("setting key %s with value %v", key, value)
+		logger.GetLogger("boulder").Debugf("setting key %s with value %v", key, value)
 		err = txn.Commit()
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)

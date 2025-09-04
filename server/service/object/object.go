@@ -67,6 +67,41 @@ type BaseObjectParams struct {
 	Prefix                      string
 }
 
+type DeleteObjectsRequest struct {
+	XMLName xml.Name       `xml:"http://s3.amazonaws.com/doc/2006-03-01/ Delete"`
+	Objects []DeleteObject `xml:"Object"`
+	Quiet   *bool          `xml:"Quiet,omitempty"`
+}
+
+type DeleteObject struct {
+	Key              string     `xml:"Key"`
+	VersionId        *string    `xml:"VersionId,omitempty"`
+	ETag             *string    `xml:"ETag,omitempty"`
+	LastModifiedTime *time.Time `xml:"LastModifiedTime,omitempty"`
+	Size             *int64     `xml:"Size,omitempty"`
+}
+
+type DeletedObject struct {
+	Key                   string  `xml:"Key"`
+	VersionId             *string `xml:"VersionId,omitempty"`
+	DeleteMarker          *bool   `xml:"DeleteMarker,omitempty"`
+	DeleteMarkerVersionId *string `xml:"DeleteMarkerVersionId,omitempty"`
+}
+type DeletedObjectErrors struct {
+	Key       *string `xml:"Key,omitempty"`
+	VersionId *string `xml:"VersionId,omitempty"`
+	Code      string  `xml:"Code"`
+	Message   string  `xml:"Message"`
+}
+
+// DeleteObjectsResponse represents the response for S3 DeleteObjects API
+type DeleteObjectsResponse struct {
+	XMLName xml.Name              `xml:"DeleteResult"`
+	XMLNS   string                `xml:"xmlns,attr"`
+	Deleted []DeletedObject       `xml:"Deleted"`
+	Errors  []DeletedObjectErrors `xml:"Error"`
+}
+
 // ListObjectsResponse 对应 S3 ListObjects V1 响应
 type ListObjectsResponse struct {
 	XMLName xml.Name `xml:"ListBucketResult" json:"-"`

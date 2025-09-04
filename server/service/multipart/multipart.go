@@ -294,12 +294,13 @@ func (m *MultiPartService) WritePartMeta(cs *chunk.ChunkService, chunks []*meta.
 		} else if errors.Is(txErr, kv.ErrTxnCommit) && i < maxRetry-1 {
 			// 事务提交冲突
 			logger.GetLogger("boulder").Warnf("transmission write object %s/%s commit failed: %v, and  retry %d times", part.Bucket, part.Key, txErr, i+1)
-			baseDelay := 500 * time.Millisecond
-			jitter := time.Duration(rand.Int63n(100)) * time.Millisecond
+			baseDelay := 3 * time.Second
+			jitter := time.Duration(rand.Int63n(3000)) * time.Millisecond
 			sleep := baseDelay<<uint(i) + jitter
 			time.Sleep(sleep)
 		} else {
 			logger.GetLogger("boulder").Errorf("transmission write object %s/%s  meta info failed: %v，retry times %d", part.Bucket, part.Key, txErr, i+1)
+			txErr = fmt.Errorf("transmission write object %s/%s  meta info failed: %v，retry times %d", part.Bucket, part.Key, txErr, i+1)
 		}
 	}
 	return txErr

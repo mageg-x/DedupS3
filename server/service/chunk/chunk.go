@@ -424,8 +424,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 		ChunkID string
 	}
 
-	fixed := make(map[string]*Pair)
-
+	postDedupChunks := make([]*task.DupChunk, 0)
 	// 写入chunk元数据
 	for _, chunk := range allChunk {
 		//logger.GetLogger("boulder").Errorf("%s/%s write chunk %s:%s:%d ", obj.Bucket, obj.Key, chunk.Hash, chunk.BlockID, len(chunk.Data))
@@ -440,9 +439,14 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 		if exists {
 			// 这里要检查 同一个 chunk 关联多个 block 问题，理论上 一个chunk 只属于一个block，但是并发情况下，会发生一个chunk 关联多个
 			// 从block 中删除一个chunk 太复杂，这个问题无法解决，只能尽量去避免，带来的也只是数据冗余问题
+			// 把重复的放到后置重删任务中
 			if _chunk.BlockID != chunk.BlockID {
 				logger.GetLogger("boulder").Warnf("%s/%s  chunk %s has multi bolock %s:%s", obj.Bucket, obj.Key, chunk.Hash, _chunk.BlockID, chunk.BlockID)
-				fixed[chunk.BlockID+":"+chunk.Hash] = &Pair{BlockID: _chunk.BlockID, ChunkID: chunk.Hash}
+				postDedupChunks = append(postDedupChunks, &task.DupChunk{
+					ChunkID:  chunk.Hash,
+					BlockID1: chunk.BlockID,
+					BlockID2: _chunk.BlockID,
+				})
 				chunk.BlockID = _chunk.BlockID
 			}
 
@@ -470,17 +474,6 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 	for _, item := range blocks {
 		//logger.GetLogger("boulder").Errorf("%s/%s write block meta inf : %s:%d:%d", obj.Bucket, obj.Key, item.ID, item.TotalSize, item.RealSize)
 		blockKey := "aws:block:" + obj.DataLocation + ":" + item.ID
-		var newChunkList []meta.BlockChunk
-		for _, _chunk := range item.ChunkList {
-			k := item.ID + ":" + _chunk.Hash
-			if fixed[k] == nil {
-				newChunkList = append(newChunkList, _chunk)
-			} else {
-				logger.GetLogger("boulder").Warnf("remove refrence error chunk %s/%s/%s", obj.Bucket, obj.Key, k)
-			}
-		}
-		item.ChunkList = newChunkList
-
 		err = txn.Set(blockKey, &item)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("%s/%s/%s set block meta failed: %v", obj.Bucket, obj.Key, item.ID, err)
@@ -558,6 +551,14 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 		return kv.ErrTxnCommit
 	}
 	txn = nil
+
+	// 后置重删放到其他任务异步解决
+	postDedupChunkKey := task.DedupChunkPrefix + utils.GenUUID()
+	err = c.kvstore.Set(postDedupChunkKey, &postDedupChunks)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("%s/%s set post dedup chunk failed: %v", obj.Bucket, obj.Key, err)
+	}
+
 	logger.GetLogger("boulder").Infof("write object %s/%s  all meta data finish", obj.Bucket, obj.Key)
 	return nil
 }

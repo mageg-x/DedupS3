@@ -83,7 +83,7 @@ func ListBucketsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	buckets, owner, err := bs.ListBuckets(sb.BaseBucketParams{
+	buckets, owner, err := bs.ListBuckets(&sb.BaseBucketParams{
 		AccessKeyID: accessKeyID,
 	})
 	if err != nil {
@@ -405,7 +405,7 @@ func PutBucketHandler(w http.ResponseWriter, r *http.Request) {
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
-	err = bs.CreateBucket(sb.BaseBucketParams{
+	err = bs.CreateBucket(&sb.BaseBucketParams{
 		BucketName:        bucket,
 		Location:          locationConstraint.Location,
 		ObjectLockEnabled: objectLockEnabled,
@@ -441,7 +441,7 @@ func HeadBucketHandler(w http.ResponseWriter, r *http.Request) {
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
-	_bucket, err := bs.GetBucketInfo(sb.BaseBucketParams{
+	_bucket, err := bs.GetBucketInfo(&sb.BaseBucketParams{
 		BucketName:  bucket,
 		AccessKeyID: accessKeyID,
 	})
@@ -504,6 +504,47 @@ func DeleteBucketEncryptionHandler(w http.ResponseWriter, r *http.Request) {
 func DeleteBucketHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: DeleteBucketHandler")
-	// TODO: 实现 DELETE Bucket 逻辑
-	w.WriteHeader(http.StatusOK)
+	bucket, _, _, accessKeyID := GetReqVar(r)
+
+	if err := utils.CheckValidBucketName(bucket); err != nil {
+		logger.GetLogger("boulder").Errorf("DeleteBucketHandler: bucket name is empty")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketName)
+		return
+	}
+
+	// 获取bucket服务
+	bs := sb.GetBucketService()
+	if bs == nil {
+		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	// 执行删除操作
+	err := bs.DeleteBucket(&sb.BaseBucketParams{
+		BucketName:  bucket,
+		AccessKeyID: accessKeyID,
+	})
+	// 根据不同的错误类型返回不同的错误响应
+	if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrBucketNotEmpty)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrBucketNotEmpty)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		return
+	}
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to delete bucket %s: %v", bucket, err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrBucketMetadataNotInitialized)
+		return
+	}
+
+	logger.GetLogger("boulder").Tracef("successfully deleted bucket: %v", bucket)
+	// 返回204 No Content表示成功删除
+	w.WriteHeader(http.StatusNoContent)
 }

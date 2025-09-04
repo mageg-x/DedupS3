@@ -454,6 +454,7 @@ func PutObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 	partNumberStr := r.URL.Query().Get("partNumber")
 	partNumber, err := strconv.Atoi(partNumberStr)
 	if err != nil || partNumber < 1 || partNumber > 10000 {
+		logger.GetLogger("boulder").Errorf("Invalid part number: %s", partNumberStr)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidPartNumber)
 		return
 	}
@@ -484,9 +485,29 @@ func PutObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 		ContentLen:  contentLength,
 		ContentMd5:  contentMd5,
 	})
+	if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidQueryParams)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidQueryParams)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchKey)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchKey)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchUpload)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchUpload)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		return
+	}
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("upload %s : %d failed: %s", uploadID, partNumber, err)
-		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		return
 	}
 

@@ -20,14 +20,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/mageg-x/boulder/service/iam"
-	"github.com/mageg-x/boulder/service/storage"
-	gc2 "github.com/mageg-x/boulder/service/task"
 	"math/rand"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/mageg-x/boulder/service/storage"
+	gc2 "github.com/mageg-x/boulder/service/task"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
@@ -90,7 +90,7 @@ func main() {
 		Compress:   cfg.Log.Compress,
 	})
 
-	logger.GetLogger("boulder").SetLevel(logrus.Level(int(logrus.InfoLevel) + cli.Verbose))
+	logger.GetLogger("boulder").SetLevel(logrus.Level(int(logrus.WarnLevel) + cli.Verbose))
 	logger.GetLogger("boulder").Tracef("get config %v", cfg)
 
 	// 2、初始化存储部分
@@ -132,10 +132,10 @@ func main() {
 	}
 
 	// 制造一些测试数据
-	iamService := iam.GetIamService()
-	account, _ := iamService.CreateAccount("stevenrao", "Abcd@1234")
-	ak, err := iamService.CreateAccessKey(account.AccountID, account.Name, time.Now().Add(time.Hour*24*365))
-	logger.GetLogger("boulder").Infof("create account %v ak %v ", account, ak)
+	//iamService := iam.GetIamService()
+	//account, _ := iamService.CreateAccount("stevenrao", "Abcd@1234")
+	//ak, err := iamService.CreateAccessKey(account.AccountID, account.Name, time.Now().Add(time.Hour*24*365))
+	//logger.GetLogger("boulder").Infof("create account %v ak %v ", account, ak)
 
 	// 3. 创建路由处理器
 	mux := router.SetupRouter()

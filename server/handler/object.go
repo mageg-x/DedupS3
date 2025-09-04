@@ -560,8 +560,75 @@ func DeleteObjectHandler(w http.ResponseWriter, r *http.Request) {
 // DeleteMultipleObjectsHandler  批量删除多个对象 DeleteObjects
 func DeleteMultipleObjectsHandler(w http.ResponseWriter, r *http.Request) {
 	logger.GetLogger("boulder").Infof("API called: DeleteMultipleObjectsHandler")
-	// TODO: 实现 Delete Multiple Objects 逻辑
-	w.WriteHeader(http.StatusOK)
+	bucket, _, _, accessKeyID := GetReqVar(r)
+	var deleteReq object.DeleteObjectsRequest
+	decoder := xml.NewDecoder(r.Body)
+	err := decoder.Decode(&deleteReq)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to decode DeleteObjects XML: %v", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrBadRequest)
+		return
+	}
+
+	if err := utils.CheckValidBucketName(bucket); err != nil {
+		logger.GetLogger("boulder").Errorf("Invalid bucket name: %s", bucket)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketName)
+	}
+
+	// 获取对象服务
+	_os := object.GetObjectService()
+	if _os == nil {
+		logger.GetLogger("boulder").Errorf("Object service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+	result := object.DeleteObjectsResponse{
+		XMLName: xml.Name{Local: "CopyPartResult"},
+		XMLNS:   "http://s3.amazonaws.com/doc/2006-03-01/",
+		Deleted: make([]object.DeletedObject, 0),
+		Errors:  make([]object.DeletedObjectErrors, 0),
+	}
+	// 检查Quiet模式，默认为false
+	quiet := false
+	if deleteReq.Quiet != nil {
+		quiet = *deleteReq.Quiet
+	}
+	// 遍历所有要删除的对象
+	for _, obj := range deleteReq.Objects {
+		// 执行删除操作
+		err := _os.DeleteObject(&object.BaseObjectParams{
+			BucketName:  bucket,
+			ObjKey:      obj.Key,
+			AccessKeyID: accessKeyID,
+		})
+		if err == nil {
+			// 删除成功
+			if !quiet {
+				result.Deleted = append(result.Deleted, object.DeletedObject{Key: obj.Key})
+			}
+			logger.GetLogger("boulder").Tracef("Successfully deleted object: %s", obj.Key)
+		} else {
+			if !quiet {
+				// 确定错误类型
+				errorCode := "InternalError"
+				errorMessage := err.Error()
+
+				if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+					errorCode = "AccessDenied"
+					errorMessage = "Access Denied"
+				} else if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchKey)) {
+					errorCode = "NoSuchKey"
+					errorMessage = "The specified key does not exist"
+				}
+				result.Errors = append(result.Errors, object.DeletedObjectErrors{
+					Key:     &obj.Key,
+					Code:    errorCode,
+					Message: errorMessage,
+				})
+			}
+		}
+	}
+	xhttp.WriteAWSSuc(w, r, result)
 }
 
 // PostRestoreObjectHandler 处理 POST Restore Object 请求

@@ -60,7 +60,7 @@ func GetBucketService() *BucketService {
 	return instance
 }
 
-func (b *BucketService) CreateBucket(params BaseBucketParams) error {
+func (b *BucketService) CreateBucket(params *BaseBucketParams) error {
 	iamService := iam.GetIamService()
 	if iamService == nil {
 		logger.GetLogger("boulder").Errorf("failed to get iam service")
@@ -129,13 +129,11 @@ func (b *BucketService) CreateBucket(params BaseBucketParams) error {
 	// 删除cache
 	if cache, e := xcache.GetCache(); e == nil && cache != nil {
 		cache.Del(context.Background(), key)
-		prefix := "aws:bucket:" + ak.AccountID + ":"
-		cache.Del(context.Background(), prefix)
 	}
 	return nil
 }
 
-func (b *BucketService) GetBucketInfo(params BaseBucketParams) (*meta.BucketMetadata, error) {
+func (b *BucketService) GetBucketInfo(params *BaseBucketParams) (*meta.BucketMetadata, error) {
 	iamService := iam.GetIamService()
 	if iamService == nil {
 		logger.GetLogger("boulder").Errorf("failed to get iam service")
@@ -179,7 +177,7 @@ func (b *BucketService) GetBucketInfo(params BaseBucketParams) (*meta.BucketMeta
 	return &bucket, nil
 }
 
-func (b *BucketService) ListBuckets(params BaseBucketParams) ([]*meta.BucketMetadata, *meta.Owner, error) {
+func (b *BucketService) ListBuckets(params *BaseBucketParams) ([]*meta.BucketMetadata, *meta.Owner, error) {
 	iamService := iam.GetIamService()
 	if iamService == nil {
 		logger.GetLogger("boulder").Errorf("failed to get iam service")
@@ -250,4 +248,97 @@ func (b *BucketService) ListBuckets(params BaseBucketParams) ([]*meta.BucketMeta
 	}
 
 	return allBuckets, &owner, nil
+}
+func (b *BucketService) DeleteBucket(params *BaseBucketParams) error {
+	// 获取IAM服务
+	iamService := iam.GetIamService()
+	if iamService == nil {
+		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		return errors.New("failed to get iam service")
+	}
+
+	// 验证访问密钥
+	ak, err := iamService.GetAccessKey(params.AccessKeyID)
+	if err != nil || ak == nil {
+		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	ac, err := iamService.GetAccount(ak.AccountID)
+	if err != nil || ac == nil {
+		logger.GetLogger("boulder").Errorf("failed to get account %s", ak.AccountID)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	// 构建存储桶key
+	bucketKey := "aws:bucket:" + ak.AccountID + ":" + params.BucketName
+
+	// 开始事务
+	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		return fmt.Errorf("failed to initialize kvstore txn: %v", err)
+	}
+	defer func() {
+		if txn != nil {
+			_ = txn.Rollback()
+		}
+	}()
+
+	// 检查存储桶是否存在
+	var bucket meta.BucketMetadata
+	exist, err := txn.Get(bucketKey, &bucket)
+	if !exist || err != nil {
+		logger.GetLogger("boulder").Errorf("bucket %s does not exist", params.BucketName)
+		return xhttp.ToError(xhttp.ErrNoSuchBucket)
+	}
+
+	// 检查用户是否是存储桶所有者
+	if bucket.Owner.ID != ac.AccountID {
+		logger.GetLogger("boulder").Errorf("access denied: user %s is not the owner of bucket %s", ac.AccountID, params.BucketName)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	// 检查存储桶是否为空（检查是否有对象）
+	// 构建对象键前缀
+	objectPrefix := "aws:object:" + ac.AccountID + ":" + params.BucketName + "/"
+	objects, _, err := txn.Scan(objectPrefix, "", 1)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to scan objects in bucket %s: %v", params.BucketName, err)
+		return fmt.Errorf("failed to scan objects: %v", err)
+	}
+
+	// 检查是否有分段上传任务
+	multipartPrefix := "aws:object:" + ak.AccountID + ":" + params.BucketName + "/"
+	multiparts, _, err := txn.Scan(multipartPrefix, "", 1)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to scan multipart uploads in bucket %s: %v", params.BucketName, err)
+		return fmt.Errorf("failed to scan multipart uploads: %v", err)
+	}
+
+	if len(objects) > 0 || len(multiparts) > 0 {
+		logger.GetLogger("boulder").Tracef("bucket %s not empty", params.BucketName)
+		return xhttp.ToError(xhttp.ErrBucketNotEmpty)
+	}
+
+	// 删除存储桶元数据
+	if err := txn.Delete(bucketKey); err != nil {
+		logger.GetLogger("boulder").Errorf("failed to delete bucket %s metadata: %v", params.BucketName, err)
+		return fmt.Errorf("failed to delete bucket metadata: %v", err)
+	}
+
+	// 提交事务
+	if err := txn.Commit(); err != nil {
+		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		return fmt.Errorf("failed to commit transaction: %v", err)
+	}
+	txn = nil
+
+	// 清除缓存
+	if cache, e := xcache.GetCache(); e == nil && cache != nil {
+		cache.Del(context.Background(), bucketKey)
+	}
+
+	logger.GetLogger("boulder").Tracef("successfully deleted bucket: %s", params.BucketName)
+	return nil
 }
