@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	PRE_UPLOAD_BLOCK_NUM   = 17
+	PRE_UPLOAD_BLOCK_NUM   = 100
 	MAX_BUCKET_HEADER_SIZE = 200 * 1024
 	MAX_BUCKET_SIZE        = 64 * 1024 * 1024
 )
@@ -92,6 +92,7 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 		}
 		chunk.BlockID = curBlock.ID
 		curBlock.ChunkList = append(curBlock.ChunkList, meta.BlockChunk{Hash: chunk.Hash, Size: chunk.Size, Data: chunk.Data})
+		curBlock.Dirty = true
 		chunk.Data = nil
 		curBlock.TotalSize += int64(chunk.Size)
 		curBlock.UpdatedAt = time.Now().UTC()
@@ -116,6 +117,9 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 }
 
 func (s *BlockService) FlushBlock(block *meta.Block) error {
+	if !block.Dirty {
+		return nil
+	}
 	ss := storage.GetStorageService()
 	if ss == nil {
 		logger.GetLogger("boulder").Errorf("get nil storage service")
@@ -199,6 +203,8 @@ func (s *BlockService) FlushBlock(block *meta.Block) error {
 	if err != nil {
 		logger.GetLogger("boulder").Debugf("write block %s failed: %v", block.ID, err)
 		return fmt.Errorf("write block %s failed: %v", block.ID, err)
+	} else {
+		block.Dirty = false
 	}
 	return nil
 }

@@ -20,14 +20,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/mageg-x/boulder/service/iam"
 	"math/rand"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-
-	"github.com/mageg-x/boulder/service/storage"
-	gc2 "github.com/mageg-x/boulder/service/task"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
@@ -39,6 +37,8 @@ import (
 	"github.com/mageg-x/boulder/internal/storage/cache"
 	"github.com/mageg-x/boulder/internal/storage/kv"
 	"github.com/mageg-x/boulder/router"
+	"github.com/mageg-x/boulder/service/storage"
+	gc2 "github.com/mageg-x/boulder/service/task"
 	"github.com/mageg-x/boulder/web"
 )
 
@@ -132,10 +132,10 @@ func main() {
 	}
 
 	// 制造一些测试数据
-	//iamService := iam.GetIamService()
-	//account, _ := iamService.CreateAccount("stevenrao", "Abcd@1234")
-	//ak, err := iamService.CreateAccessKey(account.AccountID, account.Name, time.Now().Add(time.Hour*24*365))
-	//logger.GetLogger("boulder").Infof("create account %v ak %v ", account, ak)
+	iamService := iam.GetIamService()
+	account, _ := iamService.CreateAccount("stevenrao", "Abcd@1234")
+	ak, err := iamService.CreateAccessKey(account.AccountID, account.Name, time.Now().Add(time.Hour*24*365))
+	logger.GetLogger("boulder").Errorf("create account %v ak %v ", account, ak)
 
 	// 3. 创建路由处理器
 	mux := router.SetupRouter()
@@ -157,7 +157,7 @@ func main() {
 	listenCtx := context.Background()
 	listenErrCallback := func(addr string, err error) {
 		if err != nil {
-			logger.GetLogger("boulder").Fatalf("list %s failed: %v", addr, err)
+			logger.GetLogger("boulder").Fatalf("listen %s failed: %v", addr, err)
 		}
 	}
 	// 创建多个服务器实例

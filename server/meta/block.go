@@ -36,6 +36,7 @@ type Block struct {
 	StorageID string    `json:"storage_id" msgpack:"storage_id"` // 存储后端ID
 	CreatedAt time.Time `json:"created_at" msgpack:"created_at"` // 创建时间
 	UpdatedAt time.Time `json:"updated_at" msgpack:"updated_at"` // 更新时间
+	Dirty     bool      `json:"-" msgpack:"-" default:"true"`    // 是否变更数据
 }
 
 // NewBlock 创建新块

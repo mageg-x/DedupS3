@@ -24,6 +24,10 @@ import (
 	"github.com/mageg-x/boulder/meta"
 )
 
+const (
+	NONE_BLOCK_ID = "000000000000000000000000"
+)
+
 var (
 	instance *ChunkService
 	mu       = sync.Mutex{}
@@ -61,25 +65,19 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.BaseObject, cb WriteObjCB)
 
 	// 配置分块器选项
 	opts := &fastcdc.ChunkerOpts{
-		MinSize:    1024 * 1024,
+		MinSize:    512 * 1024,
 		NormalSize: 2 * 1024 * 1024,
 		MaxSize:    4 * 1024 * 1024,
 	}
 	// 小文件分块切分粒度小一些
-	if obj.Size < 16*1024*1024 {
+	if obj.Size < 16*1024*1024 && obj.ObjType != meta.PART_OBJECT {
 		opts = &fastcdc.ChunkerOpts{
 			MinSize:    16 * 1024,
 			NormalSize: 128 * 1024,
 			MaxSize:    512 * 1024,
 		}
 	}
-	if obj.Size < 1024*1024 {
-		opts = &fastcdc.ChunkerOpts{
-			MinSize:    8 * 1024,
-			NormalSize: 16 * 1024,
-			MaxSize:    64 * 1024,
-		}
-	}
+
 	// 切分
 	go func() {
 		defer close(chunkChan)
@@ -102,10 +100,11 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.BaseObject, cb WriteObjCB)
 		defer close(allChan)
 		chunks, err := c.Dedup(ctx, chunkChan, dedupChan, obj)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("%s/%s merge chunk failed: %v", obj.Bucket, obj.Key, err)
+			logger.GetLogger("boulder").Errorf("%s/%s Dedup chunk failed: %v", obj.Bucket, obj.Key, err)
 			cancel()
 			return
 		}
+
 		allChan <- chunks
 	}()
 
@@ -268,6 +267,7 @@ func (c *ChunkService) Dedup(ctx context.Context, inputChan, dedupChan chan *met
 							logger.GetLogger("boulder").Errorf("%s/%s chunk unmarshal failed: %v", obj.Bucket, obj.Key, err)
 							return nil, fmt.Errorf("%s/%s chunk unmarshal failed: %v", obj.Bucket, obj.Key, err)
 						}
+
 						chunkFilter[item.Hash] = _chunk.BlockID
 						logger.GetLogger("boulder").Debugf("chunk %s/%s/%s [%d-%d] has already been dedupped in block %s between object", obj.Bucket, obj.Key, item.Hash, offset-int(item.Size), offset, _chunk.BlockID)
 						item.BlockID = _chunk.BlockID
@@ -286,7 +286,7 @@ func (c *ChunkService) Dedup(ctx context.Context, inputChan, dedupChan chan *met
 					}
 
 					logger.GetLogger("boulder").Debugf("chunk %s/%s/%s has not found dedupped", obj.Bucket, obj.Key, item.Hash)
-					chunkFilter[item.Hash] = "000000000000000000000000"
+					chunkFilter[item.Hash] = NONE_BLOCK_ID
 
 					dedupChan <- item
 				}
@@ -331,6 +331,9 @@ func (c *ChunkService) Assemble(ctx context.Context, dedupChan chan *meta.Chunk,
 			if _block != nil {
 				blockNum++
 				blocks[_block.ID] = _block
+			} else {
+				logger.GetLogger("boulder").Errorf("get %s/%s/%s block is nil", obj.Bucket, obj.Key, chunk.Hash)
+				return blocks, fmt.Errorf("get %s/%s/%s block is nil", obj.Bucket, obj.Key, chunk.Hash)
 			}
 
 			if !ok || chunk == nil {
@@ -361,13 +364,13 @@ func (c *ChunkService) Summary(ctx context.Context, allChan chan []*meta.Chunk, 
 		return allChunks, fmt.Errorf("%s/%s do chunk be canceled", obj.Bucket, obj.Key)
 	case result := <-allChan:
 		if result == nil {
-			logger.GetLogger("boulder").Errorf("%s/%s dedup chunk failed", obj.Bucket, obj.Key)
-			return allChunks, fmt.Errorf("%s/%s dedup chunk failed", obj.Bucket, obj.Key)
+			logger.GetLogger("boulder").Errorf("%s/%s summary chunk failed", obj.Bucket, obj.Key)
+			return allChunks, fmt.Errorf("%s/%s summary chunk failed", obj.Bucket, obj.Key)
 		}
 		for _, chunk := range result {
 			if chunk == nil {
-				logger.GetLogger("boulder").Errorf("%s/%s dedup chunk failed", obj.Bucket, obj.Key)
-				return allChunks, fmt.Errorf("%s/%s dedup chunk failed", obj.Bucket, obj.Key)
+				logger.GetLogger("boulder").Errorf("%s/%s summary chunk failed", obj.Bucket, obj.Key)
+				return allChunks, fmt.Errorf("%s/%s summary chunk failed", obj.Bucket, obj.Key)
 			}
 			//logger.GetLogger("boulder").Debugf("chunk %s block id %s:%s", chunk.Hash, chunk.BlockID, chunk2block[chunk.Hash])
 			if chunk2block[chunk.Hash] != "" {
@@ -375,8 +378,8 @@ func (c *ChunkService) Summary(ctx context.Context, allChan chan []*meta.Chunk, 
 			}
 
 			if chunk.BlockID == "" {
-				logger.GetLogger("boulder").Errorf("%s/%s/%s dedup chunk failed", obj.Bucket, obj.Key, chunk.Hash)
-				return allChunks, fmt.Errorf("%s/%s dedup chunk failed", obj.Bucket, obj.Key)
+				logger.GetLogger("boulder").Errorf("%s/%s/%s summary chunk failed", obj.Bucket, obj.Key, chunk.Hash)
+				return allChunks, fmt.Errorf("%s/%s summary chunk failed", obj.Bucket, obj.Key)
 			}
 			chunk.Data = nil
 			allChunks = append(allChunks, chunk)
@@ -424,7 +427,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 		ChunkID string
 	}
 
-	postDedupChunks := make([]*task.DupChunk, 0)
+	gcDedup := make([]*task.GCDedup, 0)
 	// 写入chunk元数据
 	for _, chunk := range allChunk {
 		//logger.GetLogger("boulder").Errorf("%s/%s write chunk %s:%s:%d ", obj.Bucket, obj.Key, chunk.Hash, chunk.BlockID, len(chunk.Data))
@@ -437,12 +440,12 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 		}
 
 		if exists {
-			// 这里要检查 同一个 chunk 关联多个 block 问题，理论上 一个chunk 只属于一个block，但是并发情况下，会发生一个chunk 关联多个
-			// 从block 中删除一个chunk 太复杂，这个问题无法解决，只能尽量去避免，带来的也只是数据冗余问题
-			// 把重复的放到后置重删任务中
+			//这里要检查 同一个 chunk 关联多个 block 问题，理论上 一个chunk 只属于一个block，但是并发情况下，会发生一个chunk 关联多个
+			//从block 中删除一个chunk 太复杂，这个问题无法解决，只能尽量去避免，带来的也只是数据冗余问题
+			//把重复的放到后置重删任务中
 			if _chunk.BlockID != chunk.BlockID {
 				logger.GetLogger("boulder").Warnf("%s/%s  chunk %s has multi bolock %s:%s", obj.Bucket, obj.Key, chunk.Hash, _chunk.BlockID, chunk.BlockID)
-				postDedupChunks = append(postDedupChunks, &task.DupChunk{
+				gcDedup = append(gcDedup, &task.GCDedup{
 					ChunkID:  chunk.Hash,
 					BlockID1: chunk.BlockID,
 					BlockID2: _chunk.BlockID,
@@ -516,6 +519,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 		logger.GetLogger("boulder").Errorf("unsupport type %s", objType.String())
 		return fmt.Errorf("unsupport type %s", objType.String())
 	}
+
 	if len(gcChunks) > 0 {
 		gckey := task.GCChunkPrefix + utils.GenUUID()
 		gcChunks := task.GCChunk{
@@ -531,6 +535,16 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 			logger.GetLogger("boulder").Infof("%s/%s set gc chunk %s delay to proccess", obj.Bucket, obj.Key, gckey)
 		}
 	}
+
+	// 后置重删
+	if len(gcDedup) > 0 {
+		gcDedupKey := task.GCDedupPrefix + utils.GenUUID()
+		err = txn.Set(gcDedupKey, &gcDedup)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("%s/%s set post dedup chunk failed: %v", obj.Bucket, obj.Key, err)
+		}
+	}
+
 	logger.GetLogger("boulder").Infof("set object %s etag %s , put meta %#v ..... ", objKey, obj.ETag, obj.Size)
 	if normalobj != nil {
 		err = txn.Set(objKey, normalobj)
@@ -547,17 +561,10 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 
 	err = txn.Commit()
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("%s/%s commit failed: %v", obj.Bucket, obj.Key, err)
+		logger.GetLogger("boulder").Debugf("%s/%s commit failed: %v", obj.Bucket, obj.Key, err)
 		return kv.ErrTxnCommit
 	}
 	txn = nil
-
-	// 后置重删放到其他任务异步解决
-	postDedupChunkKey := task.DedupChunkPrefix + utils.GenUUID()
-	err = c.kvstore.Set(postDedupChunkKey, &postDedupChunks)
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("%s/%s set post dedup chunk failed: %v", obj.Bucket, obj.Key, err)
-	}
 
 	logger.GetLogger("boulder").Infof("write object %s/%s  all meta data finish", obj.Bucket, obj.Key)
 	return nil
@@ -587,7 +594,7 @@ func (c *ChunkService) BatchGet(storageID string, chunkIDs []string) ([]*meta.Ch
 					if chunk != nil {
 						chunkMap[chunk.Hash] = chunk
 					} else {
-						cache.Del(context.Background(), k)
+						_ = cache.Del(context.Background(), k)
 					}
 				}
 			}

@@ -23,6 +23,7 @@ const (
 	// GCChunkPrefix GC前缀定义
 	GCChunkPrefix = "aws:gc:chunks:"
 	GCBlockPrefix = "aws:gc:blocks:"
+	GCDedupPrefix = "aws:gc:dedup:"
 
 	// DefaultScanInterval 扫描间隔默认值（秒）
 	DefaultGCScanInterval = 10 * time.Second // 1分钟
@@ -44,6 +45,12 @@ type GCBlock struct {
 type GCChunk struct {
 	StorageID string   `json:"storage_id" msgpack:"storage_id"`
 	ChunkIDs  []string `json:"chunk_ids" msgpack:"chunk_ids"`
+}
+
+type GCDedup struct {
+	ChunkID  string
+	BlockID1 string
+	BlockID2 string
 }
 
 type GCService struct {
@@ -101,10 +108,14 @@ func (g *GCService) Stop() {
 
 func (g *GCService) loop() {
 	for g.running.Load() {
+		g.doDedup()
 		g.doGC()
-		//g.checkBlock()
 		time.Sleep(DefaultGCScanInterval)
 	}
+}
+
+func (g *GCService) doDedup() {
+
 }
 
 func (g *GCService) doGC() {

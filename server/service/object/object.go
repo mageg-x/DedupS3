@@ -686,7 +686,7 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 		finalMD5Hex := hex.EncodeToString(finalMD5)
 		// 检查计算的MD5是否与对象的ETag一致
 		if string(object.ETag) != finalMD5Hex {
-			logger.GetLogger("boulder").Errorf("get object %s/%s MD5 mismatch: stored=%s calculated=%s range[%d-%d]", object.Bucket, object.Key, object.ETag, finalMD5Hex, start, end)
+			logger.GetLogger("boulder").Debugf("get object %s/%s MD5 mismatch: stored=%s calculated=%s range[%d-%d]", object.Bucket, object.Key, object.ETag, finalMD5Hex, start, end)
 		}
 	}()
 

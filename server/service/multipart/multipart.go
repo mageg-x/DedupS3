@@ -34,7 +34,7 @@ import (
 
 const (
 	UID_PREFIX    = "u0118"
-	MAT_PART_SIZE = 5 * 1024 * 1024
+	MIN_PART_SIZE = 5 * 1024 * 1024
 )
 
 var (
@@ -293,7 +293,7 @@ func (m *MultiPartService) WritePartMeta(cs *chunk.ChunkService, chunks []*meta.
 			break
 		} else if errors.Is(txErr, kv.ErrTxnCommit) && i < maxRetry-1 {
 			// 事务提交冲突
-			logger.GetLogger("boulder").Warnf("transmission write object %s/%s commit failed: %v, and  retry %d times", part.Bucket, part.Key, txErr, i+1)
+			logger.GetLogger("boulder").Debugf("transmission write object %s/%s commit failed: %v, and  retry %d times", part.Bucket, part.Key, txErr, i+1)
 			baseDelay := 3 * time.Second
 			jitter := time.Duration(rand.Int63n(3000)) * time.Millisecond
 			sleep := baseDelay<<uint(i) + jitter
@@ -520,6 +520,7 @@ func (m *MultiPartService) UploadPart(r io.Reader, params *object.BaseObjectPara
 			CreatedAt:    time.Now().UTC(),
 			Chunks:       make([]string, 0),
 			DataLocation: upload.DataLocation,
+			ObjType:      meta.PART_OBJECT,
 		},
 		UploadID:     params.UploadID,
 		PartNumber:   int(params.PartNumber),
@@ -588,6 +589,7 @@ func (m *MultiPartService) UploadPartCopy(srcBucket, srcObject string, params *o
 			Chunks:       append([]string(nil), srcObj.Chunks...),
 			ETag:         srcObj.ETag,
 			DataLocation: upload.DataLocation,
+			ObjType:      meta.PART_OBJECT,
 		},
 		UploadID:     params.UploadIDMarker,
 		PartNumber:   int(params.PartNumber),
@@ -595,6 +597,7 @@ func (m *MultiPartService) UploadPartCopy(srcBucket, srcObject string, params *o
 		Initiator:    upload.Initiator,
 		StorageClass: upload.StorageClass,
 	}
+
 	// 只支持同源复制
 	if srcObj.DataLocation == upload.DataLocation {
 		txn, err := m.kvstore.BeginTxn(context.Background(), nil)
@@ -776,8 +779,8 @@ func (m *MultiPartService) CompleteMultipartUpload(cliParts []meta.PartETag, par
 			return nil, xhttp.ToError(xhttp.ErrInvalidPart)
 		}
 		//除了最后一个其他都要大于 5M
-		if i < len(allParts)-1 && p.Size < MAT_PART_SIZE {
-			logger.GetLogger("boulder").Errorf("the none last part size %d is smaller then %d", p.Size, MAT_PART_SIZE)
+		if i < len(allParts)-1 && p.Size < MIN_PART_SIZE {
+			logger.GetLogger("boulder").Errorf("the none last part size %d is smaller then %d", p.Size, MIN_PART_SIZE)
 			return nil, xhttp.ToError(xhttp.ErrInvalidPart)
 		}
 	}

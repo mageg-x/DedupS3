@@ -81,8 +81,8 @@ type ServerConfig struct {
 	Interface           string        `yaml:"interface" json:"interface" env:"BOULDER_SERVER_INTERFACE" default:""`
 	MaxIdleConnsPerHost int           `yaml:"max_idle_conns_per_host" json:"maxIdleConnsPerHost" env:"BOULDER_SERVER_MAX_IDLE_CONNS_PER_HOST" default:"2048"`
 	Memlimit            string        `yaml:"memlimit" json:"memlimit" env:"BOULDER_SERVER_MEMLIMIT" default:"8589934592"`
-	SendBufSize         int           `yaml:"send_buf_size" json:"sendBufSize" env:"BOULDER_SERVER_SEND_BUF_SIZE" default:"4194304"`
-	RecvBufSize         int           `yaml:"recv_buf_size" json:"recvBufSize" env:"BOULDER_SERVER_RECV_BUF_SIZE" default:"4194304"`
+	SendBufSize         int           `yaml:"send_buf_size" json:"sendBufSize" env:"BOULDER_SERVER_SEND_BUF_SIZE" default:"8388608"`
+	RecvBufSize         int           `yaml:"recv_buf_size" json:"recvBufSize" env:"BOULDER_SERVER_RECV_BUF_SIZE" default:"8388608"`
 	Domains             []string      `yaml:"domains" json:"domains" env:"BOULDER_DOMAINS" `
 }
 

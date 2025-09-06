@@ -45,6 +45,7 @@ func RateLimitMiddleware(config RateLimitConfig) mux.MiddlewareFunc {
 		// 使用同步Map存储限流器
 		var limiters sync.Map
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			//logger.GetLogger("boulder").Errorf("get req %s %s %d", r.Method, r.URL.Path, r.ContentLength)
 			// 获取限流键
 			key := "global"
 			if config.KeyFunc != nil {

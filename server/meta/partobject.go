@@ -100,23 +100,9 @@ func BaseObjectToPart(base *BaseObject) *PartObject {
 }
 
 func (p *PartObject) Clone() *PartObject {
-	cp := &PartObject{
-		BaseObject: BaseObject{
-			Bucket:       p.Bucket,
-			Key:          p.Key,
-			ETag:         p.ETag,
-			Size:         p.Size,
-			LastModified: p.LastModified,
-			CreatedAt:    p.CreatedAt,
-			DataLocation: p.DataLocation,
-			Chunks:       append([]string(nil), p.Chunks...),
-		},
-		UploadID:     p.UploadID,
-		PartNumber:   p.PartNumber,
-		Owner:        p.Owner,
-		Initiator:    p.Initiator,
-		StorageClass: p.StorageClass,
-	}
+	cp := &PartObject{}
+	*cp = *p // 浅拷贝所有字段
+	cp.Chunks = append([]string(nil), p.Chunks...)
 
 	return cp
 }

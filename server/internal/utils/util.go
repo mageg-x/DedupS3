@@ -8,13 +8,15 @@ import (
 	"crypto/sha256"
 	"encoding/xml"
 	"errors"
+	"fmt"
+	"github.com/google/uuid"
 	"github.com/mageg-x/boulder/internal/logger"
 	"io"
 	"path"
 	"strings"
 	"sync"
+	"time"
 
-	"github.com/google/uuid"
 	"github.com/klauspost/compress/zstd"
 	"golang.org/x/crypto/pbkdf2"
 )
@@ -107,8 +109,15 @@ func WithTryLock(mu *sync.Mutex, fn func()) {
 	}
 }
 
+// GenUUID  生成一个有序ID，基于时间戳和随机数
 func GenUUID() string {
-	return strings.ReplaceAll(uuid.New().String(), "-", "")
+	UUID := strings.ReplaceAll(uuid.New().String(), "-", "")
+	timestamp := time.Now().UnixNano()
+	// 使用完整的时间戳确保顺序性
+	timePart := fmt.Sprintf("%016x", timestamp) // 16位十六进制，填充前导零
+	// 添加较短的随机部分确保唯一性
+	randomPart := UUID[:16] // 只取UUID的前16位
+	return timePart + randomPart
 }
 
 func GenKey(password string, keyLen int) []byte {

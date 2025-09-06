@@ -29,6 +29,7 @@ import (
 
 func AuditMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		//logger.GetLogger("boulder").Errorf("get req %s %s %d", r.Method, r.URL.Path, r.ContentLength)
 		start := time.Now().UTC()
 
 		// 创建响应写入器以捕获状态码

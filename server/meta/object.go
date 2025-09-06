@@ -29,6 +29,11 @@ import (
 	"unsafe"
 )
 
+const (
+	NORMAL_OBJECT = iota
+	PART_OBJECT
+)
+
 type Etag string
 
 type InlineChunk struct {
@@ -46,6 +51,7 @@ type BaseObject struct {
 	CreatedAt    time.Time `json:"createdAt" xml:"CreatedAt"`       // 创建时间
 	// 数据位置（实际存储系统中使用）
 	DataLocation string `json:"dataLocation" xml:"-"` // 对象数据存储位置，不序列化到 XML
+	ObjType      int    `json:"-" xml:"-"`            // 辅助字段，仅仅存在内存中
 }
 
 // Object 表示存储桶中的一个对象
@@ -107,6 +113,7 @@ func NewObject(bucket, key string) *Object {
 			Key:          key,
 			CreatedAt:    now,
 			LastModified: now,
+			ObjType:      NORMAL_OBJECT,
 		},
 		ContentType:  "application/octet-stream",
 		StorageClass: "STANDARD",
@@ -293,32 +300,8 @@ func (o *Object) CalculateETag(data io.Reader) (string, error) {
 
 // Copy 创建对象的副本
 func (o *Object) Clone() *Object {
-	cp := &Object{
-		BaseObject: BaseObject{
-			Bucket:       o.Bucket,
-			Key:          o.Key,
-			ETag:         o.ETag,
-			Size:         o.Size,
-			LastModified: o.LastModified,
-			CreatedAt:    o.CreatedAt,
-			DataLocation: o.DataLocation,
-		},
-		VersionID:          o.VersionID,
-		ContentType:        o.ContentType,
-		ContentEncoding:    o.ContentEncoding,
-		ContentLanguage:    o.ContentLanguage,
-		ContentDisposition: o.ContentDisposition,
-		CacheControl:       o.CacheControl,
-		EncryptionType:     o.EncryptionType,
-		KMSKeyID:           o.KMSKeyID,
-		StorageClass:       o.StorageClass,
-		RestoreStatus:      o.RestoreStatus,
-		LockMode:           o.LockMode,
-		LockRetainUntil:    o.LockRetainUntil,
-		LegalHold:          o.LegalHold,
-		Owner:              o.Owner,
-		ACL:                o.ACL,
-	}
+	cp := &Object{}
+	*cp = *o // 浅拷贝所有字段
 
 	// 深拷贝map
 	cp.UserMetadata = make(map[string]string)
