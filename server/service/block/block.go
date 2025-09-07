@@ -31,7 +31,15 @@ const (
 var (
 	instance *BlockService
 	mu       = sync.Mutex{}
+	bfm      *BlockFlushManager
+	once     sync.Once
 )
+
+type BlockFlushManager struct {
+	mu      sync.Mutex
+	pending map[string]*meta.Block // blockID -> 最新 block
+	ticker  *time.Ticker
+}
 
 type BlockService struct {
 	kvstore kv.KVStore
@@ -59,6 +67,66 @@ func GetBlockService() *BlockService {
 	}
 
 	return instance
+}
+
+func defaultBFM() *BlockFlushManager {
+	once.Do(func() {
+		bfm = &BlockFlushManager{
+			pending: make(map[string]*meta.Block),
+			ticker:  time.NewTicker(3000 * time.Millisecond), // 每3s flush一次
+		}
+		go bfm.flushLoop()
+	})
+	return bfm
+}
+
+func (m *BlockFlushManager) flushLoop() {
+	for range m.ticker.C {
+		m.flushAll()
+	}
+}
+
+func (m *BlockFlushManager) flushAll() {
+	for {
+		var block *meta.Block
+
+		// 在锁内尝试获取一个有效的 block，或清理一个 nil entry
+		m.mu.Lock()
+		if len(m.pending) == 0 {
+			// 空 map，直接退出
+			m.mu.Unlock()
+			return
+		}
+
+		// 遍历，找第一个非 nil block
+		for k, b := range m.pending {
+			if b != nil {
+				block = b
+				delete(m.pending, k)
+				break // 找到有效 block，跳出 for range
+			}
+			// 如果 b == nil，我们删除它，并 break（只删一个 nil）
+			delete(m.pending, k)
+			break // 无论找到 nil 还是 non-nil，都只处理一个，然后释放锁
+		}
+		m.mu.Unlock()
+
+		// 如果 block 不为 nil，flush 它
+		if block != nil {
+			err := (&BlockService{}).doFlushBlock(block)
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("failed to flush block: %v", err)
+			}
+			continue // 继续下一轮
+		}
+
+		// block 为 nil，但我们删除了一个 nil entry
+		// 说明 m.pending 原本不为空，但至少有一个 nil
+		// 我们不能 return，因为可能还有其他 non-nil block
+		// 所以：继续循环，尝试下一轮
+		// 注意：我们不 return，只是继续
+		continue
+	}
 }
 
 func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.Block, error) {
@@ -120,6 +188,27 @@ func (s *BlockService) FlushBlock(block *meta.Block) error {
 	if !block.Dirty {
 		return nil
 	}
+
+	if block.TotalSize >= MAX_BUCKET_SIZE {
+		// 删除manager.pending 中的 block
+		manager := defaultBFM()
+		utils.WithLock(&manager.mu, func() {
+			delete(manager.pending, block.ID)
+		})
+		return s.doFlushBlock(block)
+	} else {
+		manager := defaultBFM()
+		utils.WithLock(&manager.mu, func() {
+			delete(manager.pending, block.ID)
+			// 关键：后写入的覆盖先写入的
+			manager.pending[block.ID] = block
+			block.Dirty = false
+		})
+		return nil // 立即返回，不报错（错误在后台处理）
+	}
+}
+
+func (s *BlockService) doFlushBlock(block *meta.Block) error {
 	ss := storage.GetStorageService()
 	if ss == nil {
 		logger.GetLogger("boulder").Errorf("get nil storage service")
@@ -190,6 +279,9 @@ func (s *BlockService) FlushBlock(block *meta.Block) error {
 		}
 	}
 
+	// 计算hash, 用来做数据完整性校验
+	blockData.CalcChunkHash()
+
 	logger.GetLogger("boulder").Infof("flush block data size %d:%d, compress rate %.2f%%",
 		blockData.TotalSize, blockData.RealSize, float64(100.0*blockData.RealSize)/float64(blockData.TotalSize))
 
@@ -204,8 +296,9 @@ func (s *BlockService) FlushBlock(block *meta.Block) error {
 		logger.GetLogger("boulder").Debugf("write block %s failed: %v", block.ID, err)
 		return fmt.Errorf("write block %s failed: %v", block.ID, err)
 	} else {
-		block.Dirty = false
+		logger.GetLogger("boulder").Warnf("finish write block %s success", block.ID)
 	}
+
 	return nil
 }
 
@@ -319,7 +412,7 @@ func (s *BlockService) BatchGet(storageID string, blockIds []string) ([]*meta.Bl
 	blockMap := make(map[string]*meta.Block)
 	keys := make([]string, 0, len(blockIds))
 	for _, id := range blockIds {
-		key := "aws:block:" + storageID + ":" + id
+		key := meta.GenBlockKey(storageID, id)
 		keys = append(keys, key)
 	}
 	batchSize := 100
@@ -369,8 +462,8 @@ func (s *BlockService) BatchGet(storageID string, blockIds []string) ([]*meta.Bl
 			blockMap[block.ID] = &block
 
 			if cache, err := xcache.GetCache(); err == nil && cache != nil {
-				blockKey := "aws:block:" + storageID + ":" + block.ID
-				err := cache.Set(context.Background(), blockKey, &block, time.Hour*24*7)
+				blockKey := meta.GenBlockKey(storageID, block.ID)
+				err := cache.Set(context.Background(), blockKey, &block, time.Second*600)
 				if err != nil {
 					logger.GetLogger("boulder").Errorf("set block %s to cache failed: %v", blockKey, err)
 				}

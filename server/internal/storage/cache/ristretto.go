@@ -147,6 +147,10 @@ func (r *Ristretto) BatchGet(ctx context.Context, keys []string) (map[string]int
 
 // BatchDel 批量删除缓存
 func (r *Ristretto) BatchDel(ctx context.Context, keys []string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+
 	if ctx.Err() != nil {
 		logger.GetLogger("boulder").Errorf("context error when batch deleting cache items: %v", ctx.Err())
 		return ctx.Err()

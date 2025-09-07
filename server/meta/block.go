@@ -4,6 +4,8 @@ package meta
 import (
 	"time"
 
+	"lukechampine.com/blake3"
+
 	"github.com/mageg-x/boulder/internal/utils"
 )
 
@@ -17,6 +19,7 @@ type BlockChunk struct {
 // BlockHeader BlockData ，存放在磁盘上只包含头信息，不含 Data
 type BlockHeader struct {
 	ID         string       `json:"id" msgpack:"id"`
+	Etag       [32]byte     `json:"etag" msgpack:"etag"`
 	TotalSize  int64        `json:"total_size" msgpack:"total_size"`
 	RealSize   int64        `json:"real_size" msgpack:"real_size"`   // 实际占用大小
 	Compressed bool         `json:"compressed" msgpack:"compressed"` // 是否压缩
@@ -54,30 +57,17 @@ func NewBlock(storageID string) *Block {
 func GenBlockID() string {
 	return utils.GenUUID()
 }
+func GenBlockKey(storageID, blockID string) string {
+	return "aws:block:" + storageID + ":" + blockID
+}
 
 // Clone 创建 Block 的深拷贝
 // 该方法创建一个新的 Block 实例，并复制所有字段的值
 // 对于引用类型字段（如 ChunkList），会创建新的切片并复制其中的元素
 func (b *Block) Clone(cloneData bool) *Block {
-	if b == nil {
-		return nil
-	}
-
-	// 创建新的 Block 实例
-	clone := &Block{
-		BlockHeader: BlockHeader{
-			ID:         b.ID,
-			TotalSize:  b.TotalSize,
-			RealSize:   b.RealSize,
-			Compressed: b.Compressed,
-			Encrypted:  b.Encrypted,
-			// 深拷贝 ChunkList
-			ChunkList: make([]BlockChunk, len(b.ChunkList)),
-		},
-		StorageID: b.StorageID,
-		CreatedAt: b.CreatedAt,
-		UpdatedAt: b.UpdatedAt,
-	}
+	cp := &Block{}
+	*cp = *b // 浅拷贝
+	cp.ChunkList = make([]BlockChunk, len(b.ChunkList))
 
 	// 复制 ChunkList 中的每个元素
 	for i, chunk := range b.ChunkList {
@@ -86,8 +76,13 @@ func (b *Block) Clone(cloneData bool) *Block {
 			newChunk.Data = make([]byte, len(chunk.Data))
 			copy(newChunk.Data, chunk.Data)
 		}
-		clone.ChunkList[i] = newChunk
+		cp.ChunkList[i] = newChunk
 	}
 
-	return clone
+	return cp
+}
+
+// CalcChunkHash 计算数据的哈希
+func (b *BlockData) CalcChunkHash() {
+	b.Etag = blake3.Sum256(b.Data)
 }

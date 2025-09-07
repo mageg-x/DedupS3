@@ -20,7 +20,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/mageg-x/boulder/service/iam"
 	"math/rand"
 	"os"
 	"os/signal"
@@ -132,10 +131,10 @@ func main() {
 	}
 
 	// 制造一些测试数据
-	iamService := iam.GetIamService()
-	account, _ := iamService.CreateAccount("stevenrao", "Abcd@1234")
-	ak, err := iamService.CreateAccessKey(account.AccountID, account.Name, time.Now().Add(time.Hour*24*365))
-	logger.GetLogger("boulder").Errorf("create account %v ak %v ", account, ak)
+	//iamService := iam.GetIamService()
+	//account, _ := iamService.CreateAccount("stevenrao", "Abcd@1234")
+	//ak, err := iamService.CreateAccessKey(account.AccountID, account.Name, time.Now().Add(time.Hour*24*365))
+	//logger.GetLogger("boulder").Errorf("create account %v ak %v ", account, ak)
 
 	// 3. 创建路由处理器
 	mux := router.SetupRouter()

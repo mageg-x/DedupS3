@@ -25,7 +25,7 @@ import (
 type BucketMetadata struct {
 	Name         string                          `json:"name" xml:"Name"`
 	CreationDate time.Time                       `json:"creationDate" xml:"CreationDate"`
-	Owner        CanonicalUser                   `json:"owner" xml:"Owner"`
+	Owner        Owner                           `json:"owner" xml:"Owner"`
 	ACL          *ACL                            `json:"acl" xml:"AccessControlPolicy"`
 	Location     string                          `json:"location" xml:"LocationConstraint"`
 	Policy       *BucketPolicy                   `json:"policyConfig" xml:"Policy"`

@@ -367,7 +367,7 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 	defer func() {
 		objKey := "aws:object:" + ak.AccountID + ":" + params.BucketName + "/" + params.ObjKey
 		if cache, err := xcache.GetCache(); err == nil && cache != nil {
-			cache.Del(context.Background(), objKey)
+			_ = cache.Del(context.Background(), objKey)
 		}
 	}()
 
@@ -879,7 +879,15 @@ func (o *ObjectService) DeleteObject(params *BaseObjectParams) error {
 	txn = nil
 
 	if cache, e := xcache.GetCache(); e == nil && cache != nil {
-		cache.Del(context.Background(), objkey)
+		// obj
+		_ = cache.Del(context.Background(), objkey)
+		// chunk
+		chunkKeys := make([]string, 0, len(_object.Chunks))
+		for _, hash := range _object.Chunks {
+			chunkKey := meta.GenChunkKey(_object.DataLocation, hash)
+			chunkKeys = append(chunkKeys, chunkKey)
+		}
+		_ = cache.BatchDel(context.Background(), chunkKeys)
 	}
 	return nil
 }
@@ -983,7 +991,7 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 			}
 		}()
 		for _, chunkID := range dstobj.Chunks {
-			chunkey := "aws:chunk:" + srcobj.DataLocation + ":" + chunkID
+			chunkey := meta.GenChunkKey(srcobj.DataLocation, chunkID)
 			var _chunk meta.Chunk
 			if exists, e := txn.Get(chunkey, &_chunk); e != nil || !exists {
 				logger.GetLogger("boulder").Errorf("%s/%s get chunk failed: %v", srcobj.Bucket, srcobj.Key, err)

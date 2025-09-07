@@ -49,6 +49,9 @@ func NewChunk(data []byte) *Chunk {
 	c.Hash = c.CalcChunkHash()
 	return &c
 }
+func GenChunkKey(strorageID, Hash string) string {
+	return "aws:chunk:" + strorageID + ":" + Hash
+}
 
 // CalcChunkHash 计算数据的哈希
 func (c *Chunk) CalcChunkHash() string {

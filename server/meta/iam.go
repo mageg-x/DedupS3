@@ -1099,7 +1099,7 @@ func generateAccessKeyID() string {
 
 // 生成秘密访问密钥 (40字符)
 func generateSecretAccessKey() string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/"
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, 40)
 	for i := range b {
 		b[i] = charset[Rand.Intn(len(charset))]

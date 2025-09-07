@@ -99,7 +99,7 @@ func (b *BucketService) CreateBucket(params *BaseBucketParams) error {
 	var bucket meta.BucketMetadata
 	exist, err := txn.Get(key, &bucket)
 	if exist && err == nil {
-		if bucket.Owner.ID == u.ID {
+		if bucket.Owner.ID == ac.AccountID {
 			logger.GetLogger("boulder").Warnf("bucket %s already owned by you", params.BucketName)
 			return xhttp.ToError(xhttp.ErrBucketAlreadyOwnedByYou)
 		}
@@ -110,7 +110,7 @@ func (b *BucketService) CreateBucket(params *BaseBucketParams) error {
 	bm := meta.BucketMetadata{
 		Name:         params.BucketName,
 		CreationDate: time.Now().UTC(),
-		Owner:        meta.CanonicalUser{ID: u.ID, DisplayName: u.Username},
+		Owner:        meta.Owner{ID: ac.AccountID, DisplayName: ac.Name},
 		Location:     params.Location,
 	}
 
@@ -244,7 +244,7 @@ func (b *BucketService) ListBuckets(params *BaseBucketParams) ([]*meta.BucketMet
 
 	// 写入cache
 	if cache, e := xcache.GetCache(); e == nil && cache != nil {
-		cache.Set(context.Background(), prefix, allBuckets, time.Hour*24)
+		cache.Set(context.Background(), prefix, allBuckets, time.Second*600)
 	}
 
 	return allBuckets, &owner, nil
@@ -295,7 +295,7 @@ func (b *BucketService) DeleteBucket(params *BaseBucketParams) error {
 
 	// 检查用户是否是存储桶所有者
 	if bucket.Owner.ID != ac.AccountID {
-		logger.GetLogger("boulder").Errorf("access denied: user %s is not the owner of bucket %s", ac.AccountID, params.BucketName)
+		logger.GetLogger("boulder").Errorf("access denied: user %s :%s is not the owner of bucket %s", ac.AccountID, bucket.Owner.ID, params.BucketName)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 

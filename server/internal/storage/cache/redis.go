@@ -173,7 +173,6 @@ func (r *Redis) BatchGet(ctx context.Context, keys []string) (map[string]interfa
 // BatchDel 批量删除
 func (r *Redis) BatchDel(ctx context.Context, keys []string) error {
 	if len(keys) == 0 {
-		logger.GetLogger("boulder").Debugf("No keys provided for batch delete")
 		return nil
 	}
 	if err := r.client.Del(ctx, keys...).Err(); err != nil {

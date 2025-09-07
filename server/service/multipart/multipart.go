@@ -612,7 +612,7 @@ func (m *MultiPartService) UploadPartCopy(srcBucket, srcObject string, params *o
 		}()
 		// 5. 遍历源对象的 chunks，增加ref 引用计数
 		for _, chunkID := range srcObj.Chunks {
-			chunkey := "aws:chunk:" + srcObj.DataLocation + ":" + chunkID
+			chunkey := meta.GenChunkKey(srcObj.DataLocation, chunkID)
 			var _chunk meta.Chunk
 			if exists, e := txn.Get(chunkey, &_chunk); e != nil || !exists {
 				logger.GetLogger("boulder").Errorf("%s/%s get chunk failed: %v", srcObj.Bucket, srcObj.Key, err)

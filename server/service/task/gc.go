@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	xcache "github.com/mageg-x/boulder/internal/storage/cache"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -48,9 +49,10 @@ type GCChunk struct {
 }
 
 type GCDedup struct {
-	ChunkID  string
-	BlockID1 string
-	BlockID2 string
+	StorageID string
+	ChunkID   string
+	BlockID1  string
+	BlockID2  string
 }
 
 type GCService struct {
@@ -208,7 +210,10 @@ func (g *GCService) cleanOne4Chunk(prefix string) (bool, int, error) {
 	blockMap := make(map[string]bool)
 	var deletedCount int
 	for _, chunkID := range gcChunks.ChunkIDs {
-		chunkKey := "aws:chunk:" + gcChunks.StorageID + ":" + chunkID
+		chunkKey := meta.GenChunkKey(gcChunks.StorageID, chunkID)
+		if cache, e := xcache.GetCache(); e == nil && cache != nil {
+			_ = cache.Del(context.Background(), chunkKey)
+		}
 		var chunk meta.Chunk
 		exists, err := txn.Get(chunkKey, &chunk)
 		if err != nil {
@@ -314,7 +319,10 @@ func (g *GCService) cleanOne4Block(prefix string) (bool, int, error) {
 
 	var deletedCount int
 	for _, gcBlock := range gcBlocks {
-		blockKey := "aws:block:" + gcBlock.StorageID + ":" + gcBlock.BlockID
+		blockKey := meta.GenBlockKey(gcBlock.StorageID, gcBlock.BlockID)
+		if cache, e := xcache.GetCache(); e == nil && cache != nil {
+			_ = cache.Del(context.Background(), blockKey)
+		}
 		var _block meta.Block
 		exists, err := txn.Get(blockKey, &_block)
 		if err != nil {
@@ -335,7 +343,7 @@ func (g *GCService) cleanOne4Block(prefix string) (bool, int, error) {
 		}
 		var chunkIDs []string
 		for _, chunk := range _block.ChunkList {
-			_key := "aws:chunk:" + gcBlock.StorageID + ":" + chunk.Hash
+			_key := meta.GenChunkKey(gcBlock.StorageID, chunk.Hash)
 			chunkIDs = append(chunkIDs, _key)
 		}
 		chunks, err := txn.BatchGet(chunkIDs)
@@ -365,7 +373,7 @@ func (g *GCService) cleanOne4Block(prefix string) (bool, int, error) {
 				break
 			} else {
 				// 顺手清理掉 引用为 0 的元数据
-				_key := "aws:chunk:" + gcBlock.StorageID + ":" + k
+				_key := meta.GenChunkKey(gcBlock.StorageID, k)
 				err := txn.Delete(_key)
 				if err != nil {
 					logger.GetLogger("boulder").Errorf("failed to delete chunk %s: %v", k, err)
@@ -404,6 +412,58 @@ func (g *GCService) cleanOne4Block(prefix string) (bool, int, error) {
 	}
 	txn = nil
 	return false, deletedCount, nil
+}
+
+func (g *GCService) dedupOne4Block(prefix string) (bool, int, error) {
+	bs := block.GetBlockService()
+	if bs == nil {
+		logger.GetLogger("boulder").Errorf("failed to get block service")
+		return false, 0, fmt.Errorf("failed to get block service")
+	}
+
+	txn, err := g.kvstore.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to begin txn: %v", err)
+		return false, 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if txn != nil {
+			_ = txn.Rollback()
+		}
+	}()
+
+	// 扫描一个前缀条目
+	keys, _, err := txn.Scan(prefix, "", 1)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to scan keys: %v", err)
+		return false, 0, fmt.Errorf("failed to scan: %w", err)
+	}
+
+	// 没有更多键了
+	if len(keys) == 0 {
+		//logger.GetLogger("boulder").Infof("no keys found, finish to task %s", prefix)
+		return true, 0, nil
+	} else {
+		logger.GetLogger("boulder").Infof("found chunk %s to clean ", keys[0])
+	}
+
+	var gcDedup GCDedup
+	exists, err := txn.Get(keys[0], &gcDedup)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to get gcDedup: %s  %v", keys[0], err)
+		return false, 0, fmt.Errorf("failed to get gcDedup from %s: %w", keys[0], err)
+	}
+
+	if !exists {
+		return false, 0, fmt.Errorf("gcDedup %s does not exist", keys[0])
+	}
+
+	// BlockID1 一中 清除chunkID
+	// 先读取 block meta 信息
+	//block := meta.Block{}
+	//blockKey := meta.GenBlockKey(gcDedup.StorageID, gcDedup.BlockID1)
+	//exists, err := txn.Get(blockKey, &block)
+	return false, 0, nil
 }
 
 func (g *GCService) checkBlock() {
