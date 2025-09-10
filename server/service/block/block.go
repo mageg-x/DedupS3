@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	PRE_UPLOAD_BLOCK_NUM   = 100
+	PRE_UPLOAD_BLOCK_NUM   = 19
 	MAX_BUCKET_HEADER_SIZE = 200 * 1024
 	MAX_BUCKET_SIZE        = 64 * 1024 * 1024
 )
@@ -31,21 +31,15 @@ const (
 var (
 	instance *BlockService
 	mu       = sync.Mutex{}
-	bfm      *BlockFlushManager
-	once     sync.Once
 )
-
-type BlockFlushManager struct {
-	mu      sync.Mutex
-	pending map[string]*meta.Block // blockID -> 最新 block
-	ticker  *time.Ticker
-}
 
 type BlockService struct {
 	kvstore kv.KVStore
 
-	preBlocks  []*meta.Block
-	blockLocks []sync.Mutex // 为每个块单独设置锁
+	preBlocks []*meta.Block
+	lockers   []sync.Mutex           // 为每个块单独设置锁
+	delay     map[string]*meta.Block // 延迟刷新队列
+	flushSem  chan struct{}          // 控制并发信号量
 }
 
 func GetBlockService() *BlockService {
@@ -60,73 +54,16 @@ func GetBlockService() *BlockService {
 		logger.GetLogger("boulder").Errorf("failed to get kv store: %v", err)
 		return nil
 	}
+
 	instance = &BlockService{
-		kvstore:    store,
-		preBlocks:  make([]*meta.Block, PRE_UPLOAD_BLOCK_NUM),
-		blockLocks: make([]sync.Mutex, PRE_UPLOAD_BLOCK_NUM),
+		kvstore:   store,
+		preBlocks: make([]*meta.Block, PRE_UPLOAD_BLOCK_NUM),
+		lockers:   make([]sync.Mutex, PRE_UPLOAD_BLOCK_NUM),
+		delay:     make(map[string]*meta.Block),
+		flushSem:  make(chan struct{}, 10), // 最多 10 个并发 doFlushBlock
 	}
 
 	return instance
-}
-
-func defaultBFM() *BlockFlushManager {
-	once.Do(func() {
-		bfm = &BlockFlushManager{
-			pending: make(map[string]*meta.Block),
-			ticker:  time.NewTicker(3000 * time.Millisecond), // 每3s flush一次
-		}
-		go bfm.flushLoop()
-	})
-	return bfm
-}
-
-func (m *BlockFlushManager) flushLoop() {
-	for range m.ticker.C {
-		m.flushAll()
-	}
-}
-
-func (m *BlockFlushManager) flushAll() {
-	for {
-		var block *meta.Block
-
-		// 在锁内尝试获取一个有效的 block，或清理一个 nil entry
-		m.mu.Lock()
-		if len(m.pending) == 0 {
-			// 空 map，直接退出
-			m.mu.Unlock()
-			return
-		}
-
-		// 遍历，找第一个非 nil block
-		for k, b := range m.pending {
-			if b != nil {
-				block = b
-				delete(m.pending, k)
-				break // 找到有效 block，跳出 for range
-			}
-			// 如果 b == nil，我们删除它，并 break（只删一个 nil）
-			delete(m.pending, k)
-			break // 无论找到 nil 还是 non-nil，都只处理一个，然后释放锁
-		}
-		m.mu.Unlock()
-
-		// 如果 block 不为 nil，flush 它
-		if block != nil {
-			err := (&BlockService{}).doFlushBlock(block)
-			if err != nil {
-				logger.GetLogger("boulder").Errorf("failed to flush block: %v", err)
-			}
-			continue // 继续下一轮
-		}
-
-		// block 为 nil，但我们删除了一个 nil entry
-		// 说明 m.pending 原本不为空，但至少有一个 nil
-		// 我们不能 return，因为可能还有其他 non-nil block
-		// 所以：继续循环，尝试下一轮
-		// 注意：我们不 return，只是继续
-		continue
-	}
 }
 
 func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.Block, error) {
@@ -137,8 +74,8 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 
 	if chunk == nil {
 		// 对象结束时候会发一个 nil chunk 表示 对象结束了，需要保存 blcok
-		s.blockLocks[i].Lock()
-		defer s.blockLocks[i].Unlock()
+		s.lockers[i].Lock()
+		defer s.lockers[i].Unlock()
 		flushBlock = s.preBlocks[i]
 	} else {
 		if chunk.Size != int32(len(chunk.Data)) {
@@ -151,13 +88,14 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 			return nil, fmt.Errorf("chunk data is nil: %#v", chunk)
 		}
 
-		s.blockLocks[i].Lock()
-		defer s.blockLocks[i].Unlock()
+		s.lockers[i].Lock()
+		defer s.lockers[i].Unlock()
 		curBlock := s.preBlocks[i]
 		if curBlock == nil {
 			curBlock = meta.NewBlock(obj.DataLocation)
 			s.preBlocks[i] = curBlock
 		}
+
 		chunk.BlockID = curBlock.ID
 		curBlock.ChunkList = append(curBlock.ChunkList, meta.BlockChunk{Hash: chunk.Hash, Size: chunk.Size, Data: chunk.Data})
 		curBlock.Dirty = true
@@ -166,13 +104,14 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 		curBlock.UpdatedAt = time.Now().UTC()
 		if curBlock.TotalSize > MAX_BUCKET_SIZE {
 			// 块超过大小，从缓存中摘出来，保存到存储
-			flushBlock = curBlock
+			flushBlock = s.preBlocks[i]
+			flushBlock.Finally = true
 			s.preBlocks[i] = nil
 		}
 	}
 	var clone *meta.Block
 	if flushBlock != nil {
-		logger.GetLogger("boulder").Warnf("ready to flush one block %s,  %d chunks", flushBlock.ID, len(flushBlock.ChunkList))
+		logger.GetLogger("boulder").Infof("ready to flush one block %s,  %d chunks", flushBlock.ID, len(flushBlock.ChunkList))
 		err := s.FlushBlock(flushBlock)
 		if err != nil {
 			logger.GetLogger("boulder").Warnf("failed to flush block %s: %v", flushBlock.ID, err)
@@ -184,28 +123,48 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 	return clone, nil
 }
 
+// FlushBlock 本函数提供异步并发写能力
 func (s *BlockService) FlushBlock(block *meta.Block) error {
-	if !block.Dirty {
-		return nil
+	const DELAY_FLUSH_LOCKER = "delay-flush-locker"
+	utils.WithLockKey(DELAY_FLUSH_LOCKER, func() {
+		if block.Finally {
+			s.delay[block.ID] = block
+		} else {
+			// 为了避免正在写盘时候， 被修改内容，使用副本
+			s.delay[block.ID] = block.Clone(true)
+		}
+	})
+
+	duration := 1 * time.Second
+	if block.Finally {
+		duration = 1 * time.Millisecond
 	}
 
-	if block.TotalSize >= MAX_BUCKET_SIZE {
-		// 删除manager.pending 中的 block
-		manager := defaultBFM()
-		utils.WithLock(&manager.mu, func() {
-			delete(manager.pending, block.ID)
+	go func(blockID string, delay time.Duration) {
+		time.Sleep(delay)
+		var _block *meta.Block
+		utils.WithLockKey(DELAY_FLUSH_LOCKER, func() {
+			_block = s.delay[blockID]
+			delete(s.delay, blockID)
 		})
-		return s.doFlushBlock(block)
-	} else {
-		manager := defaultBFM()
-		utils.WithLock(&manager.mu, func() {
-			delete(manager.pending, block.ID)
-			// 关键：后写入的覆盖先写入的
-			manager.pending[block.ID] = block
-			block.Dirty = false
-		})
-		return nil // 立即返回，不报错（错误在后台处理）
-	}
+
+		if _block != nil {
+			s.flushSem <- struct{}{}
+			defer func() { <-s.flushSem }()
+
+			maxRetryTimes := 3
+			for i := 0; i < maxRetryTimes; i++ {
+				err := s.doFlushBlock(_block)
+				if err != nil {
+					logger.GetLogger("boulder").Warnf("failed to flush block %s: %v", _block.ID, err)
+				} else {
+					break
+				}
+			}
+		}
+	}(block.ID, duration)
+
+	return nil
 }
 
 func (s *BlockService) doFlushBlock(block *meta.Block) error {
@@ -296,7 +255,7 @@ func (s *BlockService) doFlushBlock(block *meta.Block) error {
 		logger.GetLogger("boulder").Debugf("write block %s failed: %v", block.ID, err)
 		return fmt.Errorf("write block %s failed: %v", block.ID, err)
 	} else {
-		logger.GetLogger("boulder").Warnf("finish write block %s success", block.ID)
+		logger.GetLogger("boulder").Infof("finish write block %s success", block.ID)
 	}
 
 	return nil

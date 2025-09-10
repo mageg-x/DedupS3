@@ -20,6 +20,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"github.com/mageg-x/boulder/internal/aws"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -458,12 +459,34 @@ func PutObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidPartNumber)
 		return
 	}
-	contentLength := r.ContentLength
-	if contentLength <= 0 {
-		logger.GetLogger("boulder").Errorf("Invalid content length: %d", contentLength)
-		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+
+	// 包装 body
+	body, err := aws.NewReader(r)
+	if err != nil {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedRequestBody)
 		return
 	}
+	defer body.Close()
+
+	contentLenStr := r.Header.Get(xhttp.AmzDecodedContentLength)
+	if contentLenStr == "" {
+		contentLenStr = r.Header.Get(xhttp.ContentLength)
+	}
+	contentLength := r.ContentLength
+	if contentLenStr != "" {
+		contentLength, err = strconv.ParseInt(contentLenStr, 10, 64)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("Invalid X-Amz-Decoded-Content-Length: %s", contentLenStr)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidDigest) // 或 ErrMalformedRequestBody
+			return
+		}
+	}
+	if contentLength < 0 {
+		logger.GetLogger("boulder").Errorf("Negative content length: %d", contentLength)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidDigest)
+		return
+	}
+
 	// content Md5
 	contentMd5 := r.Header.Get(xhttp.ContentMD5)
 	// 去掉前后的双引号
@@ -476,7 +499,7 @@ func PutObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	part, err := _mps.UploadPart(r.Body, &object.BaseObjectParams{
+	part, err := _mps.UploadPart(body, &object.BaseObjectParams{
 		BucketName:  bucket,
 		ObjKey:      objectKey,
 		UploadID:    uploadID,

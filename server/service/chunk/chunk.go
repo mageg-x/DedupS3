@@ -65,7 +65,7 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.BaseObject, cb WriteObjCB)
 
 	// 配置分块器选项
 	opts := &fastcdc.ChunkerOpts{
-		MinSize:    512 * 1024,
+		MinSize:    1024 * 1024,
 		NormalSize: 2 * 1024 * 1024,
 		MaxSize:    4 * 1024 * 1024,
 	}
@@ -461,7 +461,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 			//从block 中删除一个chunk 太复杂，这个问题无法解决，只能尽量去避免，带来的也只是数据冗余问题
 			//把重复的放到后置重删任务中
 			if _chunk.BlockID != chunk.BlockID {
-				logger.GetLogger("boulder").Warnf("%s/%s  chunk %s has multi bolock %s:%s", obj.Bucket, obj.Key, chunk.Hash, _chunk.BlockID, chunk.BlockID)
+				logger.GetLogger("boulder").Debugf("%s/%s  chunk %s has multi bolock %s:%s", obj.Bucket, obj.Key, chunk.Hash, _chunk.BlockID, chunk.BlockID)
 				gcDedup = append(gcDedup, &task.GCDedup{
 					StorageID: obj.DataLocation,
 					ChunkID:   chunk.Hash,
@@ -571,7 +571,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 		}
 	}
 
-	logger.GetLogger("boulder").Errorf("set object %s etag %s , put meta %#v ..... ", objKey, obj.ETag, obj.Size)
+	logger.GetLogger("boulder").Debugf("set object %s etag %s , put meta %#v ..... ", objKey, obj.ETag, obj.Size)
 	if normalobj != nil {
 		err = txn.Set(objKey, normalobj)
 	} else if partobj != nil {

@@ -430,6 +430,7 @@ const (
 	ErrRequestExpired
 
 	ERRNotModify
+	ErrMalformedRequestBody
 	apiErrCodeEnd // This is used only for the testing code
 )
 
@@ -2118,5 +2119,10 @@ var errorCodes = errorCodeMap{
 		Code:           "NotModify",
 		Description:    "Content not modify",
 		HTTPStatusCode: http.StatusNotModified,
+	},
+	ErrMalformedRequestBody: {
+		Code:           "InvalidArgument",
+		Description:    "The request body is malformed.",
+		HTTPStatusCode: http.StatusBadRequest,
 	},
 }
