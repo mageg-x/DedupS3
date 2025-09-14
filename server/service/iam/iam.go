@@ -16,6 +16,10 @@ import (
 )
 
 var (
+	ERR_ACCOUNT_EXISTS    = errors.New("account already exists")
+	ERR_ACCOUNT_NOTEXISTS = errors.New("account not exists")
+)
+var (
 	instance *IamService = nil
 	mu                   = sync.Mutex{}
 )
@@ -74,10 +78,11 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IAMAccount,
 	}()
 
 	// 检查账户是否已存在
-	_, exists, err := txn.GetRaw(key)
+	var ac meta.IAMAccount
+	exists, err := txn.Get(key, &ac)
 	if exists {
 		logger.GetLogger("boulder").Errorf("username %s already exists", username)
-		return nil, errors.New("account already exists")
+		return &ac, ERR_ACCOUNT_EXISTS
 	}
 
 	// 创建新账户
@@ -126,9 +131,13 @@ func (s *IamService) GetAccount(accountID string) (*meta.IAMAccount, error) {
 	}
 	var account meta.IAMAccount
 	exist, err := s.iam.Get(key, &account)
-	if err != nil || !exist {
+	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to get account %s: %v", accountID, err)
-		return nil, err
+		return nil, fmt.Errorf("failed to get account %s: %v", accountID, err)
+	}
+	if !exist {
+		logger.GetLogger("boulder").Errorf("account %s does not exist", accountID)
+		return nil, ERR_ACCOUNT_NOTEXISTS
 	}
 
 	if cache, e := xcache.GetCache(); e == nil && cache != nil {
@@ -344,7 +353,7 @@ func (s *IamService) DeleteUser(accountID, username string) error {
 	return nil
 }
 
-func (s *IamService) CreateAccessKey(accountID, username string, expiredAt time.Time) (*meta.AccessKey, error) {
+func (s *IamService) CreateAccessKey(accountID, username string, expiredAt time.Time, ak, sk string) (*meta.AccessKey, error) {
 	var key *meta.AccessKey
 	ok, err := s.UpdateAccount(accountID, func(a *meta.IAMAccount) error {
 		if a == nil {
@@ -352,7 +361,7 @@ func (s *IamService) CreateAccessKey(accountID, username string, expiredAt time.
 			return fmt.Errorf("account %s not found", accountID)
 		}
 		var err error
-		key, err = a.CreateAccessKey(username, expiredAt)
+		key, err = a.CreateAccessKey(username, expiredAt, ak, sk)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to create access key %s in account %s: %v", username, accountID, err)
 		}

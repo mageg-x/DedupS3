@@ -20,6 +20,13 @@ var (
 	loadMutex    sync.Mutex
 )
 
+type IAMConfig struct {
+	Username string `json:"username" yaml:"username" env:"IAM_USERNAME" default:"stevenrao"`
+	Password string `json:"password" yaml:"password" env:"IAM_PASSWORD" default:"Abcd@1234"`
+	AK       string `json:"access_key" yaml:"access_key" env:"IAM_ACCESS_KEY" default:"GGP5NTUY9WRH5NS78UVU"`
+	SK       string `json:"secret_key" yaml:"secret_key" env:"IAM_SECRET_KEY" default:"5oj6y3Jy7MO4Y2FTI5dOUvCbnOZf8mQGvbCqGN4I"`
+}
+
 // TiKVConfig TiKV集群配置
 type TiKVConfig struct {
 	PDAddrs []string `yaml:"pd_addrs" json:"pdAddrs" env:"BOULDER_KV_TIKV_PD_ADDRS"`
@@ -100,6 +107,7 @@ type Config struct {
 	Log    LogConfig    `yaml:"log" json:"log"`
 	KV     KVConfig     `yaml:"kv" json:"kv"`
 	Cache  CacheConfig  `yaml:"cache" json:"cache"`
+	Iam    IAMConfig    `yaml:"iam" json:"iam"`
 }
 
 // DefaultConfig 创建带默认值的配置实例

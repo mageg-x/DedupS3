@@ -12,8 +12,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	xconf "github.com/mageg-x/boulder/internal/config"
+	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/mageg-x/boulder/internal/logger"
 	"io"
+	"net/http"
 	"path"
 	"strings"
 	"time"
@@ -32,7 +34,7 @@ func NewS3Store(c *xconf.S3Config) (*S3Store, error) {
 
 	ctx := context.Background()
 
-	if c.AccessKey == "" || c.SecretKey == "" {
+	if c.AccessKey == "" || c.SecretKey == "" || c.Endpoint == "" {
 		logger.GetLogger("boulder").Errorf("Missing AWS credentials")
 		return nil, fmt.Errorf("missing AWS credentials")
 	}
@@ -40,10 +42,16 @@ func NewS3Store(c *xconf.S3Config) (*S3Store, error) {
 	// 创建凭证
 	credentialProvider := credentials.NewStaticCredentialsProvider(c.AccessKey, c.SecretKey, "")
 
+	httpcli := &http.Client{
+		Transport: &xhttp.HttpLoggingTransport{
+			Transport: http.DefaultTransport,
+		},
+	}
 	// 加载配置，并指定凭证提供者
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithRegion(c.Region),
 		config.WithCredentialsProvider(credentialProvider),
+		config.WithHTTPClient(httpcli), // 使用带日志的 client
 	)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("Failed to load SDK configuration: %v", err)
@@ -52,11 +60,7 @@ func NewS3Store(c *xconf.S3Config) (*S3Store, error) {
 
 	// 创建 S3 客户端（对接 MinIO 等私有服务需加选项）
 	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
-		// 如果配置了自定义端点，设置自定义端点
-		if c.Endpoint != "" {
-			o.BaseEndpoint = aws.String(c.Endpoint)
-			logger.GetLogger("boulder").Debugf("Using custom endpoint: %s", c.Endpoint)
-		}
+		o.BaseEndpoint = aws.String(c.Endpoint)
 		// 对接 MinIO/OSS/COS 等需要PathStyle的情况
 		o.UsePathStyle = c.UsePathStyle
 		logger.GetLogger("boulder").Debugf("Use path style: %v", c.UsePathStyle)

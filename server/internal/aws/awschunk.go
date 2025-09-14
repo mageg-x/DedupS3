@@ -4,10 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	xhttp "github.com/mageg-x/boulder/internal/http"
 	"io"
 	"net/http"
 	"strings"
+
+	xhttp "github.com/mageg-x/boulder/internal/http"
 )
 
 type AwsChunkedReader struct {

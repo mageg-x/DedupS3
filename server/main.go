@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/mageg-x/boulder/service/iam"
@@ -131,10 +132,15 @@ func main() {
 		panic(err)
 	}
 
-	// 制造一些测试数据
+	// 缺省账户信息
 	iamService := iam.GetIamService()
-	account, _ := iamService.CreateAccount("stevenrao", "Abcd@1234")
-	ak, err := iamService.CreateAccessKey(account.AccountID, account.Name, time.Now().Add(time.Hour*24*365))
+	account, err := iamService.CreateAccount(cfg.Iam.Username, cfg.Iam.Password)
+	if err != nil {
+		if !errors.Is(err, iam.ERR_ACCOUNT_EXISTS) {
+			logger.GetLogger("boulder").Fatalf("failed to create account", zap.Error(err))
+		}
+	}
+	ak, err := iamService.CreateAccessKey(account.AccountID, account.Name, time.Now().Add(time.Hour*24*365), cfg.Iam.AK, cfg.Iam.SK)
 	logger.GetLogger("boulder").Errorf("create account %v ak %v ", account, ak)
 
 	// 3. 创建路由处理器

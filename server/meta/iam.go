@@ -311,7 +311,7 @@ func (a *IAMAccount) DeleteUser(username string) error {
 }
 
 // CreateAccessKey 为用户创建访问密钥
-func (a *IAMAccount) CreateAccessKey(username string, expiredAt time.Time) (*AccessKey, error) {
+func (a *IAMAccount) CreateAccessKey(username string, expiredAt time.Time, ak, sk string) (*AccessKey, error) {
 	user, exists := a.Users[username]
 	if a.Users["root"].Username == username {
 		user = a.Users["root"]
@@ -324,10 +324,15 @@ func (a *IAMAccount) CreateAccessKey(username string, expiredAt time.Time) (*Acc
 	if expiredAt.Before(time.Now()) {
 		return nil, errors.New("expired time cannot be before current time")
 	}
-
+	if ak == "" {
+		ak = generateCanonicalUserID()
+	}
+	if sk == "" {
+		sk = generateSecretAccessKey()
+	}
 	accessKey := AccessKey{
-		AccessKeyID:     generateAccessKeyID(),
-		SecretAccessKey: generateSecretAccessKey(),
+		AccessKeyID:     ak,
+		SecretAccessKey: sk,
 		Status:          "Active",
 		CreatedAt:       time.Now().UTC(),
 		ExpiredAt:       expiredAt,
