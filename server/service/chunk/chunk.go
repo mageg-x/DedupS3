@@ -24,10 +24,6 @@ import (
 	"github.com/mageg-x/boulder/service/block"
 )
 
-const (
-	NONE_BLOCK_ID = "000000000000000000000000"
-)
-
 var (
 	instance *ChunkService
 	mu       = sync.Mutex{}
@@ -169,8 +165,8 @@ func (c *ChunkService) Split(ctx context.Context, r io.Reader, outputChan chan *
 	}
 	var prevChunk *meta.Chunk
 
-	// hashfile, _ := os.Create("chunks_hash.txt")
-	// defer hashfile.Close()
+	//hashfile, _ := os.Create(fmt.Sprintf("%s.hash", obj.Key))
+	//defer hashfile.Close()
 
 	objSize := 0 // 统计真实长度
 	// 循环读取并分块
@@ -193,7 +189,7 @@ func (c *ChunkService) Split(ctx context.Context, r io.Reader, outputChan chan *
 		// 如果有数据，发送到输出通道
 		if len(chunkData) > 0 {
 			currentChunk := meta.NewChunk(chunkData)
-			// fmt.Fprintf(hashfile, "%x\n", currentChunk.Hash)
+			//fmt.Fprintf(hashfile, "%x\n", currentChunk.Hash)
 			// 避免最后一个分片太小
 			if err == io.EOF && len(chunkData) < opt.MinSize && prevChunk != nil {
 				// 合并到前一个分片
@@ -295,7 +291,7 @@ func (c *ChunkService) Dedup(ctx context.Context, inputChan, dedupChan chan *met
 					}
 
 					logger.GetLogger("boulder").Debugf("chunk %s/%s/%s has not found dedupped", obj.Bucket, obj.Key, item.Hash)
-					chunkFilter[item.Hash] = NONE_BLOCK_ID
+					chunkFilter[item.Hash] = meta.NONE_BLOCK_ID
 
 					dedupChan <- item
 				}
@@ -339,8 +335,8 @@ func (c *ChunkService) Assemble(ctx context.Context, dedupChan chan *meta.Chunk,
 			}
 
 			if _block != nil {
-				blockNum++
 				blocks[_block.ID] = _block
+				blockNum = len(blocks)
 			}
 
 			if !ok || chunk == nil {
@@ -439,47 +435,43 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 			_ = txn.Rollback()
 		}
 	}()
+
 	type Pair struct {
 		BlockID string
 		ChunkID string
 	}
 
-	gcDedup := make([]*task.GCDedup, 0)
+	chunk2block := make(map[string]string, 0)
+
 	// 写入chunk元数据
 	for _, chunk := range allChunk {
 		//logger.GetLogger("boulder").Errorf("%s/%s write chunk %s:%s:%d ", obj.Bucket, obj.Key, chunk.Hash, chunk.BlockID, len(chunk.Data))
 		chunkey := meta.GenChunkKey(obj.DataLocation, chunk.Hash)
-		var _chunk meta.Chunk
-		exists, e := txn.Get(chunkey, &_chunk)
+		var _old_chunk meta.Chunk
+		exists, e := txn.Get(chunkey, &_old_chunk)
 		if e != nil {
 			logger.GetLogger("boulder").Errorf("%s/%s get chunk failed: %v", obj.Bucket, obj.Key, err)
 			return fmt.Errorf("%s/%s get chunk %s failed: %v", obj.Bucket, obj.Key, chunkey, err)
 		}
 
 		if exists {
-			//这里要检查 同一个 chunk 关联多个 block 问题，理论上 一个chunk 只属于一个block，但是并发情况下，会发生一个chunk 关联多个
-			//从block 中删除一个chunk 太复杂，这个问题无法解决，只能尽量去避免，带来的也只是数据冗余问题
-			//把重复的放到后置重删任务中
-			if _chunk.BlockID != chunk.BlockID {
-				logger.GetLogger("boulder").Debugf("%s/%s  chunk %s has multi bolock %s:%s", obj.Bucket, obj.Key, chunk.Hash, _chunk.BlockID, chunk.BlockID)
-				gcDedup = append(gcDedup, &task.GCDedup{
-					StorageID: obj.DataLocation,
-					ChunkID:   chunk.Hash,
-					BlockID1:  chunk.BlockID,
-					BlockID2:  _chunk.BlockID,
-				})
-				chunk.BlockID = _chunk.BlockID
+			if _old_chunk.BlockID != chunk.BlockID {
+				logger.GetLogger("boulder").Debugf("%s/%s  chunk %s has multi bolock %s:%s", obj.Bucket, obj.Key, chunk.Hash, _old_chunk.BlockID, chunk.BlockID)
 			}
 
-			oldBlockKeys = append(oldBlockKeys, meta.GenBlockKey(obj.DataLocation, _chunk.BlockID))
+			// 一个chunk只能属于一个 block
+			//chunk.BlockID = _old_chunk.BlockID
+			chunk2block[chunk.Hash] = _old_chunk.BlockID
 
-			_chunk.RefCount += 1
-			e := txn.Set(chunkey, &_chunk)
+			oldBlockKeys = append(oldBlockKeys, meta.GenBlockKey(obj.DataLocation, _old_chunk.BlockID))
+
+			_old_chunk.RefCount += 1
+			e := txn.Set(chunkey, &_old_chunk)
 			if e != nil {
-				logger.GetLogger("boulder").Errorf("%s/%s set chunk %s failed: %v", obj.Bucket, obj.Key, _chunk.Hash, err)
+				logger.GetLogger("boulder").Errorf("%s/%s set chunk %s failed: %v", obj.Bucket, obj.Key, _old_chunk.Hash, err)
 				return fmt.Errorf("%s/%s set chunk failed: %v", obj.Bucket, obj.Key, err)
 			} else {
-				logger.GetLogger("boulder").Debugf("%s/%s refresh set chunk: %s", obj.Bucket, obj.Key, _chunk.Hash)
+				logger.GetLogger("boulder").Debugf("%s/%s refresh set chunk: %s to block %s:%s", obj.Bucket, obj.Key, chunk.Hash, chunk.BlockID, _old_chunk.BlockID)
 			}
 		} else {
 			chunk.RefCount = 1
@@ -488,21 +480,45 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 				logger.GetLogger("boulder").Errorf("%s/%s set chunk %s failed: %v", obj.Bucket, obj.Key, chunkey, err)
 				return fmt.Errorf("%s/%s set chunk failed: %v", obj.Bucket, obj.Key, err)
 			} else {
-				logger.GetLogger("boulder").Debugf("%s/%s add  chunk: %s", obj.Bucket, obj.Key, chunk.Hash)
+				chunk2block[chunk.Hash] = chunk.BlockID
+				logger.GetLogger("boulder").Debugf("%s/%s refresh set chunk: %s to block %s", obj.Bucket, obj.Key, chunk.Hash, chunk.BlockID)
 			}
 		}
 	}
 
 	// 写入block的元数据
 	for _, item := range blocks {
-		//logger.GetLogger("boulder").Errorf("%s/%s write block meta inf : %s:%d:%d", obj.Bucket, obj.Key, item.ID, item.TotalSize, item.RealSize)
+		var _oldBlock meta.Block
 		blockKey := meta.GenBlockKey(obj.DataLocation, item.ID)
-		err = txn.Set(blockKey, &item)
+		exists, err := txn.Get(blockKey, &_oldBlock)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("%s/%s/%s set block meta failed: %v", obj.Bucket, obj.Key, item.ID, err)
+			logger.GetLogger("boulder").Errorf("%s/%s get block %s failed: %v", obj.Bucket, obj.Key, blockKey, err)
+			return fmt.Errorf("%s/%s get block %s failed: %v", obj.Bucket, obj.Key, blockKey, err)
+		}
+		_curBlock := item
+		if exists {
+			if len(_oldBlock.ChunkList) > len(item.ChunkList) {
+				_curBlock = &_oldBlock
+			} else {
+				for i := 0; i < len(_oldBlock.ChunkList); i++ {
+					_curBlock.ChunkList[i] = _oldBlock.ChunkList[i]
+				}
+			}
+		}
+		for i := 0; i < len(_curBlock.ChunkList); i++ {
+			bid, ok := chunk2block[_curBlock.ChunkList[i].Hash]
+			if ok && bid != _curBlock.ID {
+				_curBlock.ChunkList[i].Hash = meta.NONE_CHUNK_ID // 无索引的chunk
+			}
+		}
+		//logger.GetLogger("boulder").Errorf("%s/%s write block meta inf : %s:%d:%d", obj.Bucket, obj.Key, item.ID, item.TotalSize, item.RealSize)
+
+		err = txn.Set(blockKey, _curBlock)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("%s/%s/%s set block meta failed: %v", obj.Bucket, obj.Key, _curBlock.ID, err)
 			return fmt.Errorf("%s/%s set block meta failed: %v", obj.Bucket, obj.Key, err)
 		} else {
-			logger.GetLogger("boulder").Debugf("%s/%s/%s set block meta   ok", obj.Bucket, obj.Key, item.ID)
+			logger.GetLogger("boulder").Debugf("%s/%s/%s set block meta   ok", obj.Bucket, obj.Key, _curBlock.ID)
 		}
 	}
 
@@ -562,12 +578,17 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 		}
 	}
 
-	// 后置重删
-	if len(gcDedup) > 0 {
-		gcDedupKey := task.GCDedupPrefix + utils.GenUUID()
-		err = txn.Set(gcDedupKey, &gcDedup)
-		if err != nil {
-			logger.GetLogger("boulder").Errorf("%s/%s set post dedup chunk failed: %v", obj.Bucket, obj.Key, err)
+	if len(blocks) > 0 {
+		// 后置重删检查
+		for _, _block := range blocks {
+			gcDedupKey := task.GCDedupPrefix + utils.GenUUID()
+			gcDedup := task.GCDedup{StorageID: _block.StorageID, BlockID: _block.ID}
+			err = txn.Set(gcDedupKey, &gcDedup)
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("%s/%s set post dedup block %s failed: %v", obj.Bucket, obj.Key, _block.ID, err)
+			} else {
+				logger.GetLogger("boulder").Infof("%s/%s set gc dedup block %s delay to proccess", obj.Bucket, obj.Key, _block.ID)
+			}
 		}
 	}
 

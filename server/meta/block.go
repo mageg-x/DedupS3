@@ -9,6 +9,10 @@ import (
 	"github.com/mageg-x/boulder/internal/utils"
 )
 
+const (
+	NONE_BLOCK_ID = "000000000000000000000000"
+)
+
 // BlockChunk 表示块中的一个块条目
 type BlockChunk struct {
 	Hash string `json:"hash" msgpack:"hash"` // 块哈希
@@ -19,12 +23,14 @@ type BlockChunk struct {
 // BlockHeader BlockData ，存放在磁盘上只包含头信息，不含 Data
 type BlockHeader struct {
 	ID         string       `json:"id" msgpack:"id"`
+	Ver        int32        `json:"ver" msgpack:"ver" default:"0"`
 	Etag       [32]byte     `json:"etag" msgpack:"etag"`
 	TotalSize  int64        `json:"total_size" msgpack:"total_size"`
-	RealSize   int64        `json:"real_size" msgpack:"real_size"`   // 实际占用大小
-	Compressed bool         `json:"compressed" msgpack:"compressed"` // 是否压缩
-	Encrypted  bool         `json:"encrypted" msgpack:"encrypted"`   // 是否加密
-	ChunkList  []BlockChunk `json:"chunk_list" msgpack:"chunk_list"` // 块列表
+	RealSize   int64        `json:"real_size" msgpack:"real_size"`             // 实际占用大小
+	Compressed bool         `json:"compressed" msgpack:"compressed"`           // 是否压缩
+	Encrypted  bool         `json:"encrypted" msgpack:"encrypted"`             // 是否加密
+	ChunkList  []BlockChunk `json:"chunk_list" msgpack:"chunk_list"`           // 块列表
+	Finally    bool         `json:"finally" msgpack:"finally" default:"false"` // 是否结束不再增加内容
 }
 
 // BlockData BlockData: 完整结构（包含 Data）
@@ -40,7 +46,6 @@ type Block struct {
 	CreatedAt time.Time `json:"created_at" msgpack:"created_at"` // 创建时间
 	UpdatedAt time.Time `json:"updated_at" msgpack:"updated_at"` // 更新时间
 	Dirty     bool      `json:"-" msgpack:"-" default:"true"`    // 是否变更数据
-	Finally   bool      `json:"-" msgpack:"-" default:"false"`   // 是否结束不再增加内容
 }
 
 // NewBlock 创建新块

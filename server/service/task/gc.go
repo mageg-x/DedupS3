@@ -49,10 +49,8 @@ type GCChunk struct {
 }
 
 type GCDedup struct {
+	BlockID   string
 	StorageID string
-	ChunkID   string
-	BlockID1  string
-	BlockID2  string
 }
 
 type GCService struct {
@@ -109,18 +107,24 @@ func (g *GCService) Stop() {
 }
 
 func (g *GCService) loop() {
+	//g.checkBlock()
 	for g.running.Load() {
-		g.doDedup()
-		g.doGC()
+		g.doClean() // 垃圾清理
 		time.Sleep(DefaultGCScanInterval)
 	}
 }
 
-func (g *GCService) doDedup() {
+func (g *GCService) doClean() {
+	//dedup
+	dedupCount, err := g.clean(GCDedupPrefix)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to clean up dedup: %v", err)
+		return
+	} else {
+		logger.GetLogger("boulder").Tracef("cleaned up %d dedup", dedupCount)
+	}
 
-}
-
-func (g *GCService) doGC() {
+	// chunks
 	chunkCount, err := g.clean(GCChunkPrefix)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to clean up chunks: %v", err)
@@ -145,11 +149,19 @@ func (g *GCService) clean(prefix string) (int, error) {
 	var cleanedCount int
 	var lastErr error
 
+	start := time.Now()
+	logger.GetLogger("boulder").Errorf("garbage collection %s starting", prefix)
+	defer func() {
+		logger.GetLogger("boulder").Errorf("garbage collection %s completed in %s", prefix, time.Since(start))
+	}()
+
 	for {
 		var count int
 		finished := false
 		// 单次扫描并处理一个 GC 条目
 		switch prefix {
+		case GCDedupPrefix:
+			finished, count, _ = g.dedupOne4Block(prefix)
 		case GCChunkPrefix:
 			finished, count, _ = g.cleanOne4Chunk(prefix)
 		case GCBlockPrefix:
@@ -164,12 +176,11 @@ func (g *GCService) clean(prefix string) (int, error) {
 
 		cleanedCount += count
 	}
-
 	return cleanedCount, lastErr
 }
 
 // cleanOne 处理一个 GC 条目（一个 keys[0] 对应的 chunkIDs）
-func (g *GCService) cleanOne4Chunk(prefix string) (bool, int, error) {
+func (g *GCService) cleanOne4Chunk(prefix string) (finished bool, count int, err error) {
 	txn, err := g.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to begin txn: %v", err)
@@ -204,7 +215,8 @@ func (g *GCService) cleanOne4Chunk(prefix string) (bool, int, error) {
 	}
 
 	if !exists {
-		return false, 0, fmt.Errorf("chunk %s does not exist", keys[0])
+		logger.GetLogger("boulder").Infof("gcchunk %s not found ", keys[0])
+		return false, 0, fmt.Errorf("gcchunk %s does not exist", keys[0])
 	}
 
 	blockMap := make(map[string]bool)
@@ -273,7 +285,7 @@ func (g *GCService) cleanOne4Chunk(prefix string) (bool, int, error) {
 	return false, deletedCount, nil
 }
 
-func (g *GCService) cleanOne4Block(prefix string) (bool, int, error) {
+func (g *GCService) cleanOne4Block(prefix string) (finished bool, count int, err error) {
 	txn, err := g.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to begin txn: %v", err)
@@ -297,19 +309,19 @@ func (g *GCService) cleanOne4Block(prefix string) (bool, int, error) {
 		//logger.GetLogger("boulder").Infof("no keys found, finish to task %s", prefix)
 		return true, 0, nil
 	} else {
-		logger.GetLogger("boulder").Infof("found block %s to clean ", keys[0])
+		logger.GetLogger("boulder").Infof("found gcblock %s to clean ", keys[0])
 	}
 
 	var gcBlocks []*GCBlock
 	exists, err := txn.Get(keys[0], &gcBlocks)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to get blockIDs: %s  %v", keys[0], err)
-		return false, 0, fmt.Errorf("failed to get blockIDs from %s: %w", keys[0], err)
+		logger.GetLogger("boulder").Errorf("failed to get gcblockIDs: %s  %v", keys[0], err)
+		return false, 0, fmt.Errorf("failed to get gcblockIDs from %s: %w", keys[0], err)
 	}
 
 	if !exists {
-		logger.GetLogger("boulder").Infof("not found %s to clean ", keys[0])
-		return false, 0, fmt.Errorf("block %s does not exist", keys[0])
+		logger.GetLogger("boulder").Infof("gcblock %s does not exist", keys[0])
+		return false, 0, fmt.Errorf("gcblock %s does not exist", keys[0])
 	}
 	bs := block.GetBlockService()
 	if bs == nil {
@@ -326,62 +338,69 @@ func (g *GCService) cleanOne4Block(prefix string) (bool, int, error) {
 		var _block meta.Block
 		exists, err := txn.Get(blockKey, &_block)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to get block %s: %v", blockKey, err)
-			return false, 0, fmt.Errorf("failed to get block %s: %w", blockKey, err)
+			logger.GetLogger("boulder").Errorf("failed to get gcblock %s: %v", blockKey, err)
+			return false, 0, fmt.Errorf("failed to get gcblock %s: %w", blockKey, err)
 		}
 		if !exists {
 			// 索引元数据都不存在，就直接删除实际数据了
 			err := bs.RemoveBlock(gcBlock.StorageID, gcBlock.BlockID)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("failed to remove block %#v: %v", gcBlock, err)
-				return false, 0, fmt.Errorf("failed to remove block %#v: %w", gcBlock, err)
+				logger.GetLogger("boulder").Errorf("failed to remove gcblock %#v: %v", gcBlock, err)
+				return false, 0, fmt.Errorf("failed to remove gcblock %#v: %w", gcBlock, err)
 			} else {
 				logger.GetLogger("boulder").Infof("removed block %#v", gcBlock)
 			}
 			deletedCount++
 			continue
 		}
+
 		var chunkIDs []string
 		for _, chunk := range _block.ChunkList {
-			_key := meta.GenChunkKey(gcBlock.StorageID, chunk.Hash)
-			chunkIDs = append(chunkIDs, _key)
+			if chunk.Hash != meta.NONE_CHUNK_ID {
+				_key := meta.GenChunkKey(gcBlock.StorageID, chunk.Hash)
+				chunkIDs = append(chunkIDs, _key)
+			}
 		}
-		chunks, err := txn.BatchGet(chunkIDs)
-		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to batch get chunks: %v", err)
-			return false, 0, fmt.Errorf("failed to batch get chunks: %w", err)
-		}
+
 		// 看看是否已经没有任何索引关联
 		canDel := true
-		for k, v := range chunks {
-			if v == nil {
-				continue
+		if len(chunkIDs) > 0 {
+			chunks, err := txn.BatchGet(chunkIDs)
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("failed to batch get gcchunks: %v", err)
+				return false, 0, fmt.Errorf("failed to batch get gcchunks: %w", err)
 			}
+			for k, v := range chunks {
+				if v == nil {
+					continue
+				}
 
-			var _chunk meta.Chunk
-			// 把 []byte 反序列化为 meta.Chunk
-			if err := json.Unmarshal(v, &_chunk); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to unmarshal chunk %s: %v", k, err)
-				canDel = false
-				break
-			}
+				var _chunk meta.Chunk
+				// 把 []byte 反序列化为 meta.Chunk
+				if err := json.Unmarshal(v, &_chunk); err != nil {
+					logger.GetLogger("boulder").Errorf("failed to unmarshal chunk %s: %v", k, err)
+					canDel = false
+					break
+				}
 
-			// 现在可以检查 RefCount
-			if _chunk.RefCount > 0 {
-				logger.GetLogger("boulder").Warnf("cannot delete chunk %s: refcount = %d", k, _chunk.RefCount)
-				canDel = false
-				break
-			} else {
-				// 顺手清理掉 引用为 0 的元数据
-				_key := meta.GenChunkKey(gcBlock.StorageID, k)
-				err := txn.Delete(_key)
-				if err != nil {
-					logger.GetLogger("boulder").Errorf("failed to delete chunk %s: %v", k, err)
+				// 现在可以检查 RefCount
+				if _chunk.RefCount > 0 {
+					logger.GetLogger("boulder").Warnf("cannot delete chunk %s: refcount = %d", k, _chunk.RefCount)
+					canDel = false
+					break
 				} else {
-					logger.GetLogger("boulder").Infof("deleted ref = 0 chunk %s", _key)
+					// 顺手清理掉 引用为 0 的元数据
+					_key := meta.GenChunkKey(gcBlock.StorageID, k)
+					err := txn.Delete(_key)
+					if err != nil {
+						logger.GetLogger("boulder").Errorf("failed to delete chunk %s: %v", k, err)
+					} else {
+						logger.GetLogger("boulder").Infof("deleted ref = 0 chunk %s", _key)
+					}
 				}
 			}
 		}
+
 		if canDel {
 			// 先删除索引元数据
 			err := txn.Delete(blockKey)
@@ -399,6 +418,7 @@ func (g *GCService) cleanOne4Block(prefix string) (bool, int, error) {
 			deletedCount++
 		}
 	}
+
 	// 删除 GC 记录本身
 	if err := txn.Delete(keys[0]); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to delete block %s: %v", keys[0], err)
@@ -414,7 +434,13 @@ func (g *GCService) cleanOne4Block(prefix string) (bool, int, error) {
 	return false, deletedCount, nil
 }
 
-func (g *GCService) dedupOne4Block(prefix string) (bool, int, error) {
+func (g *GCService) dedupOne4Block(prefix string) (finished bool, count int, err error) {
+	start := time.Now()
+	logger.GetLogger("boulder").Errorf("start dedup one 4 block %s", prefix)
+	defer func() {
+		logger.GetLogger("boulder").Errorf("finished dedup one 4 block %s in %v", prefix, time.Since(start))
+	}()
+
 	bs := block.GetBlockService()
 	if bs == nil {
 		logger.GetLogger("boulder").Errorf("failed to get block service")
@@ -455,15 +481,107 @@ func (g *GCService) dedupOne4Block(prefix string) (bool, int, error) {
 	}
 
 	if !exists {
+		logger.GetLogger("boulder").Infof("gcDedup %s not found ", keys[0])
 		return false, 0, fmt.Errorf("gcDedup %s does not exist", keys[0])
 	}
 
-	// BlockID1 一中 清除chunkID
-	// 先读取 block meta 信息
-	//block := meta.Block{}
-	//blockKey := meta.GenBlockKey(gcDedup.StorageID, gcDedup.BlockID1)
-	//exists, err := txn.Get(blockKey, &block)
-	return false, 0, nil
+	_block := meta.Block{}
+	blockKey := meta.GenBlockKey(gcDedup.StorageID, gcDedup.BlockID)
+	exists, err = txn.Get(blockKey, &_block)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to get block %s: %v", blockKey, err)
+		return false, 0, fmt.Errorf("failed to get block %s: %w", blockKey, err)
+	}
+	if !exists {
+		logger.GetLogger("boulder").Errorf("block %s not found ", blockKey)
+	}
+
+	var deletedCount int
+
+	if _block.Finally {
+		chunks := make(map[string]meta.BlockChunk, 0)
+
+		for _, _ck := range _block.ChunkList {
+			if _ck.Hash != meta.NONE_CHUNK_ID {
+				chunks[_ck.Hash] = _ck
+			}
+		}
+
+		if len(chunks) == 0 {
+			// 可以直接删除 block 了
+			deletedCount = len(_block.ChunkList)
+			gcKey := GCBlockPrefix + utils.GenUUID()
+			var gcBlocks []*GCBlock
+			gcBlocks = append(gcBlocks, &GCBlock{BlockID: _block.ID, StorageID: _block.StorageID})
+			err = txn.Set(gcKey, gcBlocks)
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("failed to set gcBlocks: %v", err)
+				return false, 0, fmt.Errorf("failed to set gcBlocks: %w", err)
+			}
+		} else if len(_block.ChunkList) == len(chunks) {
+			// 无去重内容，不需要处理
+		} else {
+			bs := block.GetBlockService()
+			if bs == nil {
+				logger.GetLogger("boulder").Errorf("failed to get block service")
+				return false, 0, fmt.Errorf("failed to get block service")
+			}
+
+			blockData, err := bs.ReadBlock(_block.StorageID, _block.ID)
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("failed to read block data: %v", err)
+				return false, 0, fmt.Errorf("failed to read block data: %w", err)
+			}
+			deletedCount = len(blockData.ChunkList) - len(chunks)
+
+			newBlockData := &meta.BlockData{
+				BlockHeader: blockData.BlockHeader,
+				Data:        make([]byte, 0, _block.TotalSize),
+			}
+			newBlockData.ChunkList = make([]meta.BlockChunk, 0)
+			newBlockData.TotalSize = 0
+			offset := int32(0)
+
+			for _, _ck := range blockData.ChunkList {
+				if _, ok := chunks[_ck.Hash]; ok {
+					newBlockData.ChunkList = append(newBlockData.ChunkList, _ck)
+					newBlockData.Data = append(newBlockData.Data, blockData.Data[offset:offset+_ck.Size]...)
+					newBlockData.TotalSize += int64(_ck.Size)
+				} else {
+					logger.GetLogger("boulder").Errorf("block chunk %s/ %s is noref chunk id", _block.ID, _ck.Hash)
+				}
+				offset += _ck.Size
+			}
+
+			err = bs.WriteBlock(_block.StorageID, newBlockData)
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("failed to write block data: %v", err)
+				return false, 0, fmt.Errorf("failed to write block data: %w", err)
+			}
+			_block.BlockHeader = newBlockData.BlockHeader
+			copy(_block.ChunkList, newBlockData.ChunkList)
+
+			err = txn.Set(blockKey, &_block)
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("failed to set block %s meta: %v", _block.ID, err)
+				return false, 0, fmt.Errorf("failed to set block %s meta: %w", _block.ID, err)
+			}
+		}
+	}
+
+	// 删除 GC 记录本身
+	if err := txn.Delete(keys[0]); err != nil {
+		logger.GetLogger("boulder").Errorf("failed to delete block %s: %v", keys[0], err)
+		return false, 0, fmt.Errorf("failed to delete task key %s: %w", keys[0], err)
+	}
+
+	// 提交事务
+	if err := txn.Commit(); err != nil {
+		logger.GetLogger("boulder").Errorf("failed to commit txn: %v", err)
+		return false, 0, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	txn = nil
+	return false, deletedCount, nil
 }
 
 func (g *GCService) checkBlock() {
@@ -490,17 +608,45 @@ func (g *GCService) checkBlock() {
 		logger.GetLogger("boulder").Errorf("failed to get block service")
 		return
 	}
+
+	chunks := make(map[string]string, 0)
 	chunk2block := make(map[string]string, 0)
 
 	blockCh, errCh := s.Instance.List()
 	for blockID := range blockCh {
-		_block, err := bs.ReadBlock(s.ID, blockID)
+		_blockData, err := bs.ReadBlock(s.ID, blockID)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to read block %s: %v", blockID, err)
 			continue
 		}
-		logger.GetLogger("boulder").Infof("read block %s chunk %#v", blockID, len(_block.BlockHeader.ChunkList))
-		for _, chunk := range _block.BlockHeader.ChunkList {
+		logger.GetLogger("boulder").Errorf("block data header %#v", _blockData.BlockHeader)
+
+		blockKey := meta.GenBlockKey(s.ID, blockID)
+		var _blockMeta meta.Block
+		exists, err := g.kvstore.Get(blockKey, &_blockMeta)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("failed to get block meta %s: %v", blockKey, err)
+		}
+		if !exists {
+			logger.GetLogger("boulder").Errorf("block meta %s not exists", blockKey)
+		}
+
+		logger.GetLogger("boulder").Errorf("block meta header %#v", _blockMeta.BlockHeader)
+
+		logger.GetLogger("boulder").Infof("read block %s chunk %#v", blockID, len(_blockData.ChunkList))
+		for _, chunk := range _blockData.ChunkList {
+			if bid, ok := chunks[chunk.Hash]; ok {
+				logger.GetLogger("boulder").Errorf("chunk %s has exists in %s : %s , %v", chunk.Hash, blockID, bid, _blockData.Finally)
+				var _chunkMeta meta.Chunk
+				chunkKey := meta.GenChunkKey(s.ID, chunk.Hash)
+				exists, err := g.kvstore.Get(chunkKey, &_chunkMeta)
+				if err == nil && exists {
+					logger.GetLogger("boulder").Errorf("get chunk meta %#v", _chunkMeta)
+				}
+			} else {
+				chunks[chunk.Hash] = blockID
+			}
+
 			if chunk2block[chunk.Hash] != "" {
 				logger.GetLogger("boulder").Infof("block %s has chunk %s", blockID, chunk.Hash)
 			}

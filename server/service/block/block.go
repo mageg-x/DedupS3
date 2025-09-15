@@ -71,6 +71,7 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 	h := murmur3.Sum32([]byte(obj.Bucket + obj.Key))
 	i := h % PRE_UPLOAD_BLOCK_NUM
 	var flushBlock *meta.Block
+	var clone *meta.Block
 
 	if chunk == nil {
 		// 对象结束时候会发一个 nil chunk 表示 对象结束了，需要保存 blcok
@@ -96,12 +97,24 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 			s.preBlocks[i] = curBlock
 		}
 
+		exists := false
 		chunk.BlockID = curBlock.ID
-		curBlock.ChunkList = append(curBlock.ChunkList, meta.BlockChunk{Hash: chunk.Hash, Size: chunk.Size, Data: chunk.Data})
-		curBlock.Dirty = true
-		chunk.Data = nil
-		curBlock.TotalSize += int64(chunk.Size)
-		curBlock.UpdatedAt = time.Now().UTC()
+		for _, _ck := range curBlock.ChunkList {
+			if _ck.Hash == chunk.Hash {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			curBlock.ChunkList = append(curBlock.ChunkList, meta.BlockChunk{Hash: chunk.Hash, Size: chunk.Size, Data: chunk.Data})
+			curBlock.Dirty = true
+			chunk.Data = nil
+			curBlock.TotalSize += int64(chunk.Size)
+			curBlock.UpdatedAt = time.Now().UTC()
+			// 返回 chunk所属的block
+			clone = curBlock.Clone(false)
+		}
+
 		if curBlock.TotalSize > MAX_BUCKET_SIZE {
 			// 块超过大小，从缓存中摘出来，保存到存储
 			flushBlock = s.preBlocks[i]
@@ -109,15 +122,15 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 			s.preBlocks[i] = nil
 		}
 	}
-	var clone *meta.Block
+
 	if flushBlock != nil {
+		flushBlock.Ver += 1
 		logger.GetLogger("boulder").Infof("ready to flush one block %s,  %d chunks", flushBlock.ID, len(flushBlock.ChunkList))
-		err := s.FlushBlock(flushBlock)
+		err := s.doFlushBlock(flushBlock)
 		if err != nil {
 			logger.GetLogger("boulder").Warnf("failed to flush block %s: %v", flushBlock.ID, err)
 			return nil, fmt.Errorf("failed to flush block %s: %v", flushBlock.ID, err)
 		}
-		clone = flushBlock.Clone(false)
 	}
 
 	return clone, nil
@@ -167,19 +180,8 @@ func (s *BlockService) FlushBlock(block *meta.Block) error {
 	return nil
 }
 
+// doFlushBlock 本函数提供同步写数据能力
 func (s *BlockService) doFlushBlock(block *meta.Block) error {
-	ss := storage.GetStorageService()
-	if ss == nil {
-		logger.GetLogger("boulder").Errorf("get nil storage service")
-		return fmt.Errorf("get nil storage service")
-	}
-
-	st, err := ss.GetStorage(block.StorageID)
-	if err != nil || st == nil || st.Instance == nil {
-		logger.GetLogger("boulder").Errorf("get nil storage instance")
-		return fmt.Errorf("get nil storage instance")
-	}
-
 	blockData := meta.BlockData{
 		BlockHeader: meta.BlockHeader{
 			ID:        block.ID,
@@ -187,7 +189,7 @@ func (s *BlockService) doFlushBlock(block *meta.Block) error {
 			ChunkList: make([]meta.BlockChunk, 0, len(block.ChunkList)),
 		},
 
-		Data: make([]byte, 0),
+		Data: make([]byte, 0, MAX_BUCKET_SIZE),
 	}
 
 	// 重新检查 size
@@ -214,12 +216,24 @@ func (s *BlockService) doFlushBlock(block *meta.Block) error {
 	logger.GetLogger("boulder").Infof("flush block data %s total size %d real size %d data size %d etag %+v",
 		blockData.ID, blockData.TotalSize, blockData.RealSize, len(blockData.Data), md5.Sum(blockData.Data))
 
+	err := s.WriteBlock(block.StorageID, &blockData)
+	if err != nil {
+		logger.GetLogger("boulder").Warnf("failed to WriteBlock %s: %v", block.ID, err)
+		return fmt.Errorf("failed to WriteBlock %s: %v", block.ID, err)
+	}
+	block.Compressed = blockData.Compressed
+	block.Encrypted = blockData.Encrypted
+	block.RealSize = blockData.RealSize
+	block.Etag = blockData.Etag
+
+	return nil
+}
+
+func (s *BlockService) WriteBlock(storageID string, blockData *meta.BlockData) error {
 	// 压缩Data
 	if len(blockData.Data) > 1024 {
 		compress, err := utils.Compress(blockData.Data)
 		if err == nil && compress != nil && float64(len(compress))/float64(len(blockData.Data)) < 0.9 {
-			block.Compressed = true
-			block.RealSize = int64(len(compress))
 			blockData.Data = compress
 			blockData.Compressed = true
 			blockData.RealSize = int64(len(compress))
@@ -230,8 +244,6 @@ func (s *BlockService) doFlushBlock(block *meta.Block) error {
 	if len(blockData.Data) > 0 {
 		encrypt, err := utils.Encrypt(blockData.Data, blockData.ID)
 		if err == nil && encrypt != nil {
-			block.Encrypted = true
-			block.RealSize = int64(len(encrypt))
 			blockData.Data = encrypt
 			blockData.Encrypted = true
 			blockData.RealSize = int64(len(encrypt))
@@ -246,16 +258,28 @@ func (s *BlockService) doFlushBlock(block *meta.Block) error {
 
 	data, err := msgpack.Marshal(&blockData)
 	if err != nil {
-		logger.GetLogger("boulder").Debugf("msgpack marshal %s failed: %v", block.ID, err)
-		return fmt.Errorf("msgpack marshal %s failed: %v", block.ID, err)
+		logger.GetLogger("boulder").Debugf("msgpack marshal %s failed: %v", blockData.ID, err)
+		return fmt.Errorf("msgpack marshal %s failed: %v", blockData.ID, err)
 	}
 
-	err = st.Instance.WriteBlock(block.ID, data)
+	ss := storage.GetStorageService()
+	if ss == nil {
+		logger.GetLogger("boulder").Errorf("get nil storage service")
+		return fmt.Errorf("get nil storage service")
+	}
+
+	st, err := ss.GetStorage(storageID)
+	if err != nil || st == nil || st.Instance == nil {
+		logger.GetLogger("boulder").Errorf("get nil storage instance")
+		return fmt.Errorf("get nil storage instance")
+	}
+
+	err = st.Instance.WriteBlock(blockData.ID, data)
 	if err != nil {
-		logger.GetLogger("boulder").Debugf("write block %s failed: %v", block.ID, err)
-		return fmt.Errorf("write block %s failed: %v", block.ID, err)
+		logger.GetLogger("boulder").Debugf("write block %s failed: %v", blockData.ID, err)
+		return fmt.Errorf("write block %s failed: %v", blockData.ID, err)
 	} else {
-		logger.GetLogger("boulder").Infof("finish write block %s success", block.ID)
+		logger.GetLogger("boulder").Infof("finish write block %s success", blockData.ID)
 	}
 
 	return nil

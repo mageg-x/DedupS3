@@ -23,6 +23,10 @@ import (
 	_ "github.com/PlakarKorp/go-cdc-chunkers/chunkers/fastcdc"
 )
 
+const (
+	NONE_CHUNK_ID = "000000000000000000000000"
+)
+
 // Chunk 表示数据块
 type Chunk struct {
 	Hash     string `json:"hash"`      // 内容的哈希
