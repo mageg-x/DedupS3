@@ -176,15 +176,131 @@ func PutObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 func GetObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: GetObjectTaggingHandler")
-	// TODO: 实现 GET Object Tagging 逻辑
-	w.WriteHeader(http.StatusOK)
+	bucket, objectKey, _, accessKeyID := GetReqVar(r)
+	if err := utils.CheckValidObjectName(objectKey); err != nil {
+		logger.GetLogger("boulder").Errorf("invalid object name: %s", objectKey)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
+		return
+	}
+
+	// 获取对象服务
+	_os := object.GetObjectService()
+	if _os == nil {
+		logger.GetLogger("boulder").Errorf("object service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	obj, err := _os.HeadObject(&object.BaseObjectParams{
+		BucketName:  bucket,
+		ObjKey:      objectKey,
+		AccessKeyID: accessKeyID,
+	})
+
+	if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchKey)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchKey)
+		return
+	}
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to get object: %v", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		return
+	}
+
+	// 构建标签响应结构
+	tagging := meta.Tagging{}
+	tagging.TagSet = meta.TagSet{}
+	tagging.TagSet.Tags = make([]meta.Tag, 0, len(obj.Tags))
+
+	// 转换map为Tag数组
+	for k, v := range obj.Tags {
+		tagging.TagSet.Tags = append(tagging.TagSet.Tags, meta.Tag{
+			Key:   k,
+			Value: v,
+		})
+	}
+
+	xhttp.WriteAWSSuc(w, r, tagging)
 }
 
 // PutObjectTaggingHandler 处理 PUT Object Tagging 请求
 func PutObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: PutObjectTaggingHandler")
-	// TODO: 实现 PUT Object Tagging 逻辑
+	bucket, objectKey, _, accessKeyID := GetReqVar(r)
+	if err := utils.CheckValidObjectName(objectKey); err != nil {
+		logger.GetLogger("boulder").Errorf("invalid object name: %s", objectKey)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
+		return
+	}
+
+	// 读取请求体
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to read request body: %v", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedRequestBody)
+		return
+	}
+	defer r.Body.Close()
+
+	// 解析XML标签数据
+	var tagging meta.Tagging
+	if err := xml.Unmarshal(bodyBytes, &tagging); err != nil {
+		logger.GetLogger("boulder").Errorf("failed to unmarshal tagging XML: %v", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedRequestBody)
+		return
+	}
+
+	// 构建标签map
+	tagsMap := make(map[string]string)
+	for _, tag := range tagging.TagSet.Tags {
+		// 验证标签键和值
+		if len(tag.Key) == 0 || len(tag.Key) > 128 {
+			logger.GetLogger("boulder").Errorf("invalid tag key length: %d", len(tag.Key))
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
+			return
+		}
+		if len(tag.Value) == 0 || len(tag.Value) > 256 {
+			logger.GetLogger("boulder").Errorf("invalid tag value length: %d", len(tag.Value))
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
+			return
+		}
+		tagsMap[tag.Key] = tag.Value
+	}
+
+	// 获取对象服务
+	_os := object.GetObjectService()
+	if _os == nil {
+		logger.GetLogger("boulder").Errorf("object service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	// 调用服务更新对象标签
+	_, err = _os.PutObjectTagging(&object.BaseObjectParams{
+		BucketName:  bucket,
+		ObjKey:      objectKey,
+		AccessKeyID: accessKeyID,
+	}, tagsMap)
+	if err != nil {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchKey)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchKey)
+			return
+		}
+		logger.GetLogger("boulder").Errorf("failed to put object tagging: %v", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		return
+	}
+
+	// 设置响应头
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -192,8 +308,52 @@ func PutObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 func DeleteObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: DeleteObjectTaggingHandler")
-	// TODO: 实现 DELETE Object Tagging 逻辑
-	w.WriteHeader(http.StatusOK)
+	bucket, objectKey, _, accessKeyID := GetReqVar(r)
+
+	// 验证对象名是否有效
+	if err := utils.CheckValidObjectName(objectKey); err != nil {
+		logger.GetLogger("boulder").Errorf("invalid object name: %s", objectKey)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
+		return
+	}
+
+	// 获取对象服务
+	_os := object.GetObjectService()
+	if _os == nil {
+		logger.GetLogger("boulder").Errorf("object service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	// 调用对象服务删除标签（通过设置空标签map实现）
+	_, err := _os.PutObjectTagging(&object.BaseObjectParams{
+		BucketName:  bucket,
+		ObjKey:      objectKey,
+		AccessKeyID: accessKeyID,
+	}, make(map[string]string))
+
+	// 处理错误
+	if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchKey)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchKey)
+		return
+	}
+	if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+		return
+	}
+
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to delete object tags: %v", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		return
+	}
+
+	// 成功响应
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // SelectObjectContentHandler 处理 SELECT Object Content 请求

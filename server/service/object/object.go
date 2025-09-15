@@ -1133,3 +1133,88 @@ func (o *ObjectService) CanCopyObject(dest CopyObjectInfo, src CopyObjectInfo, c
 	// 所有通过
 	return true, http.StatusOK
 }
+
+// PutObjectTagging 更新对象的标签
+func (o *ObjectService) PutObjectTagging(params *BaseObjectParams, tags map[string]string) (*meta.Object, error) {
+	iamService := iam.GetIamService()
+	if iamService == nil {
+		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		return nil, errors.New("failed to get iam service")
+	}
+
+	ak, err := iamService.GetAccessKey(params.AccessKeyID)
+	if err != nil || ak == nil {
+		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		return nil, xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	// 检查bucket是否存在
+	bucketKey := "aws:bucket:" + ak.AccountID + ":" + params.BucketName
+	var bucket *meta.BucketMetadata
+	if cache, err := xcache.GetCache(); err == nil && cache != nil {
+		data, ok, e := cache.Get(context.Background(), bucketKey)
+		if e == nil && ok {
+			_bucket, yes := data.(*meta.BucketMetadata)
+			if yes {
+				bucket = _bucket
+			}
+		}
+	}
+	if bucket == nil {
+		var _bucket meta.BucketMetadata
+		exist, err := o.kvstore.Get(bucketKey, &_bucket)
+		if !exist || err != nil {
+			logger.GetLogger("boulder").Errorf("bucket %s does not exist", params.BucketName)
+			return nil, xhttp.ToError(xhttp.ErrNoSuchBucket)
+		}
+		bucket = &_bucket
+	}
+
+	// 检查对象是否存在
+	objKey := "aws:object:" + ak.AccountID + ":" + params.BucketName + "/" + params.ObjKey
+	var object meta.Object
+	exist, err := o.kvstore.Get(objKey, &object)
+	if !exist || err != nil {
+		logger.GetLogger("boulder").Errorf("object %s does not exist", objKey)
+		return nil, xhttp.ToError(xhttp.ErrNoSuchKey)
+	}
+
+	// 开始事务
+	txn, err := o.kvstore.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
+		return nil, fmt.Errorf("failed to begin transaction: %v", err)
+	}
+	defer func() {
+		if txn != nil {
+			_ = txn.Rollback()
+		}
+	}()
+
+	// 更新标签
+	object.Tags = tags
+
+	// 仅更新LastModified时间戳
+	object.LastModified = time.Now().UTC()
+
+	// 保存更新后的对象
+	if err := txn.Set(objKey, &object); err != nil {
+		logger.GetLogger("boulder").Errorf("failed to update object tags: %v", err)
+		return nil, fmt.Errorf("failed to update object tags: %v", err)
+	}
+
+	// 提交事务
+	if err := txn.Commit(); err != nil {
+		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		return nil, kv.ErrTxnCommit
+	}
+	txn = nil
+
+	// 清除缓存
+	if cache, err := xcache.GetCache(); err == nil && cache != nil {
+		_ = cache.Del(context.Background(), objKey)
+	}
+
+	logger.GetLogger("boulder").Infof("successfully updated tags for object %s/%s", params.BucketName, params.ObjKey)
+	return &object, nil
+}
