@@ -53,11 +53,9 @@ type CLI struct {
 func ParseCLI() *CLI {
 	cli := &CLI{}
 
-	pflag.StringVar(&cli.ConfigPath, "config", "", "Path to configuration file")
-	pflag.StringVar(&cli.ConfigPath, "c", "", "Short form for config path")
-	pflag.BoolVar(&cli.ShowHelp, "help", false, "Show help message")
-	pflag.BoolVar(&cli.ShowHelp, "h", false, "Show help message")
-	pflag.BoolVar(&cli.ShowVersion, "version", false, "Show version information")
+	pflag.StringVarP(&cli.ConfigPath, "config", "c", "", "Path to configuration file")
+	pflag.BoolVarP(&cli.ShowHelp, "help", "h", false, "Show help message")
+	pflag.BoolVarP(&cli.ShowVersion, "version", "V", false, "Show version information")
 	pflag.CountVarP(&cli.Verbose, "verbose", "v", "Increase verbosity: -v for INFO, -vv for DEBUG, -vvv for TRACE")
 	pflag.Parse()
 

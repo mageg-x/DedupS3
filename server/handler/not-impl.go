@@ -120,11 +120,11 @@ func NotImplementedHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func NotFoundHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("boulder").Infof("API called: NotFoundHandler, %v", r)
+	logger.GetLogger("boulder").Errorf("API called: NotFoundHandler, %v", r)
 	http.Error(w, "The specified key does not exist", http.StatusNotFound)
 }
 
 func NotAllowedHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("boulder").Infof("API called: NotAllowedHandler, %v", r)
+	logger.GetLogger("boulder").Errorf("API called: NotAllowedHandler, %v", r)
 	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 }

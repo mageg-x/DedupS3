@@ -45,11 +45,12 @@ var (
 // AWS4SigningMiddleware 提供AWS4签名验证的中间件
 func AWS4SigningMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		//logger.GetLogger("boulder").Errorf("get req %s %s %#v", r.Method, r.URL.Path, r.Header)
+		logger.GetLogger("boulder").Tracef("get req %s %s %#v", r.Method, r.URL.Path, r.Header)
 		// 确保Host头存在
 		if r.Header.Get("Host") == "" {
 			r.Header.Set("Host", r.Host)
 		}
+
 		// 1. 从请求头中提取签名信息
 		authHeader := r.Header.Get(xhttp.Authorization)
 		if authHeader == "" {
@@ -61,12 +62,14 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || parts[0] != "AWS4-HMAC-SHA256" {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrAuthentication)
+			logger.GetLogger("boulder").Errorf("Invalid AWS Authorization header")
 			return
 		}
 
 		// 解析凭证部分
 		var credential, signedHeadersStr, signature string
-		for _, part := range strings.Split(parts[1], ", ") {
+		for _, part := range strings.Split(parts[1], ",") {
+			part = strings.TrimSpace(part)
 			if strings.HasPrefix(part, "Credential=") {
 				credential = strings.TrimPrefix(part, "Credential=")
 			} else if strings.HasPrefix(part, "SignedHeaders=") {
@@ -78,6 +81,7 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 
 		if credential == "" || signedHeadersStr == "" || signature == "" {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
+			logger.GetLogger("boulder").Errorf("Invalid AWS Authorization header credential : %s, signedHeadersStr : %s, signature :%s", credential, signedHeadersStr, signature)
 			return
 		}
 
@@ -85,6 +89,7 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 		credentialParts := strings.Split(credential, "/")
 		if len(credentialParts) < 5 {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
+			logger.GetLogger("boulder").Errorf("Invalid AWS Authorization header")
 			return
 		}
 
@@ -97,18 +102,21 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 		amzDate := r.Header.Get(xhttp.AmzDate)
 		if amzDate == "" {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrMissingDateHeader)
+			logger.GetLogger("boulder").Errorf("No Amz Date header found")
 			return
 		}
 
 		// 验证时间格式
 		if len(amzDate) != 16 {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedDate)
+			logger.GetLogger("boulder").Errorf("Invalid Amz Date header")
 			return
 		}
 
 		parsedTime, err := time.Parse("20060102T150405Z", amzDate)
 		if err != nil {
 			xhttp.WriteAWSError(w, r, "MalformedDate", "Invalid X-Amz-Date format", http.StatusBadRequest)
+			logger.GetLogger("boulder").Errorf("Invalid X-Amz-Date format")
 			return
 		}
 
@@ -117,6 +125,7 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 		now := time.Now().UTC()
 		if diff := now.Sub(parsedTime); diff < -timeWindow || diff > timeWindow {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrRequestExpired)
+			logger.GetLogger("boulder").Errorf("Invalid X-Amz-Date header")
 			return
 		}
 
@@ -179,6 +188,7 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 		ctx = context.WithValue(ctx, "region", region)
 
 		// 签名验证成功，继续处理请求
+		logger.GetLogger("boulder").Debugf("Success auth header %s %#v", r.URL.Path, r.Header)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

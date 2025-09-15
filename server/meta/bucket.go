@@ -40,6 +40,10 @@ type BucketMetadata struct {
 	Targets      *BucketTargets                  `json:"targets" xml:"Targets"`
 }
 
+func (bm *BucketMetadata) GenBucketKey() string {
+	return "aws:bucket:" + bm.Owner.ID + ":" + bm.Name
+}
+
 // 设置桶策略
 func (bm *BucketMetadata) SetPolicy(policy BucketPolicy) {
 	bm.Policy = &policy

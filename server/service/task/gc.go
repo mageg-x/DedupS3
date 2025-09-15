@@ -150,9 +150,9 @@ func (g *GCService) clean(prefix string) (int, error) {
 	var lastErr error
 
 	start := time.Now()
-	logger.GetLogger("boulder").Errorf("garbage collection %s starting", prefix)
+	logger.GetLogger("boulder").Tracef("garbage collection %s starting", prefix)
 	defer func() {
-		logger.GetLogger("boulder").Errorf("garbage collection %s completed in %s", prefix, time.Since(start))
+		logger.GetLogger("boulder").Tracef("garbage collection %s completed in %s", prefix, time.Since(start))
 	}()
 
 	for {
@@ -436,9 +436,9 @@ func (g *GCService) cleanOne4Block(prefix string) (finished bool, count int, err
 
 func (g *GCService) dedupOne4Block(prefix string) (finished bool, count int, err error) {
 	start := time.Now()
-	logger.GetLogger("boulder").Errorf("start dedup one 4 block %s", prefix)
+	logger.GetLogger("boulder").Tracef("start dedup one for block %s", prefix)
 	defer func() {
-		logger.GetLogger("boulder").Errorf("finished dedup one 4 block %s in %v", prefix, time.Since(start))
+		logger.GetLogger("boulder").Tracef("finished dedup one for block %s in %v", prefix, time.Since(start))
 	}()
 
 	bs := block.GetBlockService()

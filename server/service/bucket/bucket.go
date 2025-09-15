@@ -199,30 +199,15 @@ func (b *BucketService) ListBuckets(params *BaseBucketParams) ([]*meta.BucketMet
 		DisplayName: ac.Name,
 	}
 
-	prefix := "aws:bucket:" + ak.AccountID + ":"
-
-	// 先从cache 中获取
-	if cache, e := xcache.GetCache(); e == nil && cache != nil {
-		data, exist, e := cache.Get(context.Background(), prefix)
-		if exist && e == nil {
-			buckets, yes := data.([]*meta.BucketMetadata)
-			if yes {
-				logger.GetLogger("boulder").Tracef("get %s bucket list from cache: %v", ak.AccountID, buckets)
-				return buckets, &owner, nil
-			} else {
-				logger.GetLogger("boulder").Errorf("failed to get buckets metadata from cache")
-				cache.Del(context.Background(), prefix)
-			}
-		}
-	}
-
 	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
 		return nil, nil, fmt.Errorf("failed to initialize kvstore txn: %v", err)
 	}
+
 	defer txn.Rollback()
 
+	prefix := "aws:bucket:" + ak.AccountID + ":"
 	buckets, _, err := txn.Scan(prefix, "", MAX_BUCKET_NUM)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to list buckets: %v", err)
@@ -240,11 +225,6 @@ func (b *BucketService) ListBuckets(params *BaseBucketParams) ([]*meta.BucketMet
 			continue
 		}
 		allBuckets = append(allBuckets, bucket)
-	}
-
-	// 写入cache
-	if cache, e := xcache.GetCache(); e == nil && cache != nil {
-		cache.Set(context.Background(), prefix, allBuckets, time.Second*600)
 	}
 
 	return allBuckets, &owner, nil

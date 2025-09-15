@@ -234,14 +234,16 @@ func SetupRouter() *mux.Router {
 		// S3 ListObjectsV1 (Legacy)
 		router.Methods(http.MethodGet).HandlerFunc(handler.ListObjectsV1Handler).Name("ListObjects")
 	}
+
 	// ListBuckets
+	// 使用Path("/")配置根路径路由
 	sr.Methods(http.MethodGet).Path("/").HandlerFunc(handler.ListBucketsHandler).Name("ListBuckets")
-	// S3 browser with signature v4 adds '//' for ListBuckets request, so rather
-	// than failing with UnknownAPIRequest we simply handle it for now.
-	sr.Methods(http.MethodGet).Path("//").HandlerFunc(handler.ListBucketsHandler).Name("ListBucketsDoubleSlash")
+	// 保留双斜杠路径的ListBuckets路由以兼容某些S3浏览器
+	sr.Methods(http.MethodGet).Path("//").HandlerFunc(handler.ListBucketsHandler).Name("ListBuckets")
 	// 使用http.HandlerFunc适配器将函数转换为http.Handler接口
-	sr.NotFoundHandler = http.HandlerFunc(handler.NotFoundHandler)
-	sr.MethodNotAllowedHandler = http.HandlerFunc(handler.NotAllowedHandler)
+	// 将NotFoundHandler和MethodNotAllowedHandler设置在主路由上，以捕获所有未匹配请求
+	mr.NotFoundHandler = http.HandlerFunc(handler.NotFoundHandler)
+	mr.MethodNotAllowedHandler = http.HandlerFunc(handler.NotAllowedHandler)
 
 	return mr
 }
