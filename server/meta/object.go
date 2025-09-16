@@ -86,8 +86,8 @@ type Object struct {
 	LegalHold       bool      `json:"legalHold" xml:"LegalHold"`             // 法律保留状态
 
 	// 所有者信息
-	Owner Owner `json:"owner" xml:"Owner"` // 对象所有者
-	ACL   *ACL  `json:"acl" xml:"Acl"`     // 访问控制列表
+	Owner Owner                `json:"owner" xml:"Owner"` // 对象所有者
+	ACL   *AccessControlPolicy `json:"acl" xml:"Acl"`     // 访问控制列表
 }
 
 // Owner 表示对象所有者信息
@@ -324,6 +324,22 @@ func (o *Object) Clone() *Object {
 			Data:     make([]byte, len(o.ChunksInline.Data)),
 		}
 		copy(cp.ChunksInline.Data, o.ChunksInline.Data)
+	}
+
+	// 深拷贝ACL字段
+	if o.ACL != nil {
+		cp.ACL = &AccessControlPolicy{
+			Owner:             o.ACL.Owner, // 浅拷贝，CanonicalUser是值类型
+			AccessControlList: AccessControlList{},
+		}
+		// 深拷贝Grants切片
+		cp.ACL.AccessControlList.Grants = make([]Grant, len(o.ACL.AccessControlList.Grants))
+		for i, grant := range o.ACL.AccessControlList.Grants {
+			cp.ACL.AccessControlList.Grants[i] = Grant{
+				Grantee:    grant.Grantee, // 浅拷贝，Grantee是值类型
+				Permission: grant.Permission,
+			}
+		}
 	}
 
 	return cp

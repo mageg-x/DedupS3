@@ -26,7 +26,7 @@ type BucketMetadata struct {
 	Name         string                          `json:"name" xml:"Name"`
 	CreationDate time.Time                       `json:"creationDate" xml:"CreationDate"`
 	Owner        Owner                           `json:"owner" xml:"Owner"`
-	ACL          *ACL                            `json:"acl" xml:"AccessControlPolicy"`
+	ACL          *AccessControlPolicy            `json:"acl" xml:"AccessControlPolicy"`
 	Location     string                          `json:"location" xml:"LocationConstraint"`
 	Policy       *BucketPolicy                   `json:"policyConfig" xml:"Policy"`
 	Notification *EventNotificationConfiguration `json:"notification" xml:"NotificationConfiguration"`

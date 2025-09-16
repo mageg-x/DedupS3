@@ -17,18 +17,19 @@
 package handler
 
 import (
+	"crypto/md5"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"github.com/mageg-x/boulder/internal/aws"
+	"github.com/mageg-x/boulder/meta"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
-
-	"github.com/mageg-x/boulder/meta"
 
 	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/mageg-x/boulder/internal/utils"
@@ -156,20 +157,262 @@ func GetObjectAttributesHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// GetObjectACLHandler 处理 GET Object ACL 请求 (Dummy)
+// GetObjectACLHandler 处理 GET Object ACL 请求
 func GetObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: GetObjectACLHandler")
-	// TODO: 实现 GET Object ACL 逻辑 (Dummy)
-	w.WriteHeader(http.StatusOK)
+
+	// 获取请求参数
+	bucket, objectKey, _, accessKeyID := GetReqVar(r)
+	if err := utils.CheckValidObjectName(objectKey); err != nil {
+		logger.GetLogger("boulder").Errorf("invalid object name: %s", objectKey)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
+		return
+	}
+
+	// 获取对象服务
+	_os := object.GetObjectService()
+	if _os == nil {
+		logger.GetLogger("boulder").Errorf("object service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	// 获取对象信息
+	params := &object.BaseObjectParams{
+		BucketName:  bucket,
+		ObjKey:      objectKey,
+		AccessKeyID: accessKeyID,
+	}
+
+	obj, err := _os.HeadObject(params)
+	if err != nil {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchKey)) {
+			logger.GetLogger("boulder").Errorf("object %s/%s does not exist", bucket, objectKey)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchKey)
+		} else if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			logger.GetLogger("boulder").Errorf("access denied for %s", accessKeyID)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		} else {
+			logger.GetLogger("boulder").Errorf("failed to get object: %v", err)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		}
+		return
+	}
+
+	// 检查对象是否有ACL，如果没有则创建默认ACL
+	acl := &meta.AccessControlPolicy{}
+	if obj.ACL != nil {
+		acl = obj.ACL
+	} else {
+		acl.Owner = meta.CanonicalUser{
+			ID:          obj.Owner.ID,
+			DisplayName: obj.Owner.DisplayName,
+		}
+	}
+
+	xhttp.WriteAWSSuc(w, r, acl)
 }
 
-// PutObjectACLHandler 处理 PUT Object ACL 请求 (Dummy)
+// PutObjectACLHandler 处理 PUT Object ACL 请求
 func PutObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: PutObjectACLHandler")
-	// TODO: 实现 PUT Object ACL 逻辑 (Dummy)
+
+	// 获取请求参数
+	bucket, objectKey, _, accessKeyID := GetReqVar(r)
+	if err := utils.CheckValidObjectName(objectKey); err != nil {
+		logger.GetLogger("boulder").Errorf("invalid object name: %s", objectKey)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
+		return
+	}
+
+	// 获取对象服务
+	_os := object.GetObjectService()
+	if _os == nil {
+		logger.GetLogger("boulder").Errorf("object service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	obj, err := _os.HeadObject(&object.BaseObjectParams{
+		BucketName:  bucket,
+		ObjKey:      objectKey,
+		AccessKeyID: accessKeyID,
+	})
+
+	if err != nil {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchKey)) {
+			logger.GetLogger("boulder").Errorf("object %s/%s does not exist", bucket, objectKey)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchKey)
+		} else if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			logger.GetLogger("boulder").Errorf("access denied for %s", accessKeyID)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		} else {
+			logger.GetLogger("boulder").Errorf("failed to get object: %v", err)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		}
+		return
+	}
+
+	acp := &meta.AccessControlPolicy{
+		Owner: meta.CanonicalUser{
+			ID:          obj.Owner.ID,
+			DisplayName: obj.Owner.DisplayName,
+		},
+	}
+	// 处理x-amz-acl头部
+	if aclHeader := r.Header.Get(xhttp.AmzACL); aclHeader != "" {
+		logger.GetLogger("boulder").Debugf("Processing x-amz-acl: %s", aclHeader)
+		switch aclHeader {
+		case "private":
+			// 默认权限，仅保留所有者权限
+		case "public-read":
+			if err := acp.GrantPublicRead(); err != nil {
+				logger.GetLogger("boulder").Errorf("failed to set public-read ACL: %v", err)
+				xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+				return
+			}
+		case "public-read-write":
+			if err := acp.GrantPublicReadWrite(); err != nil {
+				logger.GetLogger("boulder").Errorf("failed to set public-read-write ACL: %v", err)
+				xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+				return
+			}
+		case "authenticated-read":
+			if err := acp.AddGrant("Group", "", "", "", meta.AuthUsersGroup, meta.PermissionRead); err != nil {
+				logger.GetLogger("boulder").Errorf("failed to set authenticated-read ACL: %v", err)
+				xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+				return
+			}
+		case "bucket-owner-read":
+			// 此处应该获取存储桶所有者信息
+		case "bucket-owner-full-control":
+			// 此处应该获取存储桶所有者信息并授予完全控制权限
+		default:
+			logger.GetLogger("boulder").Errorf("invalid x-amz-acl value: %s", aclHeader)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
+			return
+		}
+	}
+
+	// 处理x-amz-grant-*系列头部
+	processGrantHeader := func(headerName, permission string) {
+		if headerValue := r.Header.Get(headerName); headerValue != "" {
+			logger.GetLogger("boulder").Debugf("Processing %s: %s", headerName, headerValue)
+			// 完整解析授权信息
+			// 支持格式：
+			// 1. 单一CanonicalUser ID: "1234567890123456789012345678901234567890123456789012345678901234"
+			// 2. 带属性的CanonicalUser: id="123456...",displayName="example-user"
+			// 3. 邮箱格式: emailAddress="user@example.com"
+			// 4. 组URI格式: uri="http://acs.amazonaws.com/groups/global/AllUsers"
+
+			// 解析授权信息
+			granteeType := "CanonicalUser"
+			id := ""
+			displayName := ""
+			email := ""
+			uri := ""
+
+			// 检查是否包含属性格式
+			if strings.Contains(headerValue, "=") {
+				// 解析格式如: id="...",displayName="..." 或 emailAddress="..." 或 uri="..."
+				attrs := strings.Split(headerValue, ",")
+				for _, attr := range attrs {
+					parts := strings.SplitN(strings.TrimSpace(attr), "=", 2)
+					if len(parts) != 2 {
+						continue
+					}
+					key := strings.TrimSpace(parts[0])
+					value := strings.Trim(parts[1], `"`)
+
+					switch key {
+					case "id":
+						id = value
+					case "displayName":
+						displayName = value
+					case "emailAddress":
+						granteeType = "AmazonCustomerByEmail"
+						email = value
+					case "uri":
+						granteeType = "Group"
+						uri = value
+					}
+				}
+			} else {
+				// 简化情况：直接将值作为CanonicalUser ID
+				id = headerValue
+			}
+
+			// 调用AddGrant添加授权
+			if err := acp.AddGrant(granteeType, id, displayName, email, uri, permission); err != nil {
+				logger.GetLogger("boulder").Errorf("failed to process grant header %s: %v", headerName, err)
+				xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
+				return
+			}
+		}
+	}
+
+	processGrantHeader("x-amz-grant-full-control", meta.PermissionFullControl)
+	processGrantHeader("x-amz-grant-read", meta.PermissionRead)
+	processGrantHeader("x-amz-grant-read-acp", meta.PermissionReadACP)
+	processGrantHeader("x-amz-grant-write", meta.PermissionWrite)
+	processGrantHeader("x-amz-grant-write-acp", meta.PermissionWriteACP)
+
+	// 读取请求体中的XML数据
+	body, err := io.ReadAll(r.Body)
+	defer r.Body.Close()
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to read request body: %v", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrBadRequest)
+		return
+	}
+
+	// 如果有XML请求体，并且之前没有通过头部设置ACL，则解析XML
+	if len(body) > 0 && len(acp.AccessControlList.Grants) == 0 {
+		logger.GetLogger("boulder").Debugf("Parsing ACL from XML request body")
+		if err := acp.ParseXML(body); err != nil {
+			logger.GetLogger("boulder").Errorf("failed to parse ACL XML: %v", err)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedXML)
+			return
+		}
+	}
+
+	// 处理Content-MD5验证
+	if contentMD5 := r.Header.Get(xhttp.ContentMD5); contentMD5 != "" && len(body) > 0 {
+		logger.GetLogger("boulder").Debugf("Processing Content-MD5 validation")
+		hash := md5.Sum(body)
+		computedMD5 := hex.EncodeToString(hash[:])
+		if computedMD5 != contentMD5 {
+			logger.GetLogger("boulder").Errorf("Content-MD5 mismatch: computed=%s, header=%s", computedMD5, contentMD5)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidDigest)
+			return
+		}
+	}
+
+	obj, err = _os.PutObjectAcl(&object.BaseObjectParams{
+		BucketName:  bucket,
+		ObjKey:      objectKey,
+		AccessKeyID: accessKeyID,
+	}, acp)
+
+	if err != nil {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchKey)) {
+			logger.GetLogger("boulder").Errorf("object %s/%s does not exist", bucket, objectKey)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchKey)
+		} else if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			logger.GetLogger("boulder").Errorf("access denied for %s", accessKeyID)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		} else {
+			logger.GetLogger("boulder").Errorf("failed to get object: %v", err)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		}
+		return
+	}
+
+	// 返回成功响应
 	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Last-Modified", obj.LastModified.Format(http.TimeFormat))
 }
 
 // GetObjectTaggingHandler 处理 GET Object Tagging 请求
@@ -281,7 +524,7 @@ func PutObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 调用服务更新对象标签
-	_, err = _os.PutObjectTagging(&object.BaseObjectParams{
+	obj, err := _os.PutObjectTagging(&object.BaseObjectParams{
 		BucketName:  bucket,
 		ObjKey:      objectKey,
 		AccessKeyID: accessKeyID,
@@ -302,6 +545,7 @@ func PutObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 设置响应头
 	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Last-Modified", obj.LastModified.Format(http.TimeFormat))
 }
 
 // DeleteObjectTaggingHandler 处理 DELETE Object Tagging 请求

@@ -21,10 +21,15 @@ import (
 	"errors"
 )
 
-// ACL 表示访问控制列表
-type ACL struct {
-	Owner  CanonicalUser `json:"owner" xml:"Owner"`                    // 资源所有者
-	Grants []Grant       `json:"grants" xml:"AccessControlList>Grant"` // 授权列表
+// AccessControlPolicy 表示S3访问控制策略，符合AWS API规范
+type AccessControlPolicy struct {
+	XMLName           xml.Name          `xml:"http://s3.amazonaws.com/doc/2006-03-01/ AccessControlPolicy"`
+	Owner             CanonicalUser     `json:"owner" xml:"Owner"`                         // 资源所有者
+	AccessControlList AccessControlList `json:"accessControlList" xml:"AccessControlList"` //授权列表
+}
+
+type AccessControlList struct {
+	Grants []Grant `json:"grants" xml:"Grant"`
 }
 
 // Grant 表示单个授权项
@@ -35,11 +40,12 @@ type Grant struct {
 
 // Grantee 表示被授权者
 type Grantee struct {
-	Type        string `json:"type" xml:"xsi:type,attr"`                // 类型: CanonicalUser | AmazonCustomerByEmail | Group
-	ID          string `json:"id" xml:"ID,omitempty"`                   // 规范用户ID
-	DisplayName string `json:"displayName" xml:"DisplayName,omitempty"` // 显示名称
-	Email       string `json:"email" xml:"EmailAddress,omitempty"`      // 邮箱地址
-	URI         string `json:"uri" xml:"URI,omitempty"`                 // 组URI
+	XMLName     xml.Name `xml:"Grantee"`
+	Type        string   `json:"type" xml:"xsi:type,attr"`                // 类型: CanonicalUser | AmazonCustomerByEmail | Group
+	ID          string   `json:"id" xml:"ID,omitempty"`                   // 规范用户ID
+	DisplayName string   `json:"displayName" xml:"DisplayName,omitempty"` // 显示名称
+	Email       string   `json:"email" xml:"EmailAddress,omitempty"`      // 邮箱地址
+	URI         string   `json:"uri" xml:"URI,omitempty"`                 // 组URI
 }
 
 // 预定义组常量
@@ -58,25 +64,27 @@ const (
 	PermissionFullControl = "FULL_CONTROL"
 )
 
-// NewACL 创建新的 ACL
-func NewACL(owner CanonicalUser) *ACL {
-	return &ACL{
+// NewAccessControlPolicy 创建新的访问控制策略
+func NewAccessControlPolicy(owner CanonicalUser) *AccessControlPolicy {
+	return &AccessControlPolicy{
 		Owner: owner,
-		Grants: []Grant{
-			{
-				Grantee: Grantee{
-					Type:        "CanonicalUser",
-					ID:          owner.ID,
-					DisplayName: owner.DisplayName,
+		AccessControlList: AccessControlList{
+			Grants: []Grant{
+				{
+					Grantee: Grantee{
+						Type:        "CanonicalUser",
+						ID:          owner.ID,
+						DisplayName: owner.DisplayName,
+					},
+					Permission: PermissionFullControl,
 				},
-				Permission: PermissionFullControl,
 			},
 		},
 	}
 }
 
 // AddGrant 添加授权
-func (a *ACL) AddGrant(granteeType, id, displayName, email, uri, permission string) error {
+func (acp *AccessControlPolicy) AddGrant(granteeType, id, displayName, email, uri, permission string) error {
 	// 验证权限类型
 	validPermissions := map[string]bool{
 		PermissionRead:        true,
@@ -112,7 +120,7 @@ func (a *ACL) AddGrant(granteeType, id, displayName, email, uri, permission stri
 		return errors.New("invalid grantee type")
 	}
 
-	a.Grants = append(a.Grants, Grant{
+	acp.AccessControlList.Grants = append(acp.AccessControlList.Grants, Grant{
 		Grantee:    grantee,
 		Permission: permission,
 	})
@@ -120,40 +128,40 @@ func (a *ACL) AddGrant(granteeType, id, displayName, email, uri, permission stri
 }
 
 // GrantPublicRead 授予公共读取权限
-func (a *ACL) GrantPublicRead() error {
-	return a.AddGrant("Group", "", "", "", AllUsersGroup, PermissionRead)
+func (acp *AccessControlPolicy) GrantPublicRead() error {
+	return acp.AddGrant("Group", "", "", "", AllUsersGroup, PermissionRead)
 }
 
 // GrantPublicReadWrite 授予公共读写权限
-func (a *ACL) GrantPublicReadWrite() error {
-	if err := a.AddGrant("Group", "", "", "", AllUsersGroup, PermissionRead); err != nil {
+func (acp *AccessControlPolicy) GrantPublicReadWrite() error {
+	if err := acp.AddGrant("Group", "", "", "", AllUsersGroup, PermissionRead); err != nil {
 		return err
 	}
-	return a.AddGrant("Group", "", "", "", AllUsersGroup, PermissionWrite)
+	return acp.AddGrant("Group", "", "", "", AllUsersGroup, PermissionWrite)
 }
 
 // GrantLogDeliveryWrite 授予日志交付组写入权限
-func (a *ACL) GrantLogDeliveryWrite() error {
-	return a.AddGrant("Group", "", "", "", LogDeliveryGroup, PermissionWrite)
+func (acp *AccessControlPolicy) GrantLogDeliveryWrite() error {
+	return acp.AddGrant("Group", "", "", "", LogDeliveryGroup, PermissionWrite)
 }
 
 // RemoveGrant 移除授权
-func (a *ACL) RemoveGrant(granteeType, id, email, uri string) {
-	for i, grant := range a.Grants {
+func (acp *AccessControlPolicy) RemoveGrant(granteeType, id, email, uri string) {
+	for i, grant := range acp.AccessControlList.Grants {
 		switch granteeType {
 		case "CanonicalUser":
 			if grant.Grantee.Type == "CanonicalUser" && grant.Grantee.ID == id {
-				a.Grants = append(a.Grants[:i], a.Grants[i+1:]...)
+				acp.AccessControlList.Grants = append(acp.AccessControlList.Grants[:i], acp.AccessControlList.Grants[i+1:]...)
 				return
 			}
 		case "AmazonCustomerByEmail":
 			if grant.Grantee.Type == "AmazonCustomerByEmail" && grant.Grantee.Email == email {
-				a.Grants = append(a.Grants[:i], a.Grants[i+1:]...)
+				acp.AccessControlList.Grants = append(acp.AccessControlList.Grants[:i], acp.AccessControlList.Grants[i+1:]...)
 				return
 			}
 		case "Group":
 			if grant.Grantee.Type == "Group" && grant.Grantee.URI == uri {
-				a.Grants = append(a.Grants[:i], a.Grants[i+1:]...)
+				acp.AccessControlList.Grants = append(acp.AccessControlList.Grants[:i], acp.AccessControlList.Grants[i+1:]...)
 				return
 			}
 		}
@@ -161,8 +169,8 @@ func (a *ACL) RemoveGrant(granteeType, id, email, uri string) {
 }
 
 // HasPermission 检查被授权者是否有特定权限
-func (a *ACL) HasPermission(grantee Grantee, permission string) bool {
-	for _, grant := range a.Grants {
+func (acp *AccessControlPolicy) HasPermission(grantee Grantee, permission string) bool {
+	for _, grant := range acp.AccessControlList.Grants {
 		if grantMatches(grant.Grantee, grantee) {
 			if grant.Permission == PermissionFullControl {
 				return true
@@ -193,65 +201,19 @@ func grantMatches(g1, g2 Grantee) bool {
 	}
 }
 
-// ToXML 将 ACL 转换为 XML
-func (a *ACL) ToXML() ([]byte, error) {
-	type ACLXML struct {
-		XMLName xml.Name `xml:"AccessControlPolicy"`
-		Owner   struct {
-			ID          string `xml:"ID"`
-			DisplayName string `xml:"DisplayName"`
-		} `xml:"Owner"`
-		AccessControlList struct {
-			Grants []Grant `xml:"Grant"`
-		} `xml:"AccessControlList"`
-	}
-
-	aclXML := ACLXML{
-		Owner: struct {
-			ID          string `xml:"ID"`
-			DisplayName string `xml:"DisplayName"`
-		}{
-			ID:          a.Owner.ID,
-			DisplayName: a.Owner.DisplayName,
-		},
-		AccessControlList: struct {
-			Grants []Grant `xml:"Grant"`
-		}{
-			Grants: a.Grants,
-		},
-	}
-
-	return xml.Marshal(aclXML)
+// ToXML 将 AccessControlPolicy 转换为 XML
+func (acp *AccessControlPolicy) ToXML() ([]byte, error) {
+	return xml.Marshal(acp)
 }
 
-// ParseXML 从 XML 解析 ACL
-func (a *ACL) ParseXML(data []byte) error {
-	type ACLXML struct {
-		Owner struct {
-			ID          string `xml:"ID"`
-			DisplayName string `xml:"DisplayName"`
-		} `xml:"Owner"`
-		AccessControlList struct {
-			Grants []Grant `xml:"Grant"`
-		} `xml:"AccessControlList"`
-	}
-
-	var aclXML ACLXML
-	if err := xml.Unmarshal(data, &aclXML); err != nil {
-		return err
-	}
-
-	a.Owner = CanonicalUser{
-		ID:          aclXML.Owner.ID,
-		DisplayName: aclXML.Owner.DisplayName,
-	}
-	a.Grants = aclXML.AccessControlList.Grants
-	return nil
+// ParseXML 从 XML 解析 AccessControlPolicy
+func (acp *AccessControlPolicy) ParseXML(data []byte) error {
+	return xml.Unmarshal(data, acp)
 }
 
-// IsPublic 检查 ACL 是否包含公共访问
-func (a *ACL) IsPublic() bool {
-	for _, grant := range a.Grants {
+// IsPublic 检查访问控制策略是否包含公共访问
+func (acp *AccessControlPolicy) IsPublic() bool {
+	for _, grant := range acp.AccessControlList.Grants {
 		if grant.Grantee.Type == "Group" && grant.Grantee.URI == AllUsersGroup {
 			return true
 		}
