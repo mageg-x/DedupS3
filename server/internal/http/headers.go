@@ -174,6 +174,14 @@ const (
 	AMZMaxMetaSize = 2 * 1024 // 2KB
 	// SUBNET related
 	SubnetAPIKey = "x-subnet-api-key"
+
+	// Rename object related headers
+	AmzRenameSource                  = "x-amz-rename-source"
+	AmzRenameSourceIfMatch           = "x-amz-rename-source-if-match"
+	AmzRenameSourceIfNoneMatch       = "x-amz-rename-source-if-none-match"
+	AmzRenameSourceIfModifiedSince   = "x-amz-rename-source-if-modified-since"
+	AmzRenameSourceIfUnmodifiedSince = "x-amz-rename-source-if-unmodified-since"
+	AmzClientToken                   = "x-amz-client-token"
 )
 
 // Common http query params S3 API

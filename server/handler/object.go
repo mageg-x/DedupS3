@@ -23,13 +23,14 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"github.com/mageg-x/boulder/internal/aws"
-	"github.com/mageg-x/boulder/meta"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/mageg-x/boulder/internal/aws"
+	"github.com/mageg-x/boulder/meta"
 
 	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/mageg-x/boulder/internal/utils"
@@ -749,10 +750,10 @@ func CopyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	ifnoneMatch := r.Header.Get(xhttp.IfNoneMatch)
 	ifnoneMatch = strings.Trim(ifnoneMatch, "\"")
 	ifmodifiedSince := r.Header.Get(xhttp.IfModifiedSince)
-	CopySourceIfMatch := r.Header.Get(xhttp.AmzCopySourceIfMatch)
-	CopySourceIfNoneMatch := r.Header.Get(xhttp.AmzCopySourceIfNoneMatch)
-	CopySourceIfModifiedSince := r.Header.Get(xhttp.AmzCopySourceIfModifiedSince)
-	CopySourceIfUnmodifiedSince := r.Header.Get(xhttp.AmzCopySourceIfUnmodifiedSince)
+	SourceIfMatch := r.Header.Get(xhttp.AmzCopySourceIfMatch)
+	SourceIfNoneMatch := r.Header.Get(xhttp.AmzCopySourceIfNoneMatch)
+	SourceIfModifiedSince := r.Header.Get(xhttp.AmzCopySourceIfModifiedSince)
+	SourceIfUnmodifiedSince := r.Header.Get(xhttp.AmzCopySourceIfUnmodifiedSince)
 
 	// 获取源桶 和对象
 	cpSrcPath := r.Header.Get(xhttp.AmzCopySource)
@@ -780,17 +781,17 @@ func CopyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	obj, err := _os.CopyObject(srcBucket, srcObject, &object.BaseObjectParams{
-		BucketName:                  bucket,
-		ObjKey:                      objectKey,
-		AccessKeyID:                 accessKeyID,
-		StorageClass:                dstSc,
-		IfMatch:                     ifMatch,
-		IfNoneMatch:                 ifnoneMatch,
-		IfModifiedSince:             ifmodifiedSince,
-		CopySourceIfMatch:           CopySourceIfMatch,
-		CopySourceIfNoneMatch:       CopySourceIfNoneMatch,
-		CopySourceIfModifiedSince:   CopySourceIfModifiedSince,
-		CopySourceIfUnmodifiedSince: CopySourceIfUnmodifiedSince,
+		BucketName:              bucket,
+		ObjKey:                  objectKey,
+		AccessKeyID:             accessKeyID,
+		StorageClass:            dstSc,
+		IfMatch:                 ifMatch,
+		IfNoneMatch:             ifnoneMatch,
+		IfModifiedSince:         ifmodifiedSince,
+		SourceIfMatch:           SourceIfMatch,
+		SourceIfNoneMatch:       SourceIfNoneMatch,
+		SourceIfModifiedSince:   SourceIfModifiedSince,
+		SourceIfUnmodifiedSince: SourceIfUnmodifiedSince,
 	})
 	if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
 		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
@@ -1064,7 +1065,7 @@ func DeleteMultipleObjectsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // PostRestoreObjectHandler 处理 POST Restore Object 请求
-func PostRestoreObjectHandler(w http.ResponseWriter, r *http.Request) {
+func RestoreObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: PostRestoreObjectHandler")
 	// TODO: 实现 POST Restore Object 逻辑
@@ -1366,5 +1367,86 @@ func ListObjectVersionsHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: ListObjectVersionsHandler")
 	// TODO: 实现 List Object Versions 逻辑
+	w.WriteHeader(http.StatusOK)
+}
+
+// RenameObjectHandler 处理 PUT Object rename 请求
+func RenameObjectHandler(w http.ResponseWriter, r *http.Request) {
+	// 打印接口名称
+	logger.GetLogger("boulder").Infof("API called: RenameObjectHandler")
+
+	bucket, objectKey, _, accessKeyID := GetReqVar(r)
+	if err := utils.CheckValidObjectName(objectKey); err != nil {
+		logger.GetLogger("boulder").Errorf("Invalid object name: %s", objectKey)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
+		return
+	}
+
+	// 获取请求头中的参数
+	renameSource := r.Header.Get(xhttp.AmzRenameSource)
+	if renameSource == "" {
+		logger.GetLogger("boulder").Errorf("Missing %s header", xhttp.AmzRenameSource)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
+		return
+	}
+
+	// 目标对象的条件
+	ifMatch := r.Header.Get(xhttp.IfMatch)
+	ifNoneMatch := r.Header.Get(xhttp.IfNoneMatch)
+	ifModifiedSince := r.Header.Get(xhttp.IfModifiedSince)
+	ifUnmodifiedSince := r.Header.Get(xhttp.IfUnmodifiedSince)
+
+	// 源对象的条件
+	sourceIfMatch := r.Header.Get(xhttp.AmzRenameSourceIfMatch)
+	sourceIfNoneMatch := r.Header.Get(xhttp.AmzRenameSourceIfNoneMatch)
+	sourceIfModifiedSince := r.Header.Get(xhttp.AmzRenameSourceIfModifiedSince)
+	sourceIfUnmodifiedSince := r.Header.Get(xhttp.AmzRenameSourceIfUnmodifiedSince)
+
+	// 客户端令牌
+	clientToken := r.Header.Get(xhttp.AmzClientToken)
+
+	logger.GetLogger("boulder").Infof("Rename %s object from %s to %s", bucket, renameSource, objectKey)
+
+	// 获取对象服务
+	_os := object.GetObjectService()
+	if _os == nil {
+		logger.GetLogger("boulder").Errorf("Object service not initialized")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	_, err := _os.RenameObject(&object.BaseObjectParams{
+		BucketName:              bucket,
+		AccessKeyID:             accessKeyID,
+		ObjKey:                  objectKey,
+		DestObjKey:              renameSource,
+		IfMatch:                 ifMatch,
+		IfNoneMatch:             ifNoneMatch,
+		IfModifiedSince:         ifModifiedSince,
+		IfUnmodifiedSince:       ifUnmodifiedSince,
+		SourceIfMatch:           sourceIfMatch,
+		SourceIfNoneMatch:       sourceIfNoneMatch,
+		SourceIfUnmodifiedSince: sourceIfUnmodifiedSince,
+		SourceIfModifiedSince:   sourceIfModifiedSince,
+		ClientToken:             clientToken,
+	})
+
+	if err != nil {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchKey)) {
+			logger.GetLogger("boulder").Errorf("object %s/%s does not exist", bucket, objectKey)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchKey)
+		} else if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			logger.GetLogger("boulder").Errorf("access denied for %s", accessKeyID)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		} else if errors.Is(err, xhttp.ToError(xhttp.ErrPreconditionFailed)) {
+			logger.GetLogger("boulder").Errorf("object %s/%s condition failed", bucket, objectKey)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrPreconditionFailed)
+		} else {
+			logger.GetLogger("boulder").Errorf("failed to get object: %v", err)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		}
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
 }

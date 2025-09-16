@@ -20,12 +20,13 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"github.com/mageg-x/boulder/internal/aws"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mageg-x/boulder/internal/aws"
 
 	"github.com/mageg-x/boulder/meta"
 
@@ -406,10 +407,10 @@ func CopyObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	CopySourceIfMatch := r.Header.Get(xhttp.AmzCopySourceIfMatch)
-	CopySourceIfNoneMatch := r.Header.Get(xhttp.AmzCopySourceIfNoneMatch)
-	CopySourceIfModifiedSince := r.Header.Get(xhttp.AmzCopySourceIfModifiedSince)
-	CopySourceIfUnmodifiedSince := r.Header.Get(xhttp.AmzCopySourceIfUnmodifiedSince)
+	SourceIfMatch := r.Header.Get(xhttp.AmzCopySourceIfMatch)
+	SourceIfNoneMatch := r.Header.Get(xhttp.AmzCopySourceIfNoneMatch)
+	SourceIfModifiedSince := r.Header.Get(xhttp.AmzCopySourceIfModifiedSince)
+	SourceIfUnmodifiedSince := r.Header.Get(xhttp.AmzCopySourceIfUnmodifiedSince)
 
 	// 获取MultiPartService实例
 	_mps := multipart.GetMultiPartService()
@@ -420,15 +421,15 @@ func CopyObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	part, err := _mps.UploadPartCopy(sourceBucket, sourceKey, &object.BaseObjectParams{
-		BucketName:                  bucket,
-		ObjKey:                      objectKey,
-		AccessKeyID:                 accessKeyID,
-		UploadIDMarker:              uploadID,
-		PartNumber:                  int64(partNumber),
-		CopySourceIfMatch:           CopySourceIfMatch,
-		CopySourceIfNoneMatch:       CopySourceIfNoneMatch,
-		CopySourceIfUnmodifiedSince: CopySourceIfUnmodifiedSince,
-		CopySourceIfModifiedSince:   CopySourceIfModifiedSince,
+		BucketName:              bucket,
+		ObjKey:                  objectKey,
+		AccessKeyID:             accessKeyID,
+		UploadIDMarker:          uploadID,
+		PartNumber:              int64(partNumber),
+		SourceIfMatch:           SourceIfMatch,
+		SourceIfNoneMatch:       SourceIfNoneMatch,
+		SourceIfUnmodifiedSince: SourceIfUnmodifiedSince,
+		SourceIfModifiedSince:   SourceIfModifiedSince,
 	})
 
 	if err != nil {

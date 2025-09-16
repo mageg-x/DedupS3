@@ -112,6 +112,9 @@ func SetupRouter() *mux.Router {
 		// AppendObject to be rejected
 		router.Methods(http.MethodPut).Path("/{object:.+}").HeadersRegexp(xhttp.AmzWriteOffsetBytes, "").HandlerFunc(handler.ErrorResponseHandler).Name("AppendObject") // Assuming errorResponseHandler is the final handler
 
+		// RenameObject
+		router.Methods(http.MethodPut).Path("/{object:.+}").HandlerFunc(handler.RenameObjectHandler).Queries("renameObject", "").Name("RenameObject")
+
 		// PutObject
 		router.Methods(http.MethodPut).Path("/{object:.+}").HandlerFunc(handler.PutObjectHandler).Name("PutObject")
 
@@ -119,7 +122,7 @@ func SetupRouter() *mux.Router {
 		router.Methods(http.MethodDelete).Path("/{object:.+}").HandlerFunc(handler.DeleteObjectHandler).Name("DeleteObject")
 
 		// PostRestoreObject
-		router.Methods(http.MethodPost).Path("/{object:.+}").HandlerFunc(handler.PostRestoreObjectHandler).Queries("restore", "").Name("PostObjectRestore")
+		router.Methods(http.MethodPost).Path("/{object:.+}").HandlerFunc(handler.RestoreObjectHandler).Queries("restore", "").Name("RestoreObject")
 
 		// Bucket operations
 
