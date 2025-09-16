@@ -142,10 +142,6 @@ func SetupRouter() *mux.Router {
 		router.Methods(http.MethodGet).HandlerFunc(handler.GetBucketVersioningHandler).Queries("versioning", "").Name("GetBucketVersioning")
 		// GetBucketNotification
 		router.Methods(http.MethodGet).HandlerFunc(handler.GetBucketNotificationHandler).Queries("notification", "").Name("GetBucketNotificationConfiguration")
-		// ListenNotification
-		router.Methods(http.MethodGet).HandlerFunc(handler.ListenNotificationHandler).Queries("events", "{events:.*}").Name("ListenNotification")
-		// ResetBucketReplicationStatus - MinIO extension API
-		router.Methods(http.MethodGet).HandlerFunc(handler.ResetBucketReplicationStatusHandler).Queries("replication-reset-status", "").Name("ResetBucketReplicationStatus")
 
 		// Dummy Bucket Calls
 		// GetBucketACL -- this is a dummy call.

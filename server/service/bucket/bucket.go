@@ -441,3 +441,290 @@ func (b *BucketService) PutBucketTagging(params *BaseBucketParams) error {
 
 	return nil
 }
+
+// PutBucketLifecycle 设置存储桶的生命周期配置
+func (b *BucketService) PutBucketLifecycle(params *BaseBucketParams, lifecycle *meta.LifecycleConfiguration) error {
+	// 获取IAM服务
+	iamService := iam.GetIamService()
+	if iamService == nil {
+		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		return errors.New("failed to get iam service")
+	}
+
+	// 验证访问密钥
+	ak, err := iamService.GetAccessKey(params.AccessKeyID)
+	if err != nil || ak == nil {
+		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	ac, err := iamService.GetAccount(ak.AccountID)
+	if err != nil || ac == nil {
+		logger.GetLogger("boulder").Errorf("failed to get account %s", ak.AccountID)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	// 构建存储桶key
+	bucketKey := "aws:bucket:" + ak.AccountID + ":" + params.BucketName
+
+	// 开始事务
+	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		return fmt.Errorf("failed to initialize kvstore txn: %v", err)
+	}
+	defer func() {
+		if txn != nil {
+			_ = txn.Rollback()
+		}
+	}()
+
+	// 检查存储桶是否存在
+	var bucket meta.BucketMetadata
+	exist, err := txn.Get(bucketKey, &bucket)
+	if !exist || err != nil {
+		logger.GetLogger("boulder").Errorf("bucket %s does not exist", params.BucketName)
+		return xhttp.ToError(xhttp.ErrNoSuchBucket)
+	}
+
+	// 检查用户是否是存储桶所有者
+	if bucket.Owner.ID != ac.AccountID {
+		logger.GetLogger("boulder").Errorf("access denied: user %s :%s is not the owner of bucket %s", ac.AccountID, bucket.Owner.ID, params.BucketName)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	if params.ExpectedOwnerID != "" {
+		// 检查存储桶的实际所有者是否与请求的所有者匹配
+		if bucket.Owner.ID != params.ExpectedOwnerID {
+			logger.GetLogger("boulder").Errorf("bucket owner mismatch: expected %s, got %s", params.ExpectedOwnerID, bucket.Owner.ID)
+			return xhttp.ToError(xhttp.ErrAccessDenied)
+		}
+	}
+	// 设置生命周期配置
+	currentTime := time.Now().UTC()
+	if lifecycle != nil {
+		// 设置XML命名空间
+		if lifecycle.XMLNS == "" {
+			lifecycle.XMLNS = "http://s3.amazonaws.com/doc/2006-03-01/"
+		}
+		lifecycle.CreatedAt = currentTime
+		lifecycle.UpdatedAt = currentTime
+		bucket.Lifecycle = lifecycle
+	} else {
+		// 如果传入nil，则清除生命周期配置
+		bucket.Lifecycle = nil
+	}
+
+	err = txn.Set(bucketKey, &bucket)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to set bucket lifecycle configuration: %v", err)
+		return fmt.Errorf("failed to set bucket lifecycle configuration: %v", err)
+	}
+
+	// 提交事务
+	if err := txn.Commit(); err != nil {
+		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		return fmt.Errorf("failed to commit transaction: %v", err)
+	}
+	txn = nil
+
+	// 清除缓存
+	if cache, e := xcache.GetCache(); e == nil && cache != nil {
+		_ = cache.Del(context.Background(), bucketKey)
+	}
+
+	logger.GetLogger("boulder").Tracef("successfully set lifecycle configuration for bucket: %s", params.BucketName)
+	return nil
+}
+
+// PutBucketNotification 设置存储桶的事件通知配置
+func (b *BucketService) PutBucketNotification(params *BaseBucketParams, notification *meta.EventNotificationConfiguration) error {
+	// 获取IAM服务
+	iamService := iam.GetIamService()
+	if iamService == nil {
+		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		return errors.New("failed to get iam service")
+	}
+
+	// 验证访问密钥
+	ak, err := iamService.GetAccessKey(params.AccessKeyID)
+	if err != nil || ak == nil {
+		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	ac, err := iamService.GetAccount(ak.AccountID)
+	if err != nil || ac == nil {
+		logger.GetLogger("boulder").Errorf("failed to get account %s", ak.AccountID)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	// 构建存储桶key
+	bucketKey := "aws:bucket:" + ak.AccountID + ":" + params.BucketName
+
+	// 开始事务
+	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		return fmt.Errorf("failed to initialize kvstore txn: %v", err)
+	}
+	defer func() {
+		if txn != nil {
+			_ = txn.Rollback()
+		}
+	}()
+
+	// 检查存储桶是否存在
+	var bucket meta.BucketMetadata
+	exist, err := txn.Get(bucketKey, &bucket)
+	if !exist || err != nil {
+		logger.GetLogger("boulder").Errorf("bucket %s does not exist", params.BucketName)
+		return xhttp.ToError(xhttp.ErrNoSuchBucket)
+	}
+
+	// 检查用户是否是存储桶所有者
+	if bucket.Owner.ID != ac.AccountID {
+		logger.GetLogger("boulder").Errorf("access denied: user %s :%s is not the owner of bucket %s", ac.AccountID, bucket.Owner.ID, params.BucketName)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	if params.ExpectedOwnerID != "" {
+		// 检查存储桶的实际所有者是否与请求的所有者匹配
+		if bucket.Owner.ID != params.ExpectedOwnerID {
+			logger.GetLogger("boulder").Errorf("bucket owner mismatch: expected %s, got %s", params.ExpectedOwnerID, bucket.Owner.ID)
+			return xhttp.ToError(xhttp.ErrAccessDenied)
+		}
+	}
+	// 设置事件通知配置
+	currentTime := time.Now().UTC()
+	if notification != nil {
+		// 设置XML命名空间
+		if notification.XMLNS == "" {
+			notification.XMLNS = "http://s3.amazonaws.com/doc/2006-03-01/"
+		}
+		notification.CreatedAt = currentTime
+		notification.UpdatedAt = currentTime
+		bucket.Notification = notification
+	} else {
+		// 如果传入nil，则清除事件通知配置
+		bucket.Notification = nil
+	}
+
+	err = txn.Set(bucketKey, &bucket)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to set bucket notification configuration: %v", err)
+		return fmt.Errorf("failed to set bucket notification configuration: %v", err)
+	}
+
+	// 提交事务
+	if err := txn.Commit(); err != nil {
+		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		return fmt.Errorf("failed to commit transaction: %v", err)
+	}
+	txn = nil
+
+	// 清除缓存
+	if cache, e := xcache.GetCache(); e == nil && cache != nil {
+		_ = cache.Del(context.Background(), bucketKey)
+	}
+
+	logger.GetLogger("boulder").Tracef("successfully set notification configuration for bucket: %s", params.BucketName)
+	return nil
+}
+
+// PutBucketACL 设置存储桶的访问控制列表
+func (b *BucketService) PutBucketACL(params *BaseBucketParams, acl *meta.AccessControlPolicy) error {
+	// 获取IAM服务
+	iamService := iam.GetIamService()
+	if iamService == nil {
+		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		return errors.New("failed to get iam service")
+	}
+
+	// 验证访问密钥
+	ak, err := iamService.GetAccessKey(params.AccessKeyID)
+	if err != nil || ak == nil {
+		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	ac, err := iamService.GetAccount(ak.AccountID)
+	if err != nil || ac == nil {
+		logger.GetLogger("boulder").Errorf("failed to get account %s", ak.AccountID)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	// 构建存储桶key
+	bucketKey := "aws:bucket:" + ak.AccountID + ":" + params.BucketName
+
+	// 开始事务
+	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		return fmt.Errorf("failed to initialize kvstore txn: %v", err)
+	}
+	defer func() {
+		if txn != nil {
+			_ = txn.Rollback()
+		}
+	}()
+
+	// 检查存储桶是否存在
+	var bucket meta.BucketMetadata
+	exist, err := txn.Get(bucketKey, &bucket)
+	if !exist || err != nil {
+		logger.GetLogger("boulder").Errorf("bucket %s does not exist", params.BucketName)
+		return xhttp.ToError(xhttp.ErrNoSuchBucket)
+	}
+
+	// 检查用户是否是存储桶所有者
+	if bucket.Owner.ID != ac.AccountID {
+		logger.GetLogger("boulder").Errorf("access denied: user %s :%s is not the owner of bucket %s", ac.AccountID, bucket.Owner.ID, params.BucketName)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	if params.ExpectedOwnerID != "" {
+		// 检查存储桶的实际所有者是否与请求的所有者匹配
+		if bucket.Owner.ID != params.ExpectedOwnerID {
+			logger.GetLogger("boulder").Errorf("bucket owner mismatch: expected %s, got %s", params.ExpectedOwnerID, bucket.Owner.ID)
+			return xhttp.ToError(xhttp.ErrAccessDenied)
+		}
+	}
+	// 设置访问控制策略
+	if acl != nil {
+		// 设置XML命名空间
+		if acl.XMLNS == "" {
+			acl.XMLNS = "http://s3.amazonaws.com/doc/2006-03-01/"
+		}
+		// 确保所有者信息正确
+		acl.Owner = meta.CanonicalUser{
+			ID:          bucket.Owner.ID,
+			DisplayName: bucket.Owner.DisplayName,
+		}
+		bucket.ACL = acl
+	} else {
+		// 如果传入nil，则清除ACL配置
+		bucket.ACL = nil
+	}
+
+	err = txn.Set(bucketKey, &bucket)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to set bucket ACL: %v", err)
+		return fmt.Errorf("failed to set bucket ACL: %v", err)
+	}
+
+	// 提交事务
+	if err := txn.Commit(); err != nil {
+		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		return fmt.Errorf("failed to commit transaction: %v", err)
+	}
+	txn = nil
+
+	// 清除缓存
+	if cache, e := xcache.GetCache(); e == nil && cache != nil {
+		_ = cache.Del(context.Background(), bucketKey)
+	}
+
+	logger.GetLogger("boulder").Tracef("successfully set ACL for bucket: %s", params.BucketName)
+	return nil
+}

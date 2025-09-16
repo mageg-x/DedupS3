@@ -17,6 +17,8 @@
 package handler
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/xml"
 	"errors"
 	"io"
@@ -119,7 +121,7 @@ func ListBucketsHandler(w http.ResponseWriter, r *http.Request) {
 func GetBucketLocationHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: GetBucketLocationHandler")
-	bucket, _, _, accessKeyID := GetReqVar(r)
+	bucket, _, region, accessKeyID := GetReqVar(r)
 
 	bs := sb.GetBucketService()
 	if bs == nil {
@@ -130,6 +132,7 @@ func GetBucketLocationHandler(w http.ResponseWriter, r *http.Request) {
 	_bucket, err := bs.GetBucketInfo(&sb.BaseBucketParams{
 		BucketName:  bucket,
 		AccessKeyID: accessKeyID,
+		Location:    region,
 	})
 
 	if err != nil || _bucket == nil {
@@ -168,8 +171,56 @@ func GetBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 func GetBucketLifecycleHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: GetBucketLifecycleHandler")
-	// TODO: 实现 GET Bucket Lifecycle 逻辑
-	w.WriteHeader(http.StatusOK)
+
+	// 获取请求变量
+	bucket, _, region, accessKeyID := GetReqVar(r)
+
+	// 获取x-amz-expected-bucket-owner头部
+	expectedOwnerID := r.Header.Get("x-amz-expected-bucket-owner")
+	expectedOwnerID = strings.TrimSpace(expectedOwnerID)
+
+	// 获取bucket服务
+	bs := sb.GetBucketService()
+	if bs == nil {
+		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	// 获取桶信息
+	bucketInfo, err := bs.GetBucketInfo(&sb.BaseBucketParams{
+		BucketName:  bucket,
+		Location:    region,
+		AccessKeyID: accessKeyID,
+	})
+	if err != nil {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		} else if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+		} else {
+			logger.GetLogger("boulder").Errorf("failed to get bucket info: %v", err)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		}
+		return
+	}
+
+	if expectedOwnerID != "" && expectedOwnerID != bucketInfo.Owner.ID {
+		logger.GetLogger("boulder").Errorf("bucket owner mismatch: expected %s, got %s", expectedOwnerID, bucketInfo.Owner.ID)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+	}
+
+	// 检查生命周期配置是否存在
+	if bucketInfo.Lifecycle == nil || len(bucketInfo.Lifecycle.Rules) == 0 {
+		// 如果不存在生命周期配置，返回空的LifecycleConfiguration
+		bucketInfo.Lifecycle = &meta.LifecycleConfiguration{}
+	}
+
+	bucketInfo.Lifecycle.XMLName = xml.Name{Local: "LifecycleConfiguration"}
+	bucketInfo.Lifecycle.XMLNS = "http://s3.amazonaws.com/doc/2006-03-01/"
+	// 返回生命周期配置
+	xhttp.WriteAWSSuc(w, r, bucketInfo.Lifecycle)
+	logger.GetLogger("boulder").Tracef("successfully retrieved lifecycle configuration for bucket: %s", bucket)
 }
 
 // GetBucketEncryptionHandler 处理 GET Bucket Encryption 请求
@@ -208,40 +259,341 @@ func GetBucketVersioningHandler(w http.ResponseWriter, r *http.Request) {
 func GetBucketNotificationHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: GetBucketNotificationHandler")
-	// TODO: 实现 GET Bucket Notification 逻辑
-	w.WriteHeader(http.StatusOK)
+	bucket, _, region, accessKeyID := GetReqVar(r)
+
+	// 获取x-amz-expected-bucket-owner头部
+	expectedOwnerID := r.Header.Get("x-amz-expected-bucket-owner")
+	expectedOwnerID = strings.TrimSpace(expectedOwnerID)
+
+	// 获取bucket服务
+	bs := sb.GetBucketService()
+	if bs == nil {
+		logger.GetLogger("boulder").Errorf("bucket service is nil")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+	// 获取桶信息
+	_bucket, err := bs.GetBucketInfo(&sb.BaseBucketParams{
+		BucketName:  bucket,
+		Location:    region,
+		AccessKeyID: accessKeyID,
+	})
+	if err != nil {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		} else if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+		} else {
+			logger.GetLogger("boulder").Errorf("failed to get bucket info: %v", err)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		}
+		return
+	}
+
+	if expectedOwnerID != "" && expectedOwnerID != _bucket.Owner.ID {
+		logger.GetLogger("boulder").Errorf("bucket owner mismatch: expected %s, got %s", expectedOwnerID, _bucket.Owner.ID)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+	}
+
+	// 如果没有配置，返回空的通知配置
+	if _bucket.Notification == nil {
+		_bucket.Notification = &meta.EventNotificationConfiguration{}
+	}
+
+	// 设置XML命名空间
+	_bucket.Notification.XMLName = xml.Name{Local: "NotificationConfiguration"}
+	_bucket.Notification.XMLNS = "http://s3.amazonaws.com/doc/2006-03-01/"
+
+	// 返回XML响应
+	xhttp.WriteAWSSuc(w, r, _bucket.Notification)
 }
 
-// ListenNotificationHandler 处理 Listen Notification 请求
-func ListenNotificationHandler(w http.ResponseWriter, r *http.Request) {
-	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: ListenNotificationHandler")
-	// TODO: 实现 Listen Notification 逻辑
-	w.WriteHeader(http.StatusOK)
-}
-
-// ResetBucketReplicationStatusHandler 处理 Reset Bucket Replication Status 请求 (MinIO extension)
-func ResetBucketReplicationStatusHandler(w http.ResponseWriter, r *http.Request) {
-	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: ResetBucketReplicationStatusHandler")
-	// TODO: 实现 Reset Bucket Replication Status 逻辑
-	w.WriteHeader(http.StatusOK)
-}
-
-// GetBucketACLHandler 处理 GET Bucket ACL 请求 (Dummy)
+// GetBucketACLHandler 处理 GET Bucket ACL 请求
 func GetBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: GetBucketACLHandler")
-	// TODO: 实现 GET Bucket ACL 逻辑 (Dummy)
-	w.WriteHeader(http.StatusOK)
+
+	// 获取请求变量
+	bucket, _, _, accessKeyID := GetReqVar(r)
+
+	// 获取x-amz-expected-bucket-owner头部
+	expectedOwner := r.Header.Get("x-amz-expected-bucket-owner")
+	expectedOwner = strings.TrimSpace(expectedOwner)
+
+	// 获取bucket服务
+	bs := sb.GetBucketService()
+	if bs == nil {
+		logger.GetLogger("boulder").Errorf("bucket service is nil")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	// 获取bucket信息
+	_bucket, err := bs.GetBucketInfo(&sb.BaseBucketParams{
+		BucketName:      bucket,
+		AccessKeyID:     accessKeyID,
+		ExpectedOwnerID: expectedOwner,
+	})
+	if err != nil {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		} else if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+		} else {
+			logger.GetLogger("boulder").Errorf("failed to get bucket info: %v", err)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		}
+		return
+	}
+
+	// 准备返回的ACL信息
+
+	if _bucket.ACL == nil {
+		// 如果没有设置ACL，返回默认的ACL（所有者有FULL_CONTROL权限）
+		_bucket.ACL = meta.NewAccessControlPolicy(meta.CanonicalUser{
+			ID:          _bucket.Owner.ID,
+			DisplayName: _bucket.Owner.DisplayName,
+		})
+		// 添加所有者的FULL_CONTROL权限
+		_ = _bucket.ACL.AddGrant("CanonicalUser", _bucket.Owner.ID, _bucket.Owner.DisplayName, "", "", meta.PermissionFullControl)
+	}
+
+	// 设置XML命名空间
+	_bucket.ACL.XMLName = xml.Name{Local: "AccessControlPolicy"}
+	_bucket.ACL.XMLNS = "http://s3.amazonaws.com/doc/2006-03-01/"
+
+	xhttp.WriteAWSSuc(w, r, _bucket.ACL)
 }
 
-// PutBucketACLHandler 处理 PUT Bucket ACL 请求 (Dummy)
+// PutBucketACLHandler 处理 PUT Bucket ACL 请求
 func PutBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: PutBucketACLHandler")
-	// TODO: 实现 PUT Bucket ACL 逻辑 (Dummy)
+
+	// 获取请求变量
+	bucket, _, region, accessKeyID := GetReqVar(r)
+
+	// 获取x-amz-expected-bucket-owner头部
+	expectedOwner := r.Header.Get("x-amz-expected-bucket-owner")
+	expectedOwner = strings.TrimSpace(expectedOwner)
+
+	// 获取Content-MD5头部并进行校验（如果需要）
+	contentMD5 := r.Header.Get("Content-MD5")
+	contentMD5 = strings.TrimSpace(contentMD5)
+	// TODO: 实现Content-MD5校验逻辑
+
+	// 获取x-amz-sdk-checksum-algorithm头部
+	checksumAlgorithm := r.Header.Get("x-amz-sdk-checksum-algorithm")
+	checksumAlgorithm = strings.TrimSpace(checksumAlgorithm)
+	// TODO: 实现校验和算法处理逻辑
+
+	// 获取并处理x-amz-acl头部
+	predefinedACL := r.Header.Get(xhttp.AmzACL)
+	predefinedACL = strings.TrimSpace(predefinedACL)
+
+	// 读取请求体
+	body, err := io.ReadAll(r.Body)
+	defer r.Body.Close()
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to read request body: %v", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrBadRequest)
+		return
+	}
+
+	// 初始化ACL配置
+	var aclConfig meta.AccessControlPolicy
+	// 获取bucket服务
+	bs := sb.GetBucketService()
+	if bs == nil {
+		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	// 获取当前桶信息，用于获取所有者信息
+	bucketInfo, err := bs.GetBucketInfo(&sb.BaseBucketParams{
+		BucketName:  bucket,
+		Location:    region,
+		AccessKeyID: accessKeyID,
+	})
+	if err != nil {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+		} else if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			logger.GetLogger("boulder").Errorf("access denied for %s", accessKeyID)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		} else {
+			logger.GetLogger("boulder").Errorf("failed to get bucket info: %v", err)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		}
+		return
+	}
+
+	// 设置所有者信息
+	aclConfig = *meta.NewAccessControlPolicy(meta.CanonicalUser{
+		ID:          bucketInfo.Owner.ID,
+		DisplayName: bucketInfo.Owner.DisplayName,
+	})
+
+	// 处理x-amz-acl头部
+	hasHeaderACL := false
+	if predefinedACL != "" {
+		hasHeaderACL = true
+		logger.GetLogger("boulder").Debugf("Processing x-amz-acl: %s", predefinedACL)
+		switch predefinedACL {
+		case "private":
+			// 默认权限，仅保留所有者权限
+		case "public-read":
+			if err := aclConfig.GrantPublicRead(); err != nil {
+				logger.GetLogger("boulder").Errorf("failed to set public-read ACL: %v", err)
+				xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+				return
+			}
+		case "public-read-write":
+			if err := aclConfig.GrantPublicReadWrite(); err != nil {
+				logger.GetLogger("boulder").Errorf("failed to set public-read-write ACL: %v", err)
+				xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+				return
+			}
+		case "authenticated-read":
+			if err := aclConfig.AddGrant("Group", "", "", "", meta.AuthUsersGroup, meta.PermissionRead); err != nil {
+				logger.GetLogger("boulder").Errorf("failed to set authenticated-read ACL: %v", err)
+				xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+				return
+			}
+		case "bucket-owner-read":
+			// 此处应该获取存储桶所有者信息
+		case "bucket-owner-full-control":
+			// 此处应该获取存储桶所有者信息并授予完全控制权限
+		default:
+			logger.GetLogger("boulder").Errorf("invalid x-amz-acl value: %s", predefinedACL)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
+			return
+		}
+	}
+
+	// 处理x-amz-grant-*系列头部
+	processGrantHeader := func(headerName, permission string) {
+		if headerValue := r.Header.Get(headerName); headerValue != "" {
+			hasHeaderACL = true
+			logger.GetLogger("boulder").Debugf("Processing %s: %s", headerName, headerValue)
+			// 完整解析授权信息
+			// 支持格式：
+			// 1. 单一CanonicalUser ID: "1234567890123456789012345678901234567890123456789012345678901234"
+			// 2. 带属性的CanonicalUser: id="123456...",displayName="example-user"
+			// 3. 邮箱格式: emailAddress="user@example.com"
+			// 4. 组URI格式: uri="http://acs.amazonaws.com/groups/global/AllUsers"
+
+			// 拆分多个授权项（用逗号分隔）
+			grantParts := strings.Split(headerValue, ",")
+			for _, part := range grantParts {
+				part = strings.TrimSpace(part)
+				if part == "" {
+					continue
+				}
+
+				// 解析授权信息
+				var granteeType, id, displayName, email, uri string
+
+				// 检查是否包含属性格式
+				if strings.Contains(part, "=") {
+					// 解析格式如: id="...",displayName="..." 或 emailAddress="..." 或 uri="..."
+					attrs := strings.Split(part, ",")
+					for _, attr := range attrs {
+						parts := strings.SplitN(strings.TrimSpace(attr), "=", 2)
+						if len(parts) != 2 {
+							continue
+						}
+						key := strings.TrimSpace(parts[0])
+						value := strings.Trim(parts[1], `"`)
+
+						switch key {
+						case "id":
+							id = value
+						case "displayName":
+							displayName = value
+						case "emailAddress":
+							granteeType = "AmazonCustomerByEmail"
+							email = value
+						case "emailaddress":
+							// 兼容小写形式
+							granteeType = "AmazonCustomerByEmail"
+							email = value
+						case "uri":
+							granteeType = "Group"
+							uri = value
+						}
+					}
+				} else {
+					// 简化情况：直接将值作为CanonicalUser ID
+					granteeType = "CanonicalUser"
+					id = part
+				}
+
+				// 调用AddGrant添加授权
+				if err := aclConfig.AddGrant(granteeType, id, displayName, email, uri, permission); err != nil {
+					logger.GetLogger("boulder").Errorf("failed to process grant header %s: %v", headerName, err)
+					xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
+					return
+				}
+			}
+		}
+	}
+
+	processGrantHeader("x-amz-grant-full-control", meta.PermissionFullControl)
+	processGrantHeader("x-amz-grant-read", meta.PermissionRead)
+	processGrantHeader("x-amz-grant-read-acp", meta.PermissionReadACP)
+	processGrantHeader("x-amz-grant-write", meta.PermissionWrite)
+	processGrantHeader("x-amz-grant-write-acp", meta.PermissionWriteACP)
+
+	// 处理Content-MD5验证
+	if contentMD5 != "" && len(body) > 0 {
+		logger.GetLogger("boulder").Debugf("Processing Content-MD5 validation")
+		hash := md5.Sum(body)
+		computedMD5 := hex.EncodeToString(hash[:])
+		if computedMD5 != contentMD5 {
+			logger.GetLogger("boulder").Errorf("Content-MD5 mismatch: computed=%s, header=%s", computedMD5, contentMD5)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidDigest)
+			return
+		}
+	}
+
+	// 根据S3标准，头部定义的ACL优先级高于body中的ACL
+	// 只有在头部没有定义ACL的情况下才处理请求体中的ACL
+	if !hasHeaderACL && len(body) > 0 {
+		logger.GetLogger("boulder").Debugf("Parsing ACL from XML request body")
+		// 解析XML请求体
+		if err := xml.Unmarshal(body, &aclConfig); err != nil {
+			logger.GetLogger("boulder").Errorf("failed to unmarshal ACL configuration: %v", err)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedXML)
+			return
+		}
+	}
+
+	// 调用service层方法设置ACL配置
+	err = bs.PutBucketACL(&sb.BaseBucketParams{
+		BucketName:      bucket,
+		Location:        region,
+		AccessKeyID:     accessKeyID,
+		ExpectedOwnerID: expectedOwner,
+	}, &aclConfig)
+
+	// 处理错误
+	if err != nil {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		} else if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+		} else {
+			logger.GetLogger("boulder").Errorf("failed to put bucket ACL: %v", err)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		}
+		return
+	}
+
+	// 返回成功响应
 	w.WriteHeader(http.StatusOK)
+	logger.GetLogger("boulder").Tracef("successfully set ACL for bucket: %s", bucket)
 }
 
 // GetBucketCorsHandler 处理 GET Bucket CORS 请求 (Dummy)
@@ -332,6 +684,7 @@ func GetBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 检查x-amz-expected-bucket-owner头部
 	expectedOwner := r.Header.Get("x-amz-expected-bucket-owner")
+	expectedOwner = strings.TrimSpace(expectedOwner)
 	if expectedOwner != "" {
 		// 检查存储桶的实际所有者是否与请求的所有者匹配
 		if _bucket.Owner.ID != expectedOwner {
@@ -427,8 +780,63 @@ func GetBucketPolicyStatusHandler(w http.ResponseWriter, r *http.Request) {
 func PutBucketLifecycleHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: PutBucketLifecycleHandler")
-	// TODO: 实现 PUT Bucket Lifecycle 逻辑
+
+	// 获取请求变量
+	bucket, _, region, accessKeyID := GetReqVar(r)
+
+	// 获取bucket服务
+	bs := sb.GetBucketService()
+	if bs == nil {
+		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	// 读取请求体
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to read request body: %v", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	// 解析XML请求体
+	var lifecycleConfig meta.LifecycleConfiguration
+	if err := xml.Unmarshal(body, &lifecycleConfig); err != nil {
+		logger.GetLogger("boulder").Errorf("failed to unmarshal lifecycle configuration: %v", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidRequest)
+		return
+	}
+
+	// 获取x-amz-expected-bucket-owner头部
+	expectedOwner := r.Header.Get("x-amz-expected-bucket-owner")
+	expectedOwner = strings.TrimSpace(expectedOwner)
+
+	// 调用service层方法设置生命周期配置
+	err = bs.PutBucketLifecycle(&sb.BaseBucketParams{
+		BucketName:      bucket,
+		Location:        region,
+		AccessKeyID:     accessKeyID,
+		ExpectedOwnerID: expectedOwner,
+	}, &lifecycleConfig)
+
+	// 处理错误
+	if err != nil {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		} else if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+		} else {
+			logger.GetLogger("boulder").Errorf("failed to put bucket lifecycle: %v", err)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		}
+		return
+	}
+
+	// 返回成功响应
 	w.WriteHeader(http.StatusOK)
+	logger.GetLogger("boulder").Tracef("successfully set lifecycle configuration for bucket: %s", bucket)
 }
 
 // PutBucketReplicationConfigHandler 处理 PUT Bucket Replication Configuration 请求
@@ -558,11 +966,65 @@ func PutBucketVersioningHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// PutBucketNotificationHandler 处理 PUT Bucket Notification 请求
+// PutBucketNotificationHandler 设置存储桶的通知配置
 func PutBucketNotificationHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: PutBucketNotificationHandler")
-	// TODO: 实现 PUT Bucket Notification 逻辑
+	bucket, _, region, accessKeyID := GetReqVar(r)
+
+	// 获取bucket服务
+	bs := sb.GetBucketService()
+	if bs == nil {
+		logger.GetLogger("boulder").Errorf("bucket service is nil")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	// 获取请求体
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to read request body: %v", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	// 解析XML
+	notification := &meta.EventNotificationConfiguration{}
+	if len(data) > 0 {
+		if err := xml.Unmarshal(data, notification); err != nil {
+			logger.GetLogger("boulder").Errorf("failed to unmarshal notification configuration: %v", err)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidRequest)
+			return
+		}
+	}
+
+	// 获取x-amz-expected-bucket-owner头部
+	expectedOwnerID := r.Header.Get("x-amz-expected-bucket-owner")
+	expectedOwnerID = strings.TrimSpace(expectedOwnerID)
+
+	err = bs.PutBucketNotification(&sb.BaseBucketParams{
+		BucketName:      bucket,
+		AccessKeyID:     accessKeyID,
+		Location:        region,
+		ExpectedOwnerID: expectedOwnerID,
+	}, notification)
+
+	// 调用服务层方法
+	if err != nil {
+		// 处理错误
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		} else if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+		} else {
+			logger.GetLogger("boulder").Errorf("failed to set bucket notification configuration: %v", err)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		}
+		return
+	}
+
+	// 返回200 OK
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -696,8 +1158,45 @@ func DeleteBucketReplicationConfigHandler(w http.ResponseWriter, r *http.Request
 func DeleteBucketLifecycleHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: DeleteBucketLifecycleHandler")
-	// TODO: 实现 DELETE Bucket Lifecycle 逻辑
-	w.WriteHeader(http.StatusOK)
+
+	// 获取请求变量
+	bucket, _, region, accessKeyID := GetReqVar(r)
+
+	// 获取 x-amz-expected-bucket-owner 头部
+	expectedOwnerID := r.Header.Get("x-amz-expected-bucket-owner")
+	expectedOwnerID = strings.TrimSpace(expectedOwnerID)
+
+	// 获取bucket服务
+	bs := sb.GetBucketService()
+	if bs == nil {
+		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	// 调用服务层方法清除生命周期配置
+	err := bs.PutBucketLifecycle(&sb.BaseBucketParams{
+		BucketName:      bucket,
+		AccessKeyID:     accessKeyID,
+		Location:        region,
+		ExpectedOwnerID: expectedOwnerID,
+	}, nil)
+
+	// 处理错误
+	if err != nil {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		} else if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+		} else {
+			logger.GetLogger("boulder").Errorf("failed to put bucket lifecycle: %v", err)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		}
+		return
+	}
+
+	// 返回成功响应
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // DeleteBucketEncryptionHandler 处理 DELETE Bucket Encryption Request
