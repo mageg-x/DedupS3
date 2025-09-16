@@ -23,7 +23,8 @@ import (
 
 // AccessControlPolicy 表示S3访问控制策略，符合AWS API规范
 type AccessControlPolicy struct {
-	XMLName           xml.Name          `xml:"http://s3.amazonaws.com/doc/2006-03-01/ AccessControlPolicy"`
+	XMLName           xml.Name          `xml:"AccessControlPolicy"`
+	XMLNS             string            `xml:"xmlns,attr"`                                 // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
 	Owner             CanonicalUser     `json:"owner" xml:"Owner"`                         // 资源所有者
 	AccessControlList AccessControlList `json:"accessControlList" xml:"AccessControlList"` //授权列表
 }
@@ -67,18 +68,11 @@ const (
 // NewAccessControlPolicy 创建新的访问控制策略
 func NewAccessControlPolicy(owner CanonicalUser) *AccessControlPolicy {
 	return &AccessControlPolicy{
-		Owner: owner,
+		XMLName: xml.Name{Local: "AccessControlPolicy"},
+		XMLNS:   "http://s3.amazonaws.com/doc/2006-03-01/",
+		Owner:   owner,
 		AccessControlList: AccessControlList{
-			Grants: []Grant{
-				{
-					Grantee: Grantee{
-						Type:        "CanonicalUser",
-						ID:          owner.ID,
-						DisplayName: owner.DisplayName,
-					},
-					Permission: PermissionFullControl,
-				},
-			},
+			Grants: make([]Grant, 0),
 		},
 	}
 }

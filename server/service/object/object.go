@@ -114,9 +114,13 @@ type DeletedObjectErrors struct {
 }
 
 // DeleteObjectsResponse represents the response for S3 DeleteObjects API
+// XMLName字段必须保留，因为Go的xml包默认会使用结构体名称(DeleteObjectsResponse)作为XML元素名，
+// 但S3规范要求根元素名为"DeleteResult"
+// XMLNS字段设置为S3标准命名空间
+// 注意：根据S3规范，必须包含命名空间，因此不使用omitempty标签
 type DeleteObjectsResponse struct {
 	XMLName xml.Name              `xml:"DeleteResult"`
-	XMLNS   string                `xml:"xmlns,attr"`
+	XMLNS   string                `xml:"xmlns,attr"` // S3标准命名空间，固定值为http://s3.amazonaws.com/doc/2006-03-01/
 	Deleted []DeletedObject       `xml:"Deleted"`
 	Errors  []DeletedObjectErrors `xml:"Error"`
 }
@@ -124,8 +128,8 @@ type DeleteObjectsResponse struct {
 // ListObjectsResponse 对应 S3 ListObjects V1 响应
 type ListObjectsResponse struct {
 	XMLName xml.Name `xml:"ListBucketResult" json:"-"`
-	// 命名空间属性
-	XMLNS string `xml:"xmlns,attr,omitempty"`
+	// 命名空间属性 - 注意：根据S3规范，必须包含命名空间，因此不使用omitempty标签
+	XMLNS string `xml:"xmlns,attr"`
 	Name  string `xml:"Name"` // Bucket 名称
 
 	// 可选字段（omitempty 控制：nil 或零值时不输出）
@@ -144,8 +148,8 @@ type ListObjectsResponse struct {
 // ListObjectsV2Response 对应 S3 ListObjects V2 响应
 type ListObjectsV2Response struct {
 	XMLName xml.Name `xml:"ListBucketResult" json:"-"`
-	// 命名空间属性
-	XMLNS string `xml:"xmlns,attr,omitempty"`
+	// 命名空间属性 - 注意：根据S3规范，必须包含命名空间，因此不使用omitempty标签
+	XMLNS string `xml:"xmlns,attr"`
 	Name  string `xml:"Name"` // Bucket 名称
 
 	// 可选字段（omitempty 控制：nil 或零值时不输出）

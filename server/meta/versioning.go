@@ -25,6 +25,7 @@ import (
 // VersioningConfiguration 表示版本控制配置
 type VersioningConfiguration struct {
 	XMLName   xml.Name `xml:"VersioningConfiguration"`
+	XMLNS     string   `xml:"xmlns,attr"`          // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
 	Status    string   `xml:"Status"`              // Enabled | Suspended
 	MfaDelete string   `xml:"MfaDelete,omitempty"` // Enabled | Disabled
 

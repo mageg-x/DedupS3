@@ -60,7 +60,10 @@ func (bm *BucketMetadata) GetPolicy() (*BucketPolicy, error) {
 // 启用版本控制
 func (bm *BucketMetadata) EnableVersioning() {
 	if bm.Versioning == nil {
-		bm.Versioning = &VersioningConfiguration{}
+		bm.Versioning = &VersioningConfiguration{
+			XMLName: xml.Name{Local: "VersioningConfiguration"},
+			XMLNS:   "http://s3.amazonaws.com/doc/2006-03-01/",
+		}
 	}
 	bm.Versioning.Status = "Enabled"
 }
@@ -68,7 +71,10 @@ func (bm *BucketMetadata) EnableVersioning() {
 // 添加生命周期规则
 func (bm *BucketMetadata) AddLifecycleRule(rule LifecycleRule) {
 	if bm.Lifecycle == nil {
-		bm.Lifecycle = &LifecycleConfiguration{}
+		bm.Lifecycle = &LifecycleConfiguration{
+			XMLName: xml.Name{Local: "LifecycleConfiguration"},
+			XMLNS:   "http://s3.amazonaws.com/doc/2006-03-01/",
+		}
 	}
 	bm.Lifecycle.Rules = append(bm.Lifecycle.Rules, rule)
 }
@@ -134,7 +140,10 @@ func (bm *BucketMetadata) IsEncrypted() bool {
 // EnableDefaultSSE 启用默认服务器端加密
 func (bm *BucketMetadata) EnableDefaultSSE(algorithm, kmsKeyID string, bucketKeyEnabled bool) error {
 	if bm.SSE == nil {
-		bm.SSE = &BucketSSEConfiguration{}
+		bm.SSE = &BucketSSEConfiguration{
+			XMLName: xml.Name{Local: "ServerSideEncryptionConfiguration"},
+			XMLNS:   "http://s3.amazonaws.com/doc/2006-03-01/",
+		}
 	}
 	return bm.SSE.ApplyDefaultEncryption(algorithm, kmsKeyID, bucketKeyEnabled)
 }

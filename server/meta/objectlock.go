@@ -9,6 +9,7 @@ import (
 // ObjectLockConfiguration 表示对象锁定配置
 type ObjectLockConfiguration struct {
 	XMLName           xml.Name        `xml:"ObjectLockConfiguration"`
+	XMLNS             string          `xml:"xmlns,attr"`        // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
 	ObjectLockEnabled string          `xml:"ObjectLockEnabled"` // Enabled
 	Rule              *ObjectLockRule `xml:"Rule,omitempty"`
 

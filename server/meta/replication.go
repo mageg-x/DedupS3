@@ -10,7 +10,8 @@ import (
 // ReplicationConfiguration 表示跨区域复制配置
 type ReplicationConfiguration struct {
 	XMLName xml.Name `xml:"ReplicationConfiguration"`
-	Role    string   `xml:"Role"` // IAM角色ARN
+	XMLNS   string   `xml:"xmlns,attr"` // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
+	Role    string   `xml:"Role"`       // IAM角色ARN
 	Rules   []Rule   `xml:"Rule"`
 
 	CreatedAt time.Time `xml:"-"`

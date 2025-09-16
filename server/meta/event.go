@@ -26,7 +26,7 @@ import (
 // EventNotificationConfiguration 表示事件通知配置
 type EventNotificationConfiguration struct {
 	XMLName xml.Name `xml:"NotificationConfiguration"`
-	XMLNS   string   `xml:"xmlns,attr,omitempty"`
+	XMLNS   string   `xml:"xmlns,attr"` // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
 
 	TopicConfigurations      []TopicConfiguration      `xml:"TopicConfiguration,omitempty"`
 	QueueConfigurations      []QueueConfiguration      `xml:"QueueConfiguration,omitempty"`

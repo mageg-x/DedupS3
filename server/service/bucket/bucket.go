@@ -51,6 +51,17 @@ type CreateBucketLocationConfiguration struct {
 	Location string   `xml:"LocationConstraint"`
 }
 
+// GetBucketLocationResult 符合S3标准的存储桶位置响应结构
+// 注意：Location字段使用了",chardata"标签，这是Go XML包的特殊语法，表示该字段值将作为XML元素的字符数据
+// 当Location字段不为空时，生成的XML格式为：<LocationConstraint xmlns="http://s3.amazonaws.com/doc/2006-03-01/">区域名称</LocationConstraint>
+// 当Location字段为空时，生成的XML格式为：<LocationConstraint xmlns="http://s3.amazonaws.com/doc/2006-03-01/"></LocationConstraint>
+// 这符合AWS S3 API的官方规范 - 对于默认区域（us-east-1），LocationConstraint元素应为空
+type GetBucketLocationResult struct {
+	XMLName  xml.Name `xml:"LocationConstraint"`
+	XMLNS    string   `xml:"xmlns,attr"` // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
+	Location string   `xml:",chardata"`
+}
+
 type BaseBucketParams struct {
 	BucketName        string
 	Location          string

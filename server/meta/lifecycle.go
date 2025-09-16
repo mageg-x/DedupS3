@@ -26,6 +26,7 @@ import (
 // LifecycleConfiguration 表示生命周期配置
 type LifecycleConfiguration struct {
 	XMLName xml.Name        `xml:"LifecycleConfiguration"`
+	XMLNS   string          `xml:"xmlns,attr"` // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
 	Rules   []LifecycleRule `xml:"Rule"`
 
 	CreatedAt time.Time `xml:"-"`

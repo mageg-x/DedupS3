@@ -65,7 +65,7 @@ type MultiPartService struct {
 // InitiateMultipartUploadResult 定义 S3 Initiate Multipart Upload 的 XML 响应结构
 type InitiateMultipartUploadResult struct {
 	XMLName  xml.Name `xml:"InitiateMultipartUploadResult"`
-	XMLNS    string   `xml:"xmlns,attr"` // 命名空间
+	XMLNS    string   `xml:"xmlns,attr"` // 命名空间，固定值为http://s3.amazonaws.com/doc/2006-03-01/
 	Bucket   string   `xml:"Bucket"`
 	Key      string   `xml:"Key"`
 	UploadId string   `xml:"UploadId"`
@@ -73,7 +73,7 @@ type InitiateMultipartUploadResult struct {
 
 type CompleteMultipartUploadResult struct {
 	XMLName  xml.Name  `xml:"CompleteMultipartUploadResult"`
-	XMLNS    string    `xml:"xmlns,attr"` // 命名空间
+	XMLNS    string    `xml:"xmlns,attr"` // 命名空间，固定值为http://s3.amazonaws.com/doc/2006-03-01/
 	Location string    `xml:"Location"`
 	Bucket   string    `xml:"Bucket"`
 	Key      string    `xml:"Key"`
@@ -88,7 +88,7 @@ type CompleteMultipartUploadResult struct {
 
 type ListPartsResult struct {
 	XMLName xml.Name `xml:"ListPartsResult"`
-	XMLNS   string   `xml:"xmlns,attr,omitempty"` // 可选
+	XMLNS   string   `xml:"xmlns,attr"` // 根据S3规范，必须包含命名空间
 
 	Bucket               string           `xml:"Bucket"`
 	Key                  string           `xml:"Key"`
@@ -113,7 +113,7 @@ type ListPartsResult struct {
 // ListMultipartUploadsResult S3 ListMultipartUploads 响应
 type ListMultipartUploadsResult struct {
 	XMLName xml.Name `xml:"ListMultipartUploadsResult"`
-	XMLNS   string   `xml:"xmlns,attr,omitempty"` // 可选
+	XMLNS   string   `xml:"xmlns,attr"` // 根据S3规范，必须包含命名空间
 	// 必选字段（S3 总是返回，即使为空字符串）
 	Bucket             string    `xml:"Bucket"`
 	MaxUploads         int       `xml:"MaxUploads"`
@@ -143,7 +143,7 @@ type Upload struct {
 
 type CopyPartResult struct {
 	XMLName      xml.Name  `xml:"CopyPartResult"`
-	XMLNS        string    `xml:"xmlns,attr"`
+	XMLNS        string    `xml:"xmlns,attr"` // 命名空间，固定值为http://s3.amazonaws.com/doc/2006-03-01/
 	ETag         meta.Etag `xml:"ETag"`
 	LastModified time.Time `xml:"LastModified"`
 	// Checksum 相关字段（可选，根据需求启用）

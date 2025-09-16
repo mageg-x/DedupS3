@@ -202,14 +202,14 @@ func GetObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 检查对象是否有ACL，如果没有则创建默认ACL
-	acl := &meta.AccessControlPolicy{}
+	var acl *meta.AccessControlPolicy
 	if obj.ACL != nil {
 		acl = obj.ACL
 	} else {
-		acl.Owner = meta.CanonicalUser{
+		acl = meta.NewAccessControlPolicy(meta.CanonicalUser{
 			ID:          obj.Owner.ID,
 			DisplayName: obj.Owner.DisplayName,
-		}
+		})
 	}
 
 	xhttp.WriteAWSSuc(w, r, acl)
@@ -256,12 +256,10 @@ func PutObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	acp := &meta.AccessControlPolicy{
-		Owner: meta.CanonicalUser{
-			ID:          obj.Owner.ID,
-			DisplayName: obj.Owner.DisplayName,
-		},
-	}
+	acp := meta.NewAccessControlPolicy(meta.CanonicalUser{
+		ID:          obj.Owner.ID,
+		DisplayName: obj.Owner.DisplayName,
+	})
 	// 处理x-amz-acl头部
 	if aclHeader := r.Header.Get(xhttp.AmzACL); aclHeader != "" {
 		logger.GetLogger("boulder").Debugf("Processing x-amz-acl: %s", aclHeader)
@@ -456,8 +454,11 @@ func GetObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 构建标签响应结构
-	tagging := meta.Tagging{}
-	tagging.TagSet = meta.TagSet{}
+	tagging := meta.Tagging{
+		XMLName: xml.Name{Local: "Tagging"},
+		XMLNS:   "http://s3.amazonaws.com/doc/2006-03-01/",
+		TagSet:  meta.TagSet{},
+	}
 	tagging.TagSet.Tags = make([]meta.Tag, 0, len(obj.Tags))
 
 	// 转换map为Tag数组
@@ -996,6 +997,8 @@ func DeleteMultipleObjectsHandler(w http.ResponseWriter, r *http.Request) {
 	bucket, _, _, accessKeyID := GetReqVar(r)
 	var deleteReq object.DeleteObjectsRequest
 	decoder := xml.NewDecoder(r.Body)
+	// 配置解码器以忽略XML命名空间，以便正确解析S3请求
+	decoder.Strict = false
 	err := decoder.Decode(&deleteReq)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("Failed to decode DeleteObjects XML: %v", err)
@@ -1016,7 +1019,7 @@ func DeleteMultipleObjectsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result := object.DeleteObjectsResponse{
-		XMLName: xml.Name{Local: "CopyPartResult"},
+		XMLName: xml.Name{Local: "DeleteResult"},
 		XMLNS:   "http://s3.amazonaws.com/doc/2006-03-01/",
 		Deleted: make([]object.DeletedObject, 0),
 		Errors:  make([]object.DeletedObjectErrors, 0),

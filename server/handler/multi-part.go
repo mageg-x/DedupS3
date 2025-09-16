@@ -304,6 +304,8 @@ func ListMultipartUploadsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 构造响应结构
 	result := multipart.ListMultipartUploadsResult{
+		XMLName:        xml.Name{Local: "ListMultipartUploadsResult"},
+		XMLNS:          "http://s3.amazonaws.com/doc/2006-03-01/",
 		Bucket:         bucket,
 		MaxUploads:     int(maxUploads),
 		Prefix:         prefix,

@@ -34,6 +34,7 @@ import (
 
 type ListAllMyBucketsResult struct {
 	XMLName xml.Name       `xml:"ListAllMyBucketsResult"`
+	XMLNS   string         `xml:"xmlns,attr"` // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
 	Owner   types.Owner    `xml:"Owner"`
 	Buckets []types.Bucket `xml:"Buckets>Bucket"`
 }
@@ -100,6 +101,8 @@ func ListBucketsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := ListAllMyBucketsResult{
+		XMLName: xml.Name{Local: "ListAllMyBucketsResult"},
+		XMLNS:   "http://s3.amazonaws.com/doc/2006-03-01/",
 		Owner: types.Owner{
 			DisplayName: &owner.DisplayName,
 			ID:          &owner.ID,
@@ -114,8 +117,41 @@ func ListBucketsHandler(w http.ResponseWriter, r *http.Request) {
 func GetBucketLocationHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: GetBucketLocationHandler")
-	// TODO: 实现 GET Bucket Location 逻辑
-	w.WriteHeader(http.StatusOK)
+	bucket, _, _, accessKeyID := GetReqVar(r)
+
+	bs := sb.GetBucketService()
+	if bs == nil {
+		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+	_bucket, err := bs.GetBucketInfo(&sb.BaseBucketParams{
+		BucketName:  bucket,
+		AccessKeyID: accessKeyID,
+	})
+
+	if err != nil || _bucket == nil {
+		logger.GetLogger("boulder").Errorf("bucket %s does not exist: %v", bucket, err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+			return
+		}
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		return
+	}
+
+	// 创建符合S3标准的响应结构
+	locationResult := sb.GetBucketLocationResult{
+		XMLName: xml.Name{Local: "LocationConstraint"},
+		XMLNS:   "http://s3.amazonaws.com/doc/2006-03-01/",
+	}
+	// 对于默认区域（如us-east-1），Location字段应该为空
+	if _bucket.Location != "" && _bucket.Location != "us-east-1" {
+		locationResult.Location = _bucket.Location
+	}
+
+	// 写入成功响应
+	xhttp.WriteAWSSuc(w, r, locationResult)
 }
 
 // GetBucketPolicyHandler 处理 GET Bucket Policy 请求

@@ -9,8 +9,9 @@ import (
 // BucketSSEConfiguration 表示存储桶加密配置 (AWS S3 规范)
 type BucketSSEConfiguration struct {
 	XMLName xml.Name  `xml:"ServerSideEncryptionConfiguration"`
-	Rule    *SSERule  `xml:"Rule"` // AWS 规范中 Rule 是单数形式，但允许多个规则
-	Rules   []SSERule `xml:"-"`    // 内部使用，方便处理多个规则
+	XMLNS   string    `xml:"xmlns,attr"` // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
+	Rule    *SSERule  `xml:"Rule"`       // AWS 规范中 Rule 是单数形式，但允许多个规则
+	Rules   []SSERule `xml:"-"`          // 内部使用，方便处理多个规则
 
 	CreatedAt time.Time `xml:"-"`
 	UpdatedAt time.Time `xml:"-"`
