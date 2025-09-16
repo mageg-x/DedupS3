@@ -496,7 +496,7 @@ func PutObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	var tagging meta.Tagging
 	if err := xml.Unmarshal(bodyBytes, &tagging); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to unmarshal tagging XML: %v", err)
-		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedRequestBody)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedXML)
 		return
 	}
 

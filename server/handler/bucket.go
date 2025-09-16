@@ -19,6 +19,7 @@ package handler
 import (
 	"encoding/xml"
 	"errors"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -29,6 +30,7 @@ import (
 	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/mageg-x/boulder/internal/logger"
 	"github.com/mageg-x/boulder/internal/utils"
+	"github.com/mageg-x/boulder/meta"
 	sb "github.com/mageg-x/boulder/service/bucket"
 )
 
@@ -302,8 +304,58 @@ func GetBucketLoggingHandler(w http.ResponseWriter, r *http.Request) {
 func GetBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: GetBucketTaggingHandler")
-	// TODO: 实现 GET Bucket Tagging 逻辑
-	w.WriteHeader(http.StatusOK)
+	bucket, _, region, accessKeyID := GetReqVar(r)
+
+	bs := sb.GetBucketService()
+	if bs == nil {
+		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	// 获取桶的元数据
+	_bucket, err := bs.GetBucketInfo(&sb.BaseBucketParams{
+		BucketName:  bucket,
+		Location:    region,
+		AccessKeyID: accessKeyID,
+	})
+
+	if err != nil || _bucket == nil {
+		logger.GetLogger("boulder").Errorf("bucket %s does not exist: %v", bucket, err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+			return
+		}
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		return
+	}
+
+	// 检查x-amz-expected-bucket-owner头部
+	expectedOwner := r.Header.Get("x-amz-expected-bucket-owner")
+	if expectedOwner != "" {
+		// 检查存储桶的实际所有者是否与请求的所有者匹配
+		if _bucket.Owner.ID != expectedOwner {
+			logger.GetLogger("boulder").Errorf("bucket owner mismatch: expected %s, got %s", expectedOwner, _bucket.Owner.ID)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketOwnerAWSAccountID)
+			return
+		}
+	}
+
+	// 创建符合S3标准的响应结构
+	result := &meta.Tagging{
+		XMLName: xml.Name{Local: "Tagging"},
+		XMLNS:   "http://s3.amazonaws.com/doc/2006-03-01/",
+		TagSet:  meta.TagSet{Tags: []meta.Tag{}},
+	}
+
+	// 如果桶有标签，添加到响应中
+	if _bucket.Tagging != nil && len(_bucket.Tagging.TagSet.Tags) > 0 {
+		result.TagSet.Tags = _bucket.Tagging.TagSet.Tags
+	}
+
+	// 写入成功响应
+	xhttp.WriteAWSSuc(w, r, result)
+	logger.GetLogger("boulder").Tracef("successfully retrieved tagging for bucket: %s", bucket)
 }
 
 // DeleteBucketWebsiteHandler 处理 DELETE Bucket Website 请求
@@ -318,8 +370,49 @@ func DeleteBucketWebsiteHandler(w http.ResponseWriter, r *http.Request) {
 func DeleteBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: DeleteBucketTaggingHandler")
-	// TODO: 实现 DELETE Bucket Tagging 逻辑
-	w.WriteHeader(http.StatusOK)
+	bucket, _, region, accessKeyID := GetReqVar(r)
+
+	// 获取bucket服务
+	bs := sb.GetBucketService()
+	if bs == nil {
+		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	// 获取x-amz-expected-bucket-owner头部
+	expectedOwner := r.Header.Get("x-amz-expected-bucket-owner")
+	expectedOwner = strings.TrimSpace(expectedOwner)
+
+	// 调用PutBucketTagging方法，传入空的标签集合来删除所有标签
+	err := bs.PutBucketTagging(&sb.BaseBucketParams{
+		BucketName:      bucket,
+		Location:        region,
+		AccessKeyID:     accessKeyID,
+		ExpectedOwnerID: expectedOwner,
+		Tags:            []meta.Tag{},
+	})
+
+	// 处理错误
+	if err != nil {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+			return
+		}
+
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+			return
+		}
+
+		logger.GetLogger("boulder").Errorf("failed to delete bucket %s tagging: %v", bucket, err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		return
+	}
+
+	// 返回成功响应（HTTP 204 No Content）
+	w.WriteHeader(http.StatusNoContent)
+	logger.GetLogger("boulder").Tracef("successfully deleted tagging for bucket: %s", bucket)
 }
 
 // GetBucketPolicyStatusHandler 处理 GET Bucket Policy Status 请求
@@ -374,8 +467,87 @@ func PutBucketObjectLockConfigHandler(w http.ResponseWriter, r *http.Request) {
 func PutBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: PutBucketTaggingHandler")
-	// TODO: 实现 PUT Bucket Tagging 逻辑
+	bucket, _, region, accessKeyID := GetReqVar(r)
+
+	// 读取请求体
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to read request body: %v", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedRequestBody)
+		return
+	}
+	defer r.Body.Close()
+
+	// 解析请求体中的标签信息
+	tagging := &meta.Tagging{}
+	if err := xml.Unmarshal(bodyBytes, &tagging); err != nil {
+		logger.GetLogger("boulder").Errorf("failed to unmarshal tagging XML: %v", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedXML)
+		return
+	}
+
+	// 验证标签数量限制（AWS S3 限制每个存储桶最多10个标签）
+	if len(tagging.TagSet.Tags) > 10 {
+		logger.GetLogger("boulder").Errorf("too many tags: %d", len(tagging.TagSet.Tags))
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidTag)
+		return
+	}
+
+	// 验证每个标签的键和值
+	for i, tag := range tagging.TagSet.Tags {
+		if tag.Key == "" {
+			logger.GetLogger("boulder").Errorf("tag key cannot be empty at index %d", i)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidTag)
+			return
+		}
+		if len(tag.Key) > 128 {
+			logger.GetLogger("boulder").Errorf("tag key too long: %s", tag.Key)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidTag)
+			return
+		}
+		if len(tag.Value) > 256 {
+			logger.GetLogger("boulder").Errorf("tag value too long: %s", tag.Value)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidTag)
+			return
+		}
+	}
+
+	expectedOwner := r.Header.Get("x-amz-expected-bucket-owner")
+	expectedOwner = strings.TrimSpace(expectedOwner)
+
+	bs := sb.GetBucketService()
+	if bs == nil {
+		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	err = bs.PutBucketTagging(&sb.BaseBucketParams{
+		BucketName:      bucket,
+		Location:        region,
+		AccessKeyID:     accessKeyID,
+		ExpectedOwnerID: expectedOwner,
+		Tags:            tagging.TagSet.Tags,
+	})
+	if err != nil {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+			return
+		}
+
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+			return
+		}
+
+		logger.GetLogger("boulder").Errorf("failed to put bucket %s tagging: %v", bucket, err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		return
+	}
+
+	// 返回成功响应
 	w.WriteHeader(http.StatusOK)
+	logger.GetLogger("boulder").Tracef("successfully set tagging for bucket: %s", bucket)
 }
 
 // PutBucketVersioningHandler 处理 PUT Bucket Versioning 请求

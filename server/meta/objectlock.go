@@ -8,25 +8,25 @@ import (
 
 // ObjectLockConfiguration 表示对象锁定配置
 type ObjectLockConfiguration struct {
-	XMLName           xml.Name        `xml:"ObjectLockConfiguration"`
-	XMLNS             string          `xml:"xmlns,attr"`        // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
-	ObjectLockEnabled string          `xml:"ObjectLockEnabled"` // Enabled
-	Rule              *ObjectLockRule `xml:"Rule,omitempty"`
+	XMLName           xml.Name        `xml:"ObjectLockConfiguration" json:"objectLockConfiguration"`
+	XMLNS             string          `xml:"xmlns,attr" json:"xmlns"`                    // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
+	ObjectLockEnabled string          `xml:"ObjectLockEnabled" json:"objectLockEnabled"` // Enabled
+	Rule              *ObjectLockRule `xml:"Rule,omitempty" json:"rule"`
 
-	CreatedAt time.Time `xml:"-"`
-	UpdatedAt time.Time `xml:"-"`
+	CreatedAt time.Time `xml:"-" json:"createdAt"`
+	UpdatedAt time.Time `xml:"-" json:"updatedAt"`
 }
 
 // ObjectLockRule 表示对象锁定规则
 type ObjectLockRule struct {
-	DefaultRetention *DefaultRetention `xml:"DefaultRetention"`
+	DefaultRetention *DefaultRetention `xml:"DefaultRetention" json:"defaultRetention"`
 }
 
 // DefaultRetention 表示默认保留设置
 type DefaultRetention struct {
-	Mode  string `xml:"Mode"` // GOVERNANCE | COMPLIANCE
-	Days  int    `xml:"Days,omitempty"`
-	Years int    `xml:"Years,omitempty"`
+	Mode  string `xml:"Mode" json:"mode"` // GOVERNANCE | COMPLIANCE
+	Days  int    `xml:"Days,omitempty" json:"days"`
+	Years int    `xml:"Years,omitempty" json:"years"`
 }
 
 // Retention 表示对象保留设置

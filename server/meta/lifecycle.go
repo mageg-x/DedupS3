@@ -25,73 +25,73 @@ import (
 
 // LifecycleConfiguration 表示生命周期配置
 type LifecycleConfiguration struct {
-	XMLName xml.Name        `xml:"LifecycleConfiguration"`
-	XMLNS   string          `xml:"xmlns,attr"` // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
-	Rules   []LifecycleRule `xml:"Rule"`
+	XMLName xml.Name        `xml:"LifecycleConfiguration" json:"lifecycleConfiguration"`
+	XMLNS   string          `xml:"xmlns,attr" json:"xmlns"` // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
+	Rules   []LifecycleRule `xml:"Rule" json:"rules"`
 
-	CreatedAt time.Time `xml:"-"`
-	UpdatedAt time.Time `xml:"-"`
+	CreatedAt time.Time `xml:"-" json:"createdAt"`
+	UpdatedAt time.Time `xml:"-" json:"updatedAt"`
 }
 
 // LifecycleRule 表示生命周期规则
 type LifecycleRule struct {
-	ID                             string                          `xml:"ID,omitempty"`
-	Status                         string                          `xml:"Status"` // Enabled | Disabled
-	Filter                         *LifeCycleFilter                `xml:"Filter"`
-	Expiration                     *Expiration                     `xml:"Expiration,omitempty"`
-	Transition                     *Transition                     `xml:"Transition,omitempty"`
-	NoncurrentVersionExpiration    *NoncurrentVersionExpiration    `xml:"NoncurrentVersionExpiration,omitempty"`
-	NoncurrentVersionTransition    *NoncurrentVersionTransition    `xml:"NoncurrentVersionTransition,omitempty"`
-	AbortIncompleteMultipartUpload *AbortIncompleteMultipartUpload `xml:"AbortIncompleteMultipartUpload,omitempty"`
+	ID                             string                          `xml:"ID,omitempty" json:"id"`
+	Status                         string                          `xml:"Status" json:"status"` // Enabled | Disabled
+	Filter                         *LifeCycleFilter                `xml:"Filter" json:"filter"`
+	Expiration                     *Expiration                     `xml:"Expiration,omitempty" json:"expiration"`
+	Transition                     *Transition                     `xml:"Transition,omitempty" json:"transition"`
+	NoncurrentVersionExpiration    *NoncurrentVersionExpiration    `xml:"NoncurrentVersionExpiration,omitempty" json:"noncurrentVersionExpiration"`
+	NoncurrentVersionTransition    *NoncurrentVersionTransition    `xml:"NoncurrentVersionTransition,omitempty" json:"noncurrentVersionTransition"`
+	AbortIncompleteMultipartUpload *AbortIncompleteMultipartUpload `xml:"AbortIncompleteMultipartUpload,omitempty" json:"abortIncompleteMultipartUpload"`
 }
 
 // LifeCycleFilter 表示对象过滤规则
 type LifeCycleFilter struct {
-	Prefix string        `xml:"Prefix,omitempty"`
-	And    *AndOperator  `xml:"And,omitempty"`
-	Tag    *LifeCycleTag `xml:"Tag,omitempty"`
+	Prefix string        `xml:"Prefix,omitempty" json:"prefix"`
+	And    *AndOperator  `xml:"And,omitempty" json:"and"`
+	Tag    *LifeCycleTag `xml:"Tag,omitempty" json:"tag"`
 }
 
 // AndOperator 表示AND条件
 type AndOperator struct {
-	Prefix string         `xml:"Prefix,omitempty"`
-	Tags   []LifeCycleTag `xml:"Tag,omitempty"`
+	Prefix string         `xml:"Prefix,omitempty" json:"prefix"`
+	Tags   []LifeCycleTag `xml:"Tag,omitempty" json:"tags"`
 }
 
 // LifeCycleTag 表示对象标签
 type LifeCycleTag struct {
-	Key   string `xml:"Key"`
-	Value string `xml:"Value"`
+	Key   string `xml:"Key" json:"key"`
+	Value string `xml:"Value" json:"value"`
 }
 
 // Expiration 表示对象过期规则
 type Expiration struct {
-	Date                      *time.Time `xml:"Date,omitempty"`
-	Days                      int        `xml:"Days,omitempty"`
-	ExpiredObjectDeleteMarker bool       `xml:"ExpiredObjectDeleteMarker,omitempty"`
+	Date                      *time.Time `xml:"Date,omitempty" json:"date"`
+	Days                      int        `xml:"Days,omitempty" json:"days"`
+	ExpiredObjectDeleteMarker bool       `xml:"ExpiredObjectDeleteMarker,omitempty" json:"expiredObjectDeleteMarker"`
 }
 
 // Transition 表示存储类型转换规则
 type Transition struct {
-	Date         *time.Time `xml:"Date,omitempty"`
-	Days         int        `xml:"Days,omitempty"`
-	StorageClass string     `xml:"StorageClass"`
+	Date         *time.Time `xml:"Date,omitempty" json:"date"`
+	Days         int        `xml:"Days,omitempty" json:"days"`
+	StorageClass string     `xml:"StorageClass" json:"storageClass"`
 }
 
 // NoncurrentVersionExpiration 表示非当前版本过期规则
 type NoncurrentVersionExpiration struct {
-	NoncurrentDays int `xml:"NoncurrentDays"`
+	NoncurrentDays int `xml:"NoncurrentDays" json:"noncurrentDays"`
 }
 
 // NoncurrentVersionTransition 表示非当前版本转换规则
 type NoncurrentVersionTransition struct {
-	NoncurrentDays int    `xml:"NoncurrentDays"`
-	StorageClass   string `xml:"StorageClass"`
+	NoncurrentDays int    `xml:"NoncurrentDays" json:"noncurrentDays"`
+	StorageClass   string `xml:"StorageClass" json:"storageClass"`
 }
 
 // AbortIncompleteMultipartUpload 表示分段上传中止规则
 type AbortIncompleteMultipartUpload struct {
-	DaysAfterInitiation int `xml:"DaysAfterInitiation"`
+	DaysAfterInitiation int `xml:"DaysAfterInitiation" json:"daysAfterInitiation"`
 }
 
 // AddRule 添加新的生命周期规则

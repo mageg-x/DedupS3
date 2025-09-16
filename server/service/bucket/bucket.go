@@ -67,6 +67,8 @@ type BaseBucketParams struct {
 	Location          string
 	ObjectLockEnabled bool
 	AccessKeyID       string
+	ExpectedOwnerID   string
+	Tags              []meta.Tag
 }
 
 func GetBucketService() *BucketService {
@@ -347,5 +349,95 @@ func (b *BucketService) DeleteBucket(params *BaseBucketParams) error {
 	}
 
 	logger.GetLogger("boulder").Tracef("successfully deleted bucket: %s", params.BucketName)
+	return nil
+}
+
+func (b *BucketService) PutBucketTagging(params *BaseBucketParams) error {
+	// 获取IAM服务
+	iamService := iam.GetIamService()
+	if iamService == nil {
+		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		return errors.New("failed to get iam service")
+	}
+
+	// 验证访问密钥
+	ak, err := iamService.GetAccessKey(params.AccessKeyID)
+	if err != nil || ak == nil {
+		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	ac, err := iamService.GetAccount(ak.AccountID)
+	if err != nil || ac == nil {
+		logger.GetLogger("boulder").Errorf("failed to get account %s", ak.AccountID)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	// 构建存储桶key
+	bucketKey := "aws:bucket:" + ak.AccountID + ":" + params.BucketName
+
+	// 开始事务
+	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		return fmt.Errorf("failed to initialize kvstore txn: %v", err)
+	}
+	defer func() {
+		if txn != nil {
+			_ = txn.Rollback()
+		}
+	}()
+
+	// 检查存储桶是否存在
+	var bucket meta.BucketMetadata
+	exist, err := txn.Get(bucketKey, &bucket)
+	if !exist || err != nil {
+		logger.GetLogger("boulder").Errorf("bucket %s does not exist", params.BucketName)
+		return xhttp.ToError(xhttp.ErrNoSuchBucket)
+	}
+
+	// 检查用户是否是存储桶所有者
+	if bucket.Owner.ID != ac.AccountID {
+		logger.GetLogger("boulder").Errorf("access denied: user %s :%s is not the owner of bucket %s", ac.AccountID, bucket.Owner.ID, params.BucketName)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	if params.ExpectedOwnerID != "" {
+		// 检查存储桶的实际所有者是否与请求的所有者匹配
+		if bucket.Owner.ID != params.ExpectedOwnerID {
+			logger.GetLogger("boulder").Errorf("bucket owner mismatch: expected %s, got %s", params.ExpectedOwnerID, bucket.Owner.ID)
+			return xhttp.ToError(xhttp.ErrAccessDenied)
+		}
+	}
+	// 设置标签
+	currentTime := time.Now().UTC()
+	bucket.Tagging = &meta.Tagging{
+		XMLName:   xml.Name{Local: "Tagging"},
+		XMLNS:     "http://s3.amazonaws.com/doc/2006-03-01/",
+		CreatedAt: currentTime,
+		UpdatedAt: currentTime,
+		TagSet: meta.TagSet{
+			Tags: params.Tags,
+		},
+	}
+
+	err = txn.Set(bucketKey, &bucket)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to set bucket tags: %v", err)
+		return fmt.Errorf("failed to set bucket tags: %v", err)
+	}
+
+	// 提交事务
+	if err := txn.Commit(); err != nil {
+		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		return fmt.Errorf("failed to commit transaction: %v", err)
+	}
+	txn = nil
+
+	// 清除缓存
+	if cache, e := xcache.GetCache(); e == nil && cache != nil {
+		_ = cache.Del(context.Background(), bucketKey)
+	}
+
 	return nil
 }

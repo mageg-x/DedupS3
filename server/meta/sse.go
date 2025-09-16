@@ -8,25 +8,25 @@ import (
 
 // BucketSSEConfiguration 表示存储桶加密配置 (AWS S3 规范)
 type BucketSSEConfiguration struct {
-	XMLName xml.Name  `xml:"ServerSideEncryptionConfiguration"`
-	XMLNS   string    `xml:"xmlns,attr"` // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
-	Rule    *SSERule  `xml:"Rule"`       // AWS 规范中 Rule 是单数形式，但允许多个规则
-	Rules   []SSERule `xml:"-"`          // 内部使用，方便处理多个规则
+	XMLName xml.Name  `xml:"ServerSideEncryptionConfiguration" json:"serverSideEncryptionConfiguration"`
+	XMLNS   string    `xml:"xmlns,attr" json:"xmlns"` // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
+	Rule    *SSERule  `xml:"Rule" json:"rule"`        // AWS 规范中 Rule 是单数形式，但允许多个规则
+	Rules   []SSERule `xml:"-" json:"rules"`          // 内部使用，方便处理多个规则
 
-	CreatedAt time.Time `xml:"-"`
-	UpdatedAt time.Time `xml:"-"`
+	CreatedAt time.Time `xml:"-" json:"createdAt"`
+	UpdatedAt time.Time `xml:"-" json:"updatedAt"`
 }
 
 // SSERule 表示加密规则 (AWS S3 规范)
 type SSERule struct {
-	ApplyServerSideEncryptionByDefault *SSEDefault `xml:"ApplyServerSideEncryptionByDefault"`
-	BucketKeyEnabled                   bool        `xml:"BucketKeyEnabled,omitempty"`
+	ApplyServerSideEncryptionByDefault *SSEDefault `xml:"ApplyServerSideEncryptionByDefault" json:"applyServerSideEncryptionByDefault"`
+	BucketKeyEnabled                   bool        `xml:"BucketKeyEnabled,omitempty" json:"bucketKeyEnabled"`
 }
 
 // SSEDefault 表示默认加密设置 (AWS S3 规范)
 type SSEDefault struct {
-	SSEAlgorithm   string `xml:"SSEAlgorithm"` // AES256 | aws:kms | aws:kms:dsse
-	KMSMasterKeyID string `xml:"KMSMasterKeyID,omitempty"`
+	SSEAlgorithm   string `xml:"SSEAlgorithm" json:"sseAlgorithm"` // AES256 | aws:kms | aws:kms:dsse
+	KMSMasterKeyID string `xml:"KMSMasterKeyID,omitempty" json:"kmsMasterKeyId"`
 }
 
 // ApplyDefaultEncryption 应用默认加密设置 (符合AWS规范)

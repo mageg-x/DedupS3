@@ -9,83 +9,83 @@ import (
 
 // ReplicationConfiguration 表示跨区域复制配置
 type ReplicationConfiguration struct {
-	XMLName xml.Name `xml:"ReplicationConfiguration"`
-	XMLNS   string   `xml:"xmlns,attr"` // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
-	Role    string   `xml:"Role"`       // IAM角色ARN
-	Rules   []Rule   `xml:"Rule"`
+	XMLName xml.Name `xml:"ReplicationConfiguration" json:"replicationConfiguration"`
+	XMLNS   string   `xml:"xmlns,attr" json:"xmlns"` // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
+	Role    string   `xml:"Role" json:"role"`        // IAM角色ARN
+	Rules   []Rule   `xml:"Rule" json:"rules"`
 
-	CreatedAt time.Time `xml:"-"`
-	UpdatedAt time.Time `xml:"-"`
+	CreatedAt time.Time `xml:"-" json:"createdAt"`
+	UpdatedAt time.Time `xml:"-" json:"updatedAt"`
 }
 
 // Rule 表示复制规则
 type Rule struct {
-	ID                        string                     `xml:"ID,omitempty"`
-	Status                    string                     `xml:"Status"` // Enabled | Disabled
-	Priority                  int                        `xml:"Priority,omitempty"`
-	DeleteMarkerReplication   *DeleteMarkerReplication   `xml:"DeleteMarkerReplication,omitempty"`
-	Filter                    *ReplFilter                `xml:"Filter,omitempty"`
-	SourceSelectionCriteria   *SourceSelectionCriteria   `xml:"SourceSelectionCriteria,omitempty"`
-	ExistingObjectReplication *ExistingObjectReplication `xml:"ExistingObjectReplication,omitempty"`
-	Destination               Destination                `xml:"Destination"`
+	ID                        string                     `xml:"ID,omitempty" json:"id"`
+	Status                    string                     `xml:"Status" json:"status"` // Enabled | Disabled
+	Priority                  int                        `xml:"Priority,omitempty" json:"priority"`
+	DeleteMarkerReplication   *DeleteMarkerReplication   `xml:"DeleteMarkerReplication,omitempty" json:"deleteMarkerReplication"`
+	Filter                    *ReplFilter                `xml:"Filter,omitempty" json:"filter"`
+	SourceSelectionCriteria   *SourceSelectionCriteria   `xml:"SourceSelectionCriteria,omitempty" json:"sourceSelectionCriteria"`
+	ExistingObjectReplication *ExistingObjectReplication `xml:"ExistingObjectReplication,omitempty" json:"existingObjectReplication"`
+	Destination               Destination                `xml:"Destination" json:"destination"`
 }
 
 // ReplFilter 表示复制规则过滤条件
 type ReplFilter struct {
-	Prefix string             `xml:"Prefix,omitempty"`
-	And    *FilterAndOperator `xml:"And,omitempty"`
-	Tag    *ReplTag           `xml:"Tag,omitempty"`
+	Prefix string             `xml:"Prefix,omitempty" json:"prefix"`
+	And    *FilterAndOperator `xml:"And,omitempty" json:"and"`
+	Tag    *ReplTag           `xml:"Tag,omitempty" json:"tag"`
 }
 
 // FilterAndOperator 表示AND条件
 type FilterAndOperator struct {
-	Prefix string    `xml:"Prefix,omitempty"`
-	Tags   []ReplTag `xml:"Tag,omitempty"`
+	Prefix string    `xml:"Prefix,omitempty" json:"prefix"`
+	Tags   []ReplTag `xml:"Tag,omitempty" json:"tags"`
 }
 
 // ReplTag 表示对象标签
 type ReplTag struct {
-	Key   string `xml:"Key"`
-	Value string `xml:"Value"`
+	Key   string `xml:"Key" json:"key"`
+	Value string `xml:"Value" json:"value"`
 }
 
 // DeleteMarkerReplication 表示删除标记复制设置
 type DeleteMarkerReplication struct {
-	Status string `xml:"Status"` // Enabled | Disabled
+	Status string `xml:"Status" json:"status"` // Enabled | Disabled
 }
 
 // SourceSelectionCriteria 表示源对象选择标准
 type SourceSelectionCriteria struct {
-	SseKmsEncryptedObjects *SseKmsEncryptedObjects `xml:"SseKmsEncryptedObjects,omitempty"`
+	SseKmsEncryptedObjects *SseKmsEncryptedObjects `xml:"SseKmsEncryptedObjects,omitempty" json:"sseKmsEncryptedObjects"`
 }
 
 // SseKmsEncryptedObjects 表示SSE-KMS加密对象
 type SseKmsEncryptedObjects struct {
-	Status string `xml:"Status"` // Enabled | Disabled
+	Status string `xml:"Status" json:"status"` // Enabled | Disabled
 }
 
 // ExistingObjectReplication 表示现有对象复制
 type ExistingObjectReplication struct {
-	Status string `xml:"Status"` // Enabled | Disabled
+	Status string `xml:"Status" json:"status"` // Enabled | Disabled
 }
 
 // Destination 表示复制目标
 type Destination struct {
-	Bucket                   string                    `xml:"Bucket"` // 目标存储桶ARN
-	StorageClass             string                    `xml:"StorageClass,omitempty"`
-	EncryptionConfiguration  *EncryptionConfiguration  `xml:"EncryptionConfiguration,omitempty"`
-	AccessControlTranslation *AccessControlTranslation `xml:"AccessControlTranslation,omitempty"`
-	Account                  string                    `xml:"Account,omitempty"` // 目标账户ID
+	Bucket                   string                    `xml:"Bucket" json:"bucket"` // 目标存储桶ARN
+	StorageClass             string                    `xml:"StorageClass,omitempty" json:"storageClass"`
+	EncryptionConfiguration  *EncryptionConfiguration  `xml:"EncryptionConfiguration,omitempty" json:"encryptionConfiguration"`
+	AccessControlTranslation *AccessControlTranslation `xml:"AccessControlTranslation,omitempty" json:"accessControlTranslation"`
+	Account                  string                    `xml:"Account,omitempty" json:"account"` // 目标账户ID
 }
 
 // EncryptionConfiguration 表示目标加密配置
 type EncryptionConfiguration struct {
-	ReplicaKmsKeyID string `xml:"ReplicaKmsKeyID"`
+	ReplicaKmsKeyID string `xml:"ReplicaKmsKeyID" json:"replicaKmsKeyId"`
 }
 
 // AccessControlTranslation 表示访问控制翻译
 type AccessControlTranslation struct {
-	Owner string `xml:"Owner"` // Destination
+	Owner string `xml:"Owner" json:"owner"` // Destination
 }
 
 // AddRule 添加新的复制规则

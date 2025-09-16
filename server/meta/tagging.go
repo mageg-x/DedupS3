@@ -24,23 +24,23 @@ import (
 
 // Tagging 表示存储桶标签配置
 type Tagging struct {
-	XMLName xml.Name `xml:"Tagging"`
-	XMLNS   string   `xml:"xmlns,attr"` // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
-	TagSet  TagSet   `xml:"TagSet"`
+	XMLName xml.Name `xml:"Tagging" json:"tagging"`
+	XMLNS   string   `xml:"xmlns,attr" json:"xmlns"` // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
+	TagSet  TagSet   `xml:"TagSet" json:"tagSet"`
 
-	CreatedAt time.Time `xml:"-"`
-	UpdatedAt time.Time `xml:"-"`
+	CreatedAt time.Time `xml:"-" json:"createdAt"`
+	UpdatedAt time.Time `xml:"-" json:"updatedAt"`
 }
 
 // TagSet 表示标签集合
 type TagSet struct {
-	Tags []Tag `xml:"Tag"`
+	Tags []Tag `xml:"Tag" json:"tags"`
 }
 
 // Tag 表示单个标签
 type Tag struct {
-	Key   string `xml:"Key"`
-	Value string `xml:"Value"`
+	Key   string `xml:"Key" json:"key"`
+	Value string `xml:"Value" json:"value"`
 }
 
 // AddTag 添加新标签

@@ -447,12 +447,523 @@ const (
 
 	ERRNotModify
 	ErrMalformedRequestBody
+
+	// AWS errors not previously defined
+	ErrAccessControlListNotSupported
+	ErrAccessPointAlreadyOwnedByYou
+	ErrAccountProblem
+	ErrAmbiguousGrantByEmailAddress
+	ErrBucketHasAccessPointsAttached
+	ErrClientTokenConflict
+	ErrConnectionClosedByRequester
+	ErrConditionalRequestConflict
+	ErrCredentialsNotSupported
+	ErrCrossLocationLoggingProhibited
+	ErrDeviceNotActiveError
+	ErrEndpointNotFound
+	ErrExpiredToken
+	ErrIllegalLocationConstraintException
+	ErrIllegalVersioningConfigurationException
+	ErrIncorrectEndpoint
+	ErrIncorrectNumberOfFilesInPostRequest
+	ErrInlineDataTooLarge
+	ErrInvalidAccessPoint
+	ErrInvalidAccessPointAliasError
+	ErrInvalidAddressingHeader
+	ErrInvalidBucketAclWithObjectOwnership
+	ErrInvalidBucketOwnerAWSAccountID
+	ErrInvalidBucketState
+	ErrInvalidEncryptionAlgorithmError
+	ErrInvalidHostHeader
+	ErrInvalidHttpMethod
+	ErrInvalidLocationConstraint
+	ErrInvalidPayer
+	ErrInvalidSessionException
+	ErrInvalidSignature
+	ErrInvalidSecurity
+	ErrInvalidSOAPRequest
+	ErrInvalidTargetBucketForLogging
+	ErrInvalidURI
+	ErrKMSDisabledException
+	ErrKMSInvalidKeyUsageException
+	ErrKMSKMSInvalidStateException
+	ErrKMSNotFoundException
+	ErrMalformedACLError
+	ErrMaxMessageLengthExceeded
+	ErrMaxPostPreDataLengthExceededError
+	ErrMissingAttachment
+	ErrMissingSecurityElement
+	ErrNoLoggingStatusForKey
+	ErrNoSuchAsyncRequest
+	ErrNoSuchTagSet
+	ErrNotDeviceOwnerError
+	ErrNotModified
+	ErrNoTransformationDefined
+	ErrNotSignedUp
+	ErrObjectLockConfigurationNotFoundError
+	ErrOwnershipControlsNotFoundError
+	ErrOperationAborted
+	ErrPermanentRedirect
+	ErrPermanentRedirectControlError
+	ErrRedirect
+	ErrRequestHeaderSectionTooLarge
+	ErrRequestIsNotMultiPartContent
+	ErrRequestTorrentOfBucketError
+	ErrResponseInterrupted
+	ErrServerSideEncryptionConfigurationNotFoundError
+	ErrServiceUnavailable
+	ErrSlowDown
+	ErrTagPolicyException
+	ErrTemporaryRedirect
+	ErrTokenCodeInvalidError
+	ErrTokenRefreshRequired
+	ErrTooManyAccessPoints
+	ErrTooManyBuckets
+	ErrTooManyMultiRegionAccessPointregionsError
+	ErrTooManyMultiRegionAccessPoints
+	ErrUnauthorizedAccessError
+	ErrUnexpectedContent
+	ErrUnexpectedIPError
+	ErrUnsupportedArgument
+	ErrUnsupportedSignature
+	ErrUnresolvableGrantByEmailAddress
+	ErrUserKeyMustBeSpecified
+	ErrNoSuchAccessPoint
+	ErrInvalidTag
+	ErrMalformedPolicy
+
 	apiErrCodeEnd // This is used only for the testing code
 )
 
 // error code to APIError structure, these fields carry respective
 // descriptions for all the error responses.
 var errorCodes = errorCodeMap{
+	// AWS errors not previously defined
+	ErrAccessControlListNotSupported: {
+		Code:           "AccessControlListNotSupported",
+		Description:    "The bucket does not allow ACLs.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrAccessPointAlreadyOwnedByYou: {
+		Code:           "AccessPointAlreadyOwnedByYou",
+		Description:    "An access point with an identical name already exists in your account.",
+		HTTPStatusCode: http.StatusConflict,
+	},
+	ErrAccountProblem: {
+		Code:           "AccountProblem",
+		Description:    "There is a problem with your AWS account that prevents the operation from completing successfully. For further assistance, see Contact Us.",
+		HTTPStatusCode: http.StatusForbidden,
+	},
+	ErrAmbiguousGrantByEmailAddress: {
+		Code:           "AmbiguousGrantByEmailAddress",
+		Description:    "The email address that you provided is associated with more than one account.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrBucketHasAccessPointsAttached: {
+		Code:           "BucketHasAccessPointsAttached",
+		Description:    "The bucket you tried to delete has access points attached. Delete your access points before deleting your bucket.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrClientTokenConflict: {
+		Code:           "ClientTokenConflict",
+		Description:    "Your Multi-Region Access Point idempotency token was already used for a different request.",
+		HTTPStatusCode: http.StatusConflict,
+	},
+	ErrConnectionClosedByRequester: {
+		Code:           "ConnectionClosedByRequester",
+		Description:    "Returned to the original caller when an error is encountered while reading the WriteGetObjectResponse body.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrConditionalRequestConflict: {
+		Code:           "ConditionalRequestConflict",
+		Description:    "A conflicting operation occurred. If using PutObject you can retry the request. If using multipart upload you should initiate another CreateMultipartUpload request and re-upload each part.",
+		HTTPStatusCode: http.StatusConflict,
+	},
+	ErrCredentialsNotSupported: {
+		Code:           "CredentialsNotSupported",
+		Description:    "This request does not support credentials.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrCrossLocationLoggingProhibited: {
+		Code:           "CrossLocationLoggingProhibited",
+		Description:    "Cross-Region logging is not allowed. Buckets in one AWS Region cannot log information to a bucket in another Region.",
+		HTTPStatusCode: http.StatusForbidden,
+	},
+	ErrDeviceNotActiveError: {
+		Code:           "DeviceNotActiveError",
+		Description:    "The device is not currently active.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrEndpointNotFound: {
+		Code:           "EndpointNotFound",
+		Description:    "Direct requests to the correct endpoint.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrExpiredToken: {
+		Code:           "ExpiredToken",
+		Description:    "The provided token has expired.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrIllegalLocationConstraintException: {
+		Code:           "IllegalLocationConstraintException",
+		Description:    "This error might occur for the following reasons: You are trying to access a bucket from a different Region than where the bucket exists. You attempt to create a bucket with a location constraint that corresponds to a different region than the regional endpoint the request was sent to.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrIllegalVersioningConfigurationException: {
+		Code:           "IllegalVersioningConfigurationException",
+		Description:    "The versioning configuration specified in the request is not valid.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrIncorrectEndpoint: {
+		Code:           "IncorrectEndpoint",
+		Description:    "The specified bucket exists in another Region. Direct requests to the correct endpoint.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrIncorrectNumberOfFilesInPostRequest: {
+		Code:           "IncorrectNumberOfFilesInPostRequest",
+		Description:    "POST requires exactly one file upload per request.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrInlineDataTooLarge: {
+		Code:           "InlineDataTooLarge",
+		Description:    "The inline data exceeds the maximum allowed size.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrInvalidAccessPoint: {
+		Code:           "InvalidAccessPoint",
+		Description:    "The specified access point name or account is not valid.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrInvalidAccessPointAliasError: {
+		Code:           "InvalidAccessPointAliasError",
+		Description:    "The specified access point alias name is not valid.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrInvalidAddressingHeader: {
+		Code:           "InvalidAddressingHeader",
+		Description:    "You must specify the Anonymous role.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrInvalidBucketAclWithObjectOwnership: {
+		Code:           "InvalidBucketAclWithObjectOwnership",
+		Description:    "Bucket cannot have ACLs set with ObjectOwnership's BucketOwnerEnforced setting.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrInvalidBucketOwnerAWSAccountID: {
+		Code:           "InvalidBucketOwnerAWSAccountID",
+		Description:    "The value of the expected bucket owner parameter must be an AWS account ID.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrInvalidBucketState: {
+		Code:           "InvalidBucketState",
+		Description:    "The request is not valid for the current state of the bucket.",
+		HTTPStatusCode: http.StatusConflict,
+	},
+	ErrInvalidEncryptionAlgorithmError: {
+		Code:           "InvalidEncryptionAlgorithmError",
+		Description:    "The encryption request that you specified is not valid. The valid value is AES256.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrInvalidHostHeader: {
+		Code:           "InvalidHostHeader",
+		Description:    "The host headers provided in the request used the incorrect style addressing.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrInvalidHttpMethod: {
+		Code:           "InvalidHttpMethod",
+		Description:    "The request is made using an unexpected HTTP method.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrInvalidLocationConstraint: {
+		Code:           "InvalidLocationConstraint",
+		Description:    "The specified location (Region) constraint is not valid. For more information about selecting a Region for your buckets, see Buckets overview.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrInvalidObjectState: {
+		Code:           "InvalidObjectState",
+		Description:    "The operation is not valid for the current state of the object.",
+		HTTPStatusCode: http.StatusForbidden,
+	},
+	ErrInvalidPayer: {
+		Code:           "InvalidPayer",
+		Description:    "All access to this object has been disabled. For further assistance, see Contact Us.",
+		HTTPStatusCode: http.StatusForbidden,
+	},
+	ErrInvalidRegion: {
+		Code:           "InvalidRegion",
+		Description:    "You've attempted to create a Multi-Region Access Point in a Region that you haven't opted in to.",
+		HTTPStatusCode: http.StatusForbidden,
+	},
+	ErrInvalidSessionException: {
+		Code:           "InvalidSessionException",
+		Description:    "Returned if the session doesn't exist anymore because it timed out or expired.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrInvalidSignature: {
+		Code:           "InvalidSignature",
+		Description:    "The request signature that the server calculated does not match the signature that you provided. Check your AWS secret access key and signing method. For more information, see Signing and authenticating REST requests.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrInvalidSecurity: {
+		Code:           "InvalidSecurity",
+		Description:    "The provided security credentials are not valid.",
+		HTTPStatusCode: http.StatusForbidden,
+	},
+	ErrInvalidSOAPRequest: {
+		Code:           "InvalidSOAPRequest",
+		Description:    "The SOAP request body is not valid.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrInvalidTargetBucketForLogging: {
+		Code:           "InvalidTargetBucketForLogging",
+		Description:    "The target bucket for logging either does not exist, is not owned by you, or does not have the appropriate grants for the log-delivery group.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrInvalidToken: {
+		Code:           "InvalidToken",
+		Description:    "The provided token is malformed or otherwise not valid.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrInvalidURI: {
+		Code:           "InvalidURI",
+		Description:    "The specified URI couldn't be parsed.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrKMSDisabledException: {
+		Code:           "KMS.DisabledException",
+		Description:    "The request was rejected because the specified KMS key is not enabled.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrKMSInvalidKeyUsageException: {
+		Code:           "KMS.InvalidKeyUsageException",
+		Description:    "The request was rejected for one of the following reasons: The KeyUsage value of the KMS key is incompatible with the API operation. The encryption algorithm or signing algorithm specified for the operation is incompatible with the type of key material in the KMS key (KeySpec). For encrypting, decrypting, re-encrypting, and generating data keys, the KeyUsage must be ENCRYPT_DECRYPT. For signing and verifying messages, the KeyUsage must be SIGN_VERIFY. For generating and verifying message authentication codes (MACs), the KeyUsage must be GENERATE_VERIFY_MAC. For deriving key agreement secrets, the KeyUsage must be KEY_AGREEMENT. To find the KeyUsage of a KMS key, use the DescribeKey operation. To find the encryption or signing algorithms supported for a particular KMS key, use the DescribeKey operation.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrKMSKMSInvalidStateException: {
+		Code:           "KMS.KMSInvalidStateException",
+		Description:    "The request was rejected because the state of the specified resource is not valid for this request. This exception means one of the following: The key state of the KMS key is not compatible with the operation. To find the key state, use the DescribeKey operation. For more information about which key states are compatible with each KMS operation, see Key states of AWS KMS keys in the AWS Key Management Service Developer Guide. For cryptographic operations on KMS keys in custom key stores, this exception represents a general failure with many possible causes. To identify the cause, see the error message that accompanies the exception.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrKMSNotFoundException: {
+		Code:           "KMS.NotFoundException",
+		Description:    "The request was rejected because the specified entity or resource could not be found.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrMalformedACLError: {
+		Code:           "MalformedACLError",
+		Description:    "The ACL that you provided was not well formed or did not validate against our published schema.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrMaxMessageLengthExceeded: {
+		Code:           "MaxMessageLengthExceeded",
+		Description:    "Your request was too large.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrMaxPostPreDataLengthExceededError: {
+		Code:           "MaxPostPreDataLengthExceededError",
+		Description:    "Your POST request fields preceding the upload file were too large.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrMissingAttachment: {
+		Code:           "MissingAttachment",
+		Description:    "A SOAP attachment was expected, but none was found.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrMissingSecurityElement: {
+		Code:           "MissingSecurityElement",
+		Description:    "The SOAP 1.1 request is missing a security element.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrNoLoggingStatusForKey: {
+		Code:           "NoLoggingStatusForKey",
+		Description:    "There is no such thing as a logging status subresource for a key.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrNoSuchAsyncRequest: {
+		Code:           "NoSuchAsyncRequest",
+		Description:    "The specified request was not found.",
+		HTTPStatusCode: http.StatusNotFound,
+	},
+	ErrNoSuchTagSet: {
+		Code:           "NoSuchTagSet",
+		Description:    "The specified tag does not exist.",
+		HTTPStatusCode: http.StatusNotFound,
+	},
+	ErrNotDeviceOwnerError: {
+		Code:           "NotDeviceOwnerError",
+		Description:    "The device that generated the token is not owned by the authenticated user.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrNotModified: {
+		Code:           "NotModified",
+		Description:    "The resource was not changed.",
+		HTTPStatusCode: http.StatusNotModified,
+	},
+	ErrNoTransformationDefined: {
+		Code:           "NoTransformationDefined",
+		Description:    "No transformation found for this Object Lambda Access Point.",
+		HTTPStatusCode: http.StatusNotFound,
+	},
+	ErrNotSignedUp: {
+		Code:           "NotSignedUp",
+		Description:    "Your account is not signed up for the Amazon S3 service. You must sign up before you can use Amazon S3. You can sign up at the following URL: https://aws.amazon.com/s3",
+		HTTPStatusCode: http.StatusForbidden,
+	},
+	ErrObjectLockConfigurationNotFoundError: {
+		Code:           "ObjectLockConfigurationNotFoundError",
+		Description:    "The Object Lock configuration does not exist for this bucket.",
+		HTTPStatusCode: http.StatusNotFound,
+	},
+	ErrOwnershipControlsNotFoundError: {
+		Code:           "OwnershipControlsNotFoundError",
+		Description:    "The bucket ownership controls were not found.",
+		HTTPStatusCode: http.StatusNotFound,
+	},
+	ErrOperationAborted: {
+		Code:           "OperationAborted",
+		Description:    "A conflicting conditional operation is currently in progress against this resource. Try again.",
+		HTTPStatusCode: http.StatusConflict,
+	},
+	ErrPermanentRedirect: {
+		Code:           "PermanentRedirect",
+		Description:    "The bucket that you are attempting to access must be addressed using the specified endpoint. Send all future requests to this endpoint.",
+		HTTPStatusCode: http.StatusMovedPermanently,
+	},
+	ErrPermanentRedirectControlError: {
+		Code:           "PermanentRedirectControlError",
+		Description:    "The API operation you are attempting to access must be addressed using the specified endpoint. Send all future requests to this endpoint.",
+		HTTPStatusCode: http.StatusMovedPermanently,
+	},
+	ErrRedirect: {
+		Code:           "Redirect",
+		Description:    "Temporary redirect. You are being redirected to the bucket while the Domain Name System (DNS) server is being updated.",
+		HTTPStatusCode: http.StatusTemporaryRedirect,
+	},
+	ErrRequestHeaderSectionTooLarge: {
+		Code:           "RequestHeaderSectionTooLarge",
+		Description:    "The request header and query parameters used to make the request exceed the maximum allowed size.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrRequestIsNotMultiPartContent: {
+		Code:           "RequestIsNotMultiPartContent",
+		Description:    "A bucket POST request must be of the enclosure-type multipart/form-data.",
+		HTTPStatusCode: http.StatusPreconditionFailed,
+	},
+	ErrRequestTorrentOfBucketError: {
+		Code:           "RequestTorrentOfBucketError",
+		Description:    "Requesting the torrent file of a bucket is not permitted.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrResponseInterrupted: {
+		Code:           "ResponseInterrupted",
+		Description:    "Returned to the original caller when an error is encountered while reading the WriteGetObjectResponse body.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrServerSideEncryptionConfigurationNotFoundError: {
+		Code:           "ServerSideEncryptionConfigurationNotFoundError",
+		Description:    "The server-side encryption configuration was not found.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrServiceUnavailable: {
+		Code:           "ServiceUnavailable",
+		Description:    "Service is unable to handle request.",
+		HTTPStatusCode: http.StatusServiceUnavailable,
+	},
+	ErrSlowDown: {
+		Code:           "SlowDown",
+		Description:    "Please reduce your request rate.",
+		HTTPStatusCode: http.StatusServiceUnavailable,
+	},
+	ErrTagPolicyException: {
+		Code:           "TagPolicyException",
+		Description:    "The tag policy does not allow the specified value for the following tag key.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrTemporaryRedirect: {
+		Code:           "TemporaryRedirect",
+		Description:    "You are being redirected to the bucket while the Domain Name System (DNS) server is being updated.",
+		HTTPStatusCode: http.StatusTemporaryRedirect,
+	},
+	ErrTokenCodeInvalidError: {
+		Code:           "TokenCodeInvalidError",
+		Description:    "The serial number and/or token code you provided is not valid.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrTokenRefreshRequired: {
+		Code:           "TokenRefreshRequired",
+		Description:    "The provided token must be refreshed.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrTooManyAccessPoints: {
+		Code:           "TooManyAccessPoints",
+		Description:    "You have attempted to create more access points than are allowed for an account. For more information, see Amazon Simple Storage Service endpoints and quotas in the AWS General Reference.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrTooManyBuckets: {
+		Code:           "TooManyBuckets",
+		Description:    "You have attempted to create more buckets than are allowed for an account. For more information, see Amazon Simple Storage Service endpoints and quotas in the AWS General Reference.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrTooManyMultiRegionAccessPointregionsError: {
+		Code:           "TooManyMultiRegionAccessPointregionsError",
+		Description:    "You have attempted to create a Multi-Region Access Point with more Regions than are allowed for an account. For more information, see Amazon Simple Storage Service endpoints and quotas in the AWS General Reference.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrTooManyMultiRegionAccessPoints: {
+		Code:           "TooManyMultiRegionAccessPoints",
+		Description:    "You have attempted to create more Multi-Region Access Points than are allowed for an account. For more information, see Amazon Simple Storage Service endpoints and quotas in the AWS General Reference.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrUnauthorizedAccessError: {
+		Code:           "UnauthorizedAccessError",
+		Description:    "Applicable in China Regions only. Returned when a request is made to a bucket that doesn't have an ICP license. For more information, see ICP Recordal.",
+		HTTPStatusCode: http.StatusForbidden,
+	},
+	ErrUnexpectedContent: {
+		Code:           "UnexpectedContent",
+		Description:    "This request contains unsupported content.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrUnexpectedIPError: {
+		Code:           "UnexpectedIPError",
+		Description:    "Applicable in China Regions only. This request was rejected because the IP was unexpected.",
+		HTTPStatusCode: http.StatusForbidden,
+	},
+	ErrUnsupportedArgument: {
+		Code:           "UnsupportedArgument",
+		Description:    "The request contained an unsupported argument.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrUnsupportedSignature: {
+		Code:           "UnsupportedSignature",
+		Description:    "The provided request is signed with an unsupported STS Token version or the signature version is not supported.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrUnresolvableGrantByEmailAddress: {
+		Code:           "UnresolvableGrantByEmailAddress",
+		Description:    "The email address that you provided does not match any account on record.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrUserKeyMustBeSpecified: {
+		Code:           "UserKeyMustBeSpecified",
+		Description:    "The bucket POST request must contain the specified field name. If it is specified, check the order of the fields.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrNoSuchAccessPoint: {
+		Code:           "NoSuchAccessPoint",
+		Description:    "The specified access point does not exist.",
+		HTTPStatusCode: http.StatusNotFound,
+	},
+	ErrInvalidTag: {
+		Code:           "InvalidTag",
+		Description:    "Your request contains tag input that is not valid. For example, your request might contain duplicate keys, keys or values that are too long, or system tags.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrMalformedPolicy: {
+		Code:           "MalformedPolicy",
+		Description:    "Your policy contains a principal that is not valid.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
 	ErrInvalidCopyDest: {
 		Code:           "InvalidRequest",
 		Description:    "This copy request is illegal because it is trying to copy an object to itself without changing the object's metadata, storage class, website redirect location or encryption attributes.",
@@ -713,11 +1224,6 @@ var errorCodes = errorCodeMap{
 		Description:    "The list of parts was not in ascending order. The parts list must be specified in order by part number.",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
-	ErrInvalidObjectState: {
-		Code:           "InvalidObjectState",
-		Description:    "The operation is not valid for the current state of the object.",
-		HTTPStatusCode: http.StatusForbidden,
-	},
 	ErrAuthorizationHeaderMalformed: {
 		Code:           "AuthorizationHeaderMalformed",
 		Description:    "The authorization header is malformed; the region is wrong; expecting 'us-east-1'.",
@@ -786,11 +1292,6 @@ var errorCodes = errorCodeMap{
 	ErrMalformedCredentialDate: {
 		Code:           "AuthorizationQueryParametersError",
 		Description:    "Error parsing the X-Amz-Credential parameter; incorrect date format. This date in the credential must be in the format \"yyyyMMdd\".",
-		HTTPStatusCode: http.StatusBadRequest,
-	},
-	ErrInvalidRegion: {
-		Code:           "InvalidRegion",
-		Description:    "Region does not match.",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
 	ErrInvalidServiceS3: {
@@ -1238,11 +1739,6 @@ var errorCodes = errorCodeMap{
 	ErrNoAccessKey: {
 		Code:           "AccessDenied",
 		Description:    "No AWSAccessKey was presented",
-		HTTPStatusCode: http.StatusForbidden,
-	},
-	ErrInvalidToken: {
-		Code:           "InvalidTokenId",
-		Description:    "The security token included in the request is invalid",
 		HTTPStatusCode: http.StatusForbidden,
 	},
 	ErrNoTokenRevokeType: {

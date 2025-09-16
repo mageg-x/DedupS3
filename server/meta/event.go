@@ -25,16 +25,16 @@ import (
 
 // EventNotificationConfiguration 表示事件通知配置
 type EventNotificationConfiguration struct {
-	XMLName xml.Name `xml:"NotificationConfiguration"`
-	XMLNS   string   `xml:"xmlns,attr"` // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
+	XMLName xml.Name `xml:"NotificationConfiguration" json:"notificationConfiguration"`
+	XMLNS   string   `xml:"xmlns,attr" json:"xmlns"` // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
 
-	TopicConfigurations      []TopicConfiguration      `xml:"TopicConfiguration,omitempty"`
-	QueueConfigurations      []QueueConfiguration      `xml:"QueueConfiguration,omitempty"`
-	LambdaConfigurations     []LambdaConfiguration     `xml:"CloudFunctionConfiguration,omitempty"`
-	EventBridgeConfiguration *EventBridgeConfiguration `xml:"EventBridgeConfiguration,omitempty"`
+	TopicConfigurations      []TopicConfiguration      `xml:"TopicConfiguration,omitempty" json:"topicConfigurations"`
+	QueueConfigurations      []QueueConfiguration      `xml:"QueueConfiguration,omitempty" json:"queueConfigurations"`
+	LambdaConfigurations     []LambdaConfiguration     `xml:"CloudFunctionConfiguration,omitempty" json:"lambdaConfigurations"`
+	EventBridgeConfiguration *EventBridgeConfiguration `xml:"EventBridgeConfiguration,omitempty" json:"eventBridgeConfiguration"`
 
-	CreatedAt time.Time `xml:"-"`
-	UpdatedAt time.Time `xml:"-"`
+	CreatedAt time.Time `xml:"-" json:"createdAt"`
+	UpdatedAt time.Time `xml:"-" json:"updatedAt"`
 }
 
 // TopicConfiguration 表示SNS主题通知配置
