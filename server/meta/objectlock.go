@@ -107,3 +107,50 @@ func (r *Retention) IsDeletionAllowed(bypassGovernance bool) bool {
 func (l *LegalHold) IsLegalHoldActive() bool {
 	return l != nil && l.Status == "ON"
 }
+
+// Validate 验证对象锁定配置是否有效
+func (o *ObjectLockConfiguration) Validate() error {
+	if o == nil {
+		return nil // 无配置，视为有效
+	}
+
+	// 验证XML命名空间
+	if o.XMLNS != "" && o.XMLNS != "http://s3.amazonaws.com/doc/2006-03-01/" {
+		return errors.New("invalid xmlns for object lock configuration")
+	}
+
+	// 如果启用了对象锁定，需要验证规则
+	if o.ObjectLockEnabled == "Enabled" {
+		if o.Rule == nil {
+			return errors.New("rule must be specified when object lock is enabled")
+		}
+
+		// 验证规则中的默认保留设置
+		if o.Rule.DefaultRetention == nil {
+			return errors.New("default retention must be specified in rule")
+		}
+
+		// 验证保留模式
+		if o.Rule.DefaultRetention.Mode != "GOVERNANCE" && o.Rule.DefaultRetention.Mode != "COMPLIANCE" {
+			return errors.New("invalid retention mode, must be 'GOVERNANCE' or 'COMPLIANCE'")
+		}
+
+		// 验证保留期
+		if o.Rule.DefaultRetention.Days == 0 && o.Rule.DefaultRetention.Years == 0 {
+			return errors.New("retention period must be specified")
+		}
+
+		if o.Rule.DefaultRetention.Days > 0 && o.Rule.DefaultRetention.Years > 0 {
+			return errors.New("cannot specify both days and years for retention")
+		}
+
+		if o.Rule.DefaultRetention.Days < 0 || o.Rule.DefaultRetention.Years < 0 {
+			return errors.New("retention period must be positive")
+		}
+	} else if o.ObjectLockEnabled != "" {
+		// ObjectLockEnabled只能是"Enabled"或空字符串
+		return errors.New("invalid value for ObjectLockEnabled, must be 'Enabled' or empty")
+	}
+
+	return nil
+}

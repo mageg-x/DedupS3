@@ -17,18 +17,21 @@
 package meta
 
 import (
+	"encoding/xml"
 	"errors"
 	"time"
 )
 
 // BucketQuota 表示存储桶配额
 type BucketQuota struct {
-	Type        string `json:"Type"` // Storage | ObjectCount
-	SizeGB      int    `json:"SizeGB,omitempty"`
-	ObjectCount int    `json:"ObjectCount,omitempty"`
+	XMLName     xml.Name `xml:"BucketQuota" json:"bucketQuota"`
+	XMLNS       string   `xml:"xmlns,attr" json:"xmlns"` // 固定值为http://s3.amazonaws.com/doc/2006-03-01/
+	Type        string   `xml:"Type" json:"Type"`        // Storage | ObjectCount
+	SizeGB      int      `xml:"SizeGB,omitempty" json:"SizeGB,omitempty"`
+	ObjectCount int      `xml:"ObjectCount,omitempty" json:"ObjectCount,omitempty"`
 
-	CreatedAt time.Time `json:"-"`
-	UpdatedAt time.Time `json:"-"`
+	CreatedAt time.Time `xml:"-" json:"-"`
+	UpdatedAt time.Time `xml:"-" json:"-"`
 }
 
 // SetStorageQuota 设置存储空间配额
@@ -93,4 +96,36 @@ func (q *BucketQuota) IsStorageQuota() bool {
 // IsObjectCountQuota 检查是否是对象数量配额
 func (q *BucketQuota) IsObjectCountQuota() bool {
 	return q != nil && q.Type == "ObjectCount"
+}
+
+// Validate 验证配额配置是否有效
+func (q *BucketQuota) Validate() error {
+	if q == nil {
+		return nil // 无配额配置，视为有效
+	}
+
+	// 验证类型
+	if q.Type != "Storage" && q.Type != "ObjectCount" {
+		return errors.New("invalid quota type, must be 'Storage' or 'ObjectCount'")
+	}
+
+	// 根据类型验证相应的字段
+	switch q.Type {
+	case "Storage":
+		if q.SizeGB <= 0 {
+			return errors.New("storage quota must be positive")
+		}
+		if q.ObjectCount != 0 {
+			return errors.New("object count must be 0 for storage quota")
+		}
+	case "ObjectCount":
+		if q.ObjectCount <= 0 {
+			return errors.New("object count quota must be positive")
+		}
+		if q.SizeGB != 0 {
+			return errors.New("size must be 0 for object count quota")
+		}
+	}
+
+	return nil
 }

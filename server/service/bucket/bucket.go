@@ -82,6 +82,8 @@ type BaseBucketParams struct {
 	AccessKeyID       string
 	ExpectedOwnerID   string
 	Tags              []meta.Tag
+	ObjectLockToken   string
+	ContentMD5        string
 }
 
 func GetBucketService() *BucketService {
@@ -642,6 +644,100 @@ func (b *BucketService) PutBucketNotification(params *BaseBucketParams, notifica
 	}
 
 	logger.GetLogger("boulder").Tracef("successfully set notification configuration for bucket: %s", params.BucketName)
+	return nil
+}
+
+// PutBucketObjectLockConfig 设置存储桶的对象锁定配置
+func (b *BucketService) PutBucketObjectLockConfig(params *BaseBucketParams, config *meta.ObjectLockConfiguration) error {
+	// 获取IAM服务
+	iamService := iam.GetIamService()
+	if iamService == nil {
+		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		return errors.New("failed to get iam service")
+	}
+
+	// 验证访问密钥
+	ak, err := iamService.GetAccessKey(params.AccessKeyID)
+	if err != nil || ak == nil {
+		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	ac, err := iamService.GetAccount(ak.AccountID)
+	if err != nil || ac == nil {
+		logger.GetLogger("boulder").Errorf("failed to get account %s", ak.AccountID)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	// 构建存储桶key
+	bucketKey := "aws:bucket:" + ak.AccountID + ":" + params.BucketName
+
+	// 开始事务
+	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		return fmt.Errorf("failed to initialize kvstore txn: %v", err)
+	}
+	defer func() {
+		if txn != nil {
+			_ = txn.Rollback()
+		}
+	}()
+
+	// 检查存储桶是否存在
+	var bucket meta.BucketMetadata
+	exist, err := txn.Get(bucketKey, &bucket)
+	if !exist || err != nil {
+		logger.GetLogger("boulder").Errorf("bucket %s does not exist", params.BucketName)
+		return xhttp.ToError(xhttp.ErrNoSuchBucket)
+	}
+
+	// 检查用户是否是存储桶所有者
+	if bucket.Owner.ID != ac.AccountID {
+		logger.GetLogger("boulder").Errorf("access denied: user %s :%s is not the owner of bucket %s", ac.AccountID, bucket.Owner.ID, params.BucketName)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	if params.ExpectedOwnerID != "" {
+		// 检查存储桶的实际所有者是否与请求的所有者匹配
+		if bucket.Owner.ID != params.ExpectedOwnerID {
+			logger.GetLogger("boulder").Errorf("bucket owner mismatch: expected %s, got %s", params.ExpectedOwnerID, bucket.Owner.ID)
+			return xhttp.ToError(xhttp.ErrAccessDenied)
+		}
+	}
+
+	// 设置对象锁定配置
+	currentTime := time.Now().UTC()
+	if config != nil {
+		// 设置XML命名空间
+		if config.XMLNS == "" {
+			config.XMLNS = "http://s3.amazonaws.com/doc/2006-03-01/"
+		}
+		config.CreatedAt = currentTime
+		config.UpdatedAt = currentTime
+
+	}
+	bucket.ObjectLock = config
+
+	err = txn.Set(bucketKey, &bucket)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to set bucket object lock configuration: %v", err)
+		return fmt.Errorf("failed to set bucket object lock configuration: %v", err)
+	}
+
+	// 提交事务
+	if err := txn.Commit(); err != nil {
+		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		return fmt.Errorf("failed to commit transaction: %v", err)
+	}
+	txn = nil
+
+	// 清除缓存
+	if cache, e := xcache.GetCache(); e == nil && cache != nil {
+		_ = cache.Del(context.Background(), bucketKey)
+	}
+
+	logger.GetLogger("boulder").Tracef("successfully set object lock configuration for bucket: %s", params.BucketName)
 	return nil
 }
 

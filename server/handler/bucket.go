@@ -300,8 +300,50 @@ func GetBucketEncryptionHandler(w http.ResponseWriter, r *http.Request) {
 func GetBucketObjectLockConfigHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: GetBucketObjectLockConfigHandler")
-	// TODO: 实现 GET Bucket Object Lock Configuration 逻辑
-	w.WriteHeader(http.StatusOK)
+
+	// 获取请求中的bucket名称、accessKeyID和region信息
+	bucket, _, region, accessKeyID := GetReqVar(r)
+
+	// 获取bucket服务
+	bs := sb.GetBucketService()
+	if bs == nil {
+		logger.GetLogger("boulder").Errorf("failed to get bucket service")
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		return
+	}
+
+	// 获取bucket信息
+	_bucket, err := bs.GetBucketInfo(&sb.BaseBucketParams{
+		BucketName:  bucket,
+		Location:    region,
+		AccessKeyID: accessKeyID,
+	})
+	if err != nil {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+		} else if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			logger.GetLogger("boulder").Errorf("access denied for %s", accessKeyID)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+		} else {
+			logger.GetLogger("boulder").Errorf("failed to get bucket info: %v", err)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		}
+		return
+	}
+
+	// 检查对象锁定配置是否存在
+	if _bucket.ObjectLock == nil || !_bucket.ObjectLock.IsEnabled() {
+		logger.GetLogger("boulder").Errorf("object lock configuration not found for bucket: %s", bucket)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrObjectLockConfigurationNotFoundError)
+		return
+	}
+
+	// 设置XML命名空间（如果为空）
+	if _bucket.ObjectLock.XMLNS == "" {
+		_bucket.ObjectLock.XMLNS = "http://s3.amazonaws.com/doc/2006-03-01/"
+	}
+
+	xhttp.WriteAWSSuc(w, r, _bucket.ObjectLock)
 }
 
 // GetBucketReplicationConfigHandler 处理 GET Bucket Replication Configuration 请求
@@ -1059,8 +1101,110 @@ func PutBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 func PutBucketObjectLockConfigHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: PutBucketObjectLockConfigHandler")
-	// TODO: 实现 PUT Bucket Object Lock Configuration 逻辑
+
+	// 获取请求变量
+	bucket, _, region, accessKeyID := GetReqVar(r)
+
+	// 获取bucket服务
+	bs := sb.GetBucketService()
+	if bs == nil {
+		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		return
+	}
+
+	// 获取并处理请求头字段
+	requestPayer := r.Header.Get(xhttp.AmzRequestPayer)
+	requestPayer = strings.TrimSpace(requestPayer)
+
+	// 检查请求者付费模式
+	if requestPayer != "" && requestPayer != "requester" {
+		logger.GetLogger("boulder").Errorf("invalid x-amz-request-payer value: %s", requestPayer)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
+		return
+	}
+
+	// 获取并处理对象锁定令牌
+	objectLockToken := r.Header.Get(xhttp.AmzBucketObjectLockToken)
+	objectLockToken = strings.TrimSpace(objectLockToken)
+
+	// 获取Content-MD5头部（如果提供）
+	contentMD5 := r.Header.Get("Content-MD5")
+	contentMD5 = strings.TrimSpace(contentMD5)
+
+	// 读取请求体
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to read request body: %v", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedRequestBody)
+		return
+	}
+	defer r.Body.Close()
+
+	// 校验 MD5
+	if contentMD5 != "" && len(body) > 0 {
+		logger.GetLogger("boulder").Debugf("Processing Content-MD5 validation")
+		hash := md5.Sum(body)
+		computedMD5 := hex.EncodeToString(hash[:])
+		if computedMD5 != contentMD5 {
+			logger.GetLogger("boulder").Errorf("Content-MD5 mismatch: computed=%s, header=%s", computedMD5, contentMD5)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidDigest)
+			return
+		}
+	}
+
+	// 解析XML请求体
+	var objectLockConfig meta.ObjectLockConfiguration
+	if err := xml.Unmarshal(body, &objectLockConfig); err != nil {
+		logger.GetLogger("boulder").Errorf("failed to unmarshal object lock config: %v", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedXML)
+		return
+	}
+	if len(body) > 0 {
+		if err := objectLockConfig.Validate(); err != nil {
+			logger.GetLogger("boulder").Errorf("invalid object lock config: %v", err)
+			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketObjectLockConfiguration)
+			return
+		}
+	}
+
+	// 获取x-amz-expected-bucket-owner头部
+	expectedOwner := r.Header.Get("x-amz-expected-bucket-owner")
+	expectedOwner = strings.TrimSpace(expectedOwner)
+
+	// 调用服务层设置对象锁定配置
+	err = bs.PutBucketObjectLockConfig(&sb.BaseBucketParams{
+		BucketName:      bucket,
+		Location:        region,
+		AccessKeyID:     accessKeyID,
+		ExpectedOwnerID: expectedOwner,
+		ObjectLockToken: objectLockToken,
+	}, &objectLockConfig)
+	if err != nil {
+		// 处理特定错误
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
+			return
+		}
+
+		logger.GetLogger("boulder").Errorf("failed to set object lock configuration: %v", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
+		return
+	}
+
+	// 设置应答头
+	// 如果请求中包含x-amz-request-payer并且值为requester，则添加x-amz-request-charged应答头
+	if requestPayer == "requester" {
+		w.Header().Set(xhttp.AmzRequestCharged, "requester")
+	}
+
+	// 返回成功响应
 	w.WriteHeader(http.StatusOK)
+	logger.GetLogger("boulder").Tracef("successfully set object lock configuration for bucket: %s", bucket)
 }
 
 // PutBucketTaggingHandler 处理 PUT Bucket Tagging 请求

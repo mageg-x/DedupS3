@@ -149,8 +149,10 @@ const (
 	AmzAccessKeyID = "AWSAccessKeyId"
 
 	// Response request id.
-	AmzRequestID     = "x-amz-request-id"
-	AmzRequestHostID = "x-amz-id-2"
+	AmzRequestID      = "x-amz-request-id"
+	AmzRequestHostID  = "x-amz-id-2"
+	AmzRequestCharged = "x-amz-request-charged"
+	AmzRequestPayer   = "x-amz-request-payer"
 
 	// Content Checksums
 	AmzChecksumAlgo           = "x-amz-checksum-algorithm"
@@ -182,6 +184,7 @@ const (
 	AmzRenameSourceIfModifiedSince   = "x-amz-rename-source-if-modified-since"
 	AmzRenameSourceIfUnmodifiedSince = "x-amz-rename-source-if-unmodified-since"
 	AmzClientToken                   = "x-amz-client-token"
+	AmzBucketObjectLockToken         = "x-amz-bucket-object-lock-token"
 )
 
 // Common http query params S3 API
