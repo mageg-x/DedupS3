@@ -19,6 +19,7 @@ package meta
 import (
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -111,4 +112,72 @@ func (t *Tagging) ToMap() map[string]string {
 		tags[tag.Key] = tag.Value
 	}
 	return tags
+}
+
+// Validate 验证标签配置是否有效
+func (t *Tagging) Validate() error {
+	if t == nil {
+		return errors.New("tagging configuration is nil")
+	}
+
+	// 验证XML命名空间
+	if t.XMLNS != "http://s3.amazonaws.com/doc/2006-03-01/" {
+		return errors.New("invalid XML namespace")
+	}
+
+	// 验证标签数量不超过10个
+	if len(t.TagSet.Tags) > 10 {
+		return errors.New("tagging configuration cannot have more than 10 tags")
+	}
+
+	// 验证标签键值对
+	tagKeys := make(map[string]bool)
+	for i, tag := range t.TagSet.Tags {
+		// 验证标签键不为空
+		if tag.Key == "" {
+			return fmt.Errorf("tag key cannot be empty at index %d", i)
+		}
+
+		// 验证标签键长度不超过128个字符
+		if len(tag.Key) > 128 {
+			return fmt.Errorf("tag key cannot exceed 128 characters at index %d", i)
+		}
+
+		// 验证标签值长度不超过256个字符
+		if len(tag.Value) > 256 {
+			return fmt.Errorf("tag value cannot exceed 256 characters at index %d", i)
+		}
+
+		// 验证标签键唯一性
+		if tagKeys[tag.Key] {
+			return fmt.Errorf("duplicate tag key '%s'", tag.Key)
+		}
+		tagKeys[tag.Key] = true
+
+		// 验证标签键只能包含字母、数字、空格和以下字符: + - = . _ : / @
+		for _, char := range tag.Key {
+			if !((char >= 'a' && char <= 'z') ||
+				(char >= 'A' && char <= 'Z') ||
+				(char >= '0' && char <= '9') ||
+				char == '+' || char == '-' || char == '=' ||
+				char == '.' || char == '_' || char == ':' ||
+				char == '/' || char == '@' || char == ' ') {
+				return fmt.Errorf("tag key contains invalid character at index %d", i)
+			}
+		}
+
+		// 验证标签值只能包含字母、数字、空格和以下字符: + - = . _ : / @
+		for _, char := range tag.Value {
+			if !((char >= 'a' && char <= 'z') ||
+				(char >= 'A' && char <= 'Z') ||
+				(char >= '0' && char <= '9') ||
+				char == '+' || char == '-' || char == '=' ||
+				char == '.' || char == '_' || char == ':' ||
+				char == '/' || char == '@' || char == ' ') {
+				return fmt.Errorf("tag value contains invalid character at index %d", i)
+			}
+		}
+	}
+
+	return nil
 }

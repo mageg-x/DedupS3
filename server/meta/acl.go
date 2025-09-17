@@ -19,6 +19,7 @@ package meta
 import (
 	"encoding/xml"
 	"errors"
+	"fmt"
 )
 
 // AccessControlPolicy 表示S3访问控制策略，符合AWS API规范
@@ -213,4 +214,60 @@ func (acp *AccessControlPolicy) IsPublic() bool {
 		}
 	}
 	return false
+}
+
+// Validate 验证访问控制策略是否有效
+func (acp *AccessControlPolicy) Validate() error {
+	if acp == nil {
+		return errors.New("access control policy is nil")
+	}
+
+	// 验证Owner不为空
+	if acp.Owner.ID == "" {
+		return errors.New("owner ID cannot be empty")
+	}
+
+	// 验证XML命名空间
+	if acp.XMLNS != "http://s3.amazonaws.com/doc/2006-03-01/" {
+		return errors.New("invalid XML namespace")
+	}
+
+	// 验证每个Grant
+	validPermissions := map[string]bool{
+		PermissionRead:        true,
+		PermissionWrite:       true,
+		PermissionReadACP:     true,
+		PermissionWriteACP:    true,
+		PermissionFullControl: true,
+	}
+
+	for i, grant := range acp.AccessControlList.Grants {
+		// 验证权限类型
+		if !validPermissions[grant.Permission] {
+			return fmt.Errorf("invalid permission type '%s' in grant %d", grant.Permission, i)
+		}
+
+		// 验证Grantee类型
+		if grant.Grantee.Type != "CanonicalUser" && grant.Grantee.Type != "AmazonCustomerByEmail" && grant.Grantee.Type != "Group" {
+			return fmt.Errorf("invalid grantee type '%s' in grant %d", grant.Grantee.Type, i)
+		}
+
+		// 验证特定类型的必要字段
+		switch grant.Grantee.Type {
+		case "CanonicalUser":
+			if grant.Grantee.ID == "" {
+				return fmt.Errorf("ID is required for CanonicalUser in grant %d", i)
+			}
+		case "AmazonCustomerByEmail":
+			if grant.Grantee.Email == "" {
+				return fmt.Errorf("email is required for AmazonCustomerByEmail in grant %d", i)
+			}
+		case "Group":
+			if grant.Grantee.URI == "" {
+				return fmt.Errorf("URI is required for Group in grant %d", i)
+			}
+		}
+	}
+
+	return nil
 }

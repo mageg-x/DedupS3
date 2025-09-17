@@ -19,6 +19,7 @@ package meta
 import (
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -245,4 +246,137 @@ func (f *EventFilter) Matches(objectKey string) bool {
 	}
 
 	return true
+}
+
+// Validate 验证事件通知配置是否有效
+func (e *EventNotificationConfiguration) Validate() error {
+	if e == nil {
+		return errors.New("event notification configuration is nil")
+	}
+
+	// 验证XML命名空间
+	if e.XMLNS != "http://s3.amazonaws.com/doc/2006-03-01/" {
+		return errors.New("invalid XML namespace")
+	}
+
+	// 验证各种配置的总数量不超过100个
+	totalConfigs := len(e.TopicConfigurations) + len(e.QueueConfigurations) + len(e.LambdaConfigurations)
+	if e.EventBridgeConfiguration != nil {
+		totalConfigs++
+	}
+
+	if totalConfigs > 100 {
+		return errors.New("event notification configuration cannot have more than 100 configurations")
+	}
+
+	// 定义有效的事件类型
+	validEvents := map[string]bool{
+		"s3:ObjectCreated:*":                               true,
+		"s3:ObjectCreated:Put":                             true,
+		"s3:ObjectCreated:Post":                            true,
+		"s3:ObjectCreated:Copy":                            true,
+		"s3:ObjectCreated:CompleteMultipartUpload":         true,
+		"s3:ObjectRemoved:*":                               true,
+		"s3:ObjectRemoved:Delete":                          true,
+		"s3:ObjectRemoved:DeleteMarkerCreated":             true,
+		"s3:ObjectRestore:*":                               true,
+		"s3:ObjectRestore:Post":                            true,
+		"s3:ObjectRestore:Completed":                       true,
+		"s3:ObjectRestore:Delete":                          true,
+		"s3:ReducedRedundancyLostObject":                   true,
+		"s3:Replication:*":                                 true,
+		"s3:Replication:OperationFailedReplication":        true,
+		"s3:Replication:OperationMissedThreshold":          true,
+		"s3:Replication:OperationReplicatedAfterThreshold": true,
+		"s3:Replication:OperationNotTracked":               true,
+		"s3:IntelligentTiering":                            true,
+		"s3:Lifecycle:*":                                   true,
+		"s3:Lifecycle:Expiration":                          true,
+		"s3:Lifecycle:Transition":                          true,
+		"s3:Lifecycle:NoncurrentVersionExpiration":         true,
+		"s3:Lifecycle:NoncurrentVersionTransition":         true,
+		"s3:Lifecycle:AbortIncompleteMultipartUpload":      true,
+		"s3:ObjectTagging:*":                               true,
+		"s3:ObjectTagging:Put":                             true,
+		"s3:ObjectTagging:Delete":                          true,
+	}
+
+	// 验证TopicConfigurations
+	for i, config := range e.TopicConfigurations {
+		if err := validateNotificationConfig(config.ID, config.Events, config.TopicARN, config.Filter, i, "Topic", validEvents); err != nil {
+			return err
+		}
+	}
+
+	// 验证QueueConfigurations
+	for i, config := range e.QueueConfigurations {
+		if err := validateNotificationConfig(config.ID, config.Events, config.QueueARN, config.Filter, i, "Queue", validEvents); err != nil {
+			return err
+		}
+	}
+
+	// 验证LambdaConfigurations
+	for i, config := range e.LambdaConfigurations {
+		if err := validateNotificationConfig(config.ID, config.Events, config.LambdaFunctionARN, config.Filter, i, "Lambda", validEvents); err != nil {
+			return err
+		}
+	}
+
+	// EventBridgeConfiguration不需要额外验证
+
+	return nil
+}
+
+// validateNotificationConfig 验证单个通知配置
+func validateNotificationConfig(id string, events []string, arn string, filter *EventFilter, index int, configType string, validEvents map[string]bool) error {
+	// 验证ID唯一性 - 在实际应用中需要在外部跟踪所有ID
+
+	// 验证ARN不为空
+	if arn == "" {
+		return fmt.Errorf("%s ARN cannot be empty in %s configuration %d", configType, configType, index)
+	}
+
+	// 验证ARN格式（简单验证）
+	if !strings.HasPrefix(arn, "arn:") {
+		return fmt.Errorf("invalid %s ARN format in %s configuration %d", configType, configType, index)
+	}
+
+	// 验证事件列表不为空
+	if len(events) == 0 {
+		return fmt.Errorf("at least one event type is required in %s configuration %d", configType, index)
+	}
+
+	// 验证每个事件类型
+	for _, event := range events {
+		if !validEvents[event] {
+			return fmt.Errorf("invalid event type '%s' in %s configuration %d", event, configType, index)
+		}
+	}
+
+	// 验证Filter（如果存在）
+	if filter != nil {
+		// 验证S3Key过滤器
+		if len(filter.S3Key.Rules) == 0 {
+			return fmt.Errorf("S3Key filter must contain at least one rule in %s configuration %d", configType, index)
+		}
+
+		// 验证每个过滤规则
+		for i, rule := range filter.S3Key.Rules {
+			if rule.Name != "prefix" && rule.Name != "suffix" {
+				return fmt.Errorf("invalid filter rule name '%s' in %s configuration %d, rule %d", rule.Name, configType, index, i)
+			}
+
+			// 验证规则值不为空
+			if rule.Value == "" {
+				return fmt.Errorf("filter rule value cannot be empty in %s configuration %d, rule %d", configType, index, i)
+			}
+
+			// 验证规则值长度不超过1024个字符
+			if len(rule.Value) > 1024 {
+				return fmt.Errorf("filter rule value cannot exceed 1024 characters in %s configuration %d, rule %d", configType, index, i)
+			}
+		}
+	}
+
+	return nil
 }

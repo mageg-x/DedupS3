@@ -405,30 +405,246 @@ func (p *BucketPolicy) Validate() error {
 		return errors.New("policy is nil")
 	}
 
-	if p.Version != "2008-10-17" && p.Version != "2012-10-17" {
-		return errors.New("invalid policy version")
+	// 验证策略大小不超过20KB
+	policyJSON, err := json.Marshal(p)
+	if err != nil {
+		return fmt.Errorf("failed to marshal policy: %w", err)
+	}
+	if len(policyJSON) > 20*1024 {
+		return errors.New("policy size exceeds 20KB limit")
 	}
 
-	for _, stmt := range p.Statements {
+	// 验证策略版本
+	if p.Version != "2008-10-17" && p.Version != "2012-10-17" {
+		return errors.New("invalid policy version, must be 2008-10-17 or 2012-10-17")
+	}
+
+	// 验证策略声明数量不超过100条
+	if len(p.Statements) == 0 {
+		return errors.New("policy must contain at least one statement")
+	}
+	if len(p.Statements) > 100 {
+		return errors.New("policy cannot contain more than 100 statements")
+	}
+
+	// 跟踪Sid唯一性
+	sidMap := make(map[string]bool)
+
+	// 验证每个声明
+	for i, stmt := range p.Statements {
+		// 验证Sid唯一性
+		if stmt.Sid != "" {
+			if sidMap[stmt.Sid] {
+				return fmt.Errorf("duplicate statement ID '%s'", stmt.Sid)
+			}
+			sidMap[stmt.Sid] = true
+		}
+
+		// 验证Effect只能是Allow或Deny
 		if stmt.Effect != "Allow" && stmt.Effect != "Deny" {
-			return fmt.Errorf("invalid effect in statement %s", stmt.Sid)
+			return fmt.Errorf("invalid effect '%s' in statement %d", stmt.Effect, i)
 		}
 
-		// 检查Principal和NotPrincipal不能同时存在
-		if len(stmt.Principal.AWS) > 0 && len(stmt.NotPrincipal.AWS) > 0 {
-			return fmt.Errorf("principal and NotPrincipal cannot both be specified in statement %s", stmt.Sid)
+		// 检查互斥字段
+		// Principal和NotPrincipal不能同时存在
+		if (len(stmt.Principal.AWS) > 0 || len(stmt.Principal.Federated) > 0 ||
+			len(stmt.Principal.Service) > 0 || len(stmt.Principal.CanonicalUser) > 0) &&
+			(len(stmt.NotPrincipal.AWS) > 0 || len(stmt.NotPrincipal.Federated) > 0 ||
+				len(stmt.NotPrincipal.Service) > 0 || len(stmt.NotPrincipal.CanonicalUser) > 0) {
+			return fmt.Errorf("Principal and NotPrincipal cannot both be specified in statement %d", i)
 		}
 
-		// 检查Action和NotAction不能同时存在
+		// Action和NotAction不能同时存在
 		if len(stmt.Action) > 0 && len(stmt.NotAction) > 0 {
-			return fmt.Errorf("action and NotAction cannot both be specified in statement %s", stmt.Sid)
+			return fmt.Errorf("Action and NotAction cannot both be specified in statement %d", i)
 		}
 
-		// 检查Resource和NotResource不能同时存在
+		// Resource和NotResource不能同时存在
 		if len(stmt.Resource) > 0 && len(stmt.NotResource) > 0 {
-			return fmt.Errorf("resource and NotResource cannot both be specified in statement %s", stmt.Sid)
+			return fmt.Errorf("Resource and NotResource cannot both be specified in statement %d", i)
+		}
+
+		// 验证Action格式
+		if len(stmt.Action) > 0 {
+			for j, action := range stmt.Action {
+				if !isValidAction(action) {
+					return fmt.Errorf("invalid action format '%s' in statement %d, action %d", action, i, j)
+				}
+			}
+		}
+
+		// 验证NotAction格式
+		if len(stmt.NotAction) > 0 {
+			for j, action := range stmt.NotAction {
+				if !isValidAction(action) {
+					return fmt.Errorf("invalid NotAction format '%s' in statement %d, action %d", action, i, j)
+				}
+			}
+		}
+
+		// 验证Resource格式
+		if len(stmt.Resource) > 0 {
+			for j, resource := range stmt.Resource {
+				if !isValidResourceARN(resource) {
+					return fmt.Errorf("invalid Resource ARN format '%s' in statement %d, resource %d", resource, i, j)
+				}
+			}
+		}
+
+		// 验证NotResource格式
+		if len(stmt.NotResource) > 0 {
+			for j, resource := range stmt.NotResource {
+				if !isValidResourceARN(resource) {
+					return fmt.Errorf("invalid NotResource ARN format '%s' in statement %d, resource %d", resource, i, j)
+				}
+			}
+		}
+
+		// 验证Condition格式
+		if err := validateCondition(stmt.Condition, i); err != nil {
+			return err
 		}
 	}
 
 	return nil
+}
+
+// isValidAction 验证操作格式是否有效
+func isValidAction(action string) bool {
+	// 操作格式必须为 service:action 或 service:*
+	parts := strings.SplitN(action, ":", 2)
+	if len(parts) != 2 {
+		return false
+	}
+
+	// 服务部分不能为空
+	if parts[0] == "" {
+		return false
+	}
+
+	// 操作部分可以是具体操作或通配符
+	return parts[1] != ""
+}
+
+// isValidResourceARN 验证资源ARN格式是否有效
+func isValidResourceARN(resource string) bool {
+	// 简单验证ARN格式: arn:partition:service:region:account-id:resource
+	if !strings.HasPrefix(resource, "arn:") {
+		return false
+	}
+
+	parts := strings.SplitN(resource, ":", 6)
+	// 最少需要4部分: arn:partition:service:resource
+	return len(parts) >= 4
+}
+
+// validateCondition 验证条件块是否有效
+func validateCondition(condition ConditionBlock, statementIndex int) error {
+	if condition == nil {
+		return nil
+	}
+
+	// 验证条件键和值
+	for conditionKey, conditionValues := range condition {
+		if conditionKey == "" {
+			return fmt.Errorf("condition key cannot be empty in statement %d", statementIndex)
+		}
+
+		for operator, values := range conditionValues {
+			// 验证运算符是否有效
+			if !isValidConditionOperator(operator) {
+				return fmt.Errorf("invalid condition operator '%s' in statement %d", operator, statementIndex)
+			}
+
+			// 验证值不为空
+			if len(values) == 0 {
+				return fmt.Errorf("condition values cannot be empty for operator '%s' in statement %d", operator, statementIndex)
+			}
+
+			// 对于IP地址条件，验证CIDR格式
+			if operator == "IpAddress" || operator == "NotIpAddress" {
+				for j, cidr := range values {
+					if _, _, err := net.ParseCIDR(cidr); err != nil {
+						return fmt.Errorf("invalid CIDR format '%s' for operator '%s' in statement %d, index %d", cidr, operator, statementIndex, j)
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// isValidConditionOperator 验证条件运算符是否有效
+func isValidConditionOperator(operator string) bool {
+	validOperators := map[string]bool{
+		"StringEquals":             true,
+		"StringNotEquals":          true,
+		"StringLike":               true,
+		"StringNotLike":            true,
+		"IpAddress":                true,
+		"NotIpAddress":             true,
+		"NumericEquals":            true,
+		"NumericNotEquals":         true,
+		"NumericLessThan":          true,
+		"NumericLessThanEquals":    true,
+		"NumericGreaterThan":       true,
+		"NumericGreaterThanEquals": true,
+		"DateEquals":               true,
+		"DateNotEquals":            true,
+		"DateLessThan":             true,
+		"DateLessThanEquals":       true,
+		"DateGreaterThan":          true,
+		"DateGreaterThanEquals":    true,
+		"Bool":                     true,
+		"BinaryEquals":             true,
+		"ArnEquals":                true,
+		"ArnNotEquals":             true,
+		"ArnLike":                  true,
+		"ArnNotLike":               true,
+	}
+	return validOperators[operator]
+}
+
+// IsPolicyPublic 判断桶策略是否使桶公开
+func (p *BucketPolicy) IsPolicyPublic() bool {
+	if p == nil || len(p.Statements) == 0 {
+		return false
+	}
+
+	// 检查策略中是否有允许所有用户访问的语句
+	for _, stmt := range p.Statements {
+		// 只检查允许访问的语句
+		if stmt.Effect != "Allow" {
+			continue
+		}
+
+		// 检查主体是否是所有用户 (*)
+		publicPrincipal := false
+		for _, p := range stmt.Principal.AWS {
+			if p == "*" {
+				publicPrincipal = true
+				break
+			}
+		}
+
+		// 如果不是面向所有用户，跳过
+		if !publicPrincipal {
+			continue
+		}
+
+		// 检查是否允许读取对象操作
+		for _, action := range stmt.Action {
+			if action == "s3:GetObject" {
+				// 检查资源是否匹配桶内所有对象
+				for _, resource := range stmt.Resource {
+					if strings.HasSuffix(resource, "/*") {
+						return true
+					}
+				}
+			}
+		}
+	}
+
+	return false
 }

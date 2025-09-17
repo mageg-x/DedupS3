@@ -200,17 +200,11 @@ func SetupRouter() *mux.Router {
 		router.Methods(http.MethodPut).HandlerFunc(handler.PutBucketVersioningHandler).Queries("versioning", "").Name("PutBucketVersioning")
 		// PutBucketNotification
 		router.Methods(http.MethodPut).HandlerFunc(handler.PutBucketNotificationHandler).Queries("notification", "").Name("PutBucketNotificationConfiguration")
-		// ResetBucketReplicationStart - MinIO extension API
-		router.Methods(http.MethodPut).HandlerFunc(handler.ResetBucketReplicationStartHandler).Queries("replication-reset", "").Name("ResetBucketReplicationStart")
 
 		// PutBucket
 		router.Methods(http.MethodPut).HandlerFunc(handler.PutBucketHandler).Name("CreateBucket")
 		// HeadBucket
 		router.Methods(http.MethodHead).HandlerFunc(handler.HeadBucketHandler).Name("HeadBucket")
-		// PostPolicy
-		router.Methods(http.MethodPost).MatcherFunc(func(r *http.Request, _ *mux.RouteMatch) bool {
-			return handler.IsRequestPostPolicySignatureV4(r)
-		}).HandlerFunc(handler.PostPolicyBucketHandler).Name("PostPolicy")
 		// DeleteMultipleObjects
 		router.Methods(http.MethodPost).HandlerFunc(handler.DeleteMultipleObjectsHandler).Queries("delete", "").Name("DeleteObjects")
 		// DeleteBucketPolicy

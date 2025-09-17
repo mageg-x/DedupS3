@@ -19,6 +19,7 @@ package meta
 import (
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -234,4 +235,108 @@ func (f *LifeCycleFilter) Matches(objectKey string, tags map[string]string) bool
 	}
 
 	return true
+}
+
+// Validate 验证生命周期配置是否有效
+func (l *LifecycleConfiguration) Validate() error {
+	if l == nil {
+		return errors.New("lifecycle configuration is nil")
+	}
+
+	// 验证XML命名空间
+	if l.XMLNS != "http://s3.amazonaws.com/doc/2006-03-01/" {
+		return errors.New("invalid XML namespace")
+	}
+
+	// 验证规则数量不超过100个
+	if len(l.Rules) > 100 {
+		return errors.New("lifecycle configuration cannot have more than 100 rules")
+	}
+
+	// 验证每个规则
+	ruleIDs := make(map[string]bool)
+	for i, rule := range l.Rules {
+		// 验证规则ID唯一性
+		if rule.ID != "" {
+			if ruleIDs[rule.ID] {
+				return fmt.Errorf("duplicate rule ID '%s'", rule.ID)
+			}
+			ruleIDs[rule.ID] = true
+		}
+
+		// 验证规则状态
+		if rule.Status != "Enabled" && rule.Status != "Disabled" {
+			return fmt.Errorf("invalid rule status '%s' in rule %d", rule.Status, i)
+		}
+
+		// 验证Filter不为空
+		if rule.Filter == nil {
+			return fmt.Errorf("filter is required for rule %d", i)
+		}
+
+		// 验证Filter结构
+		filterCount := 0
+		if rule.Filter.Prefix != "" {
+			filterCount++
+		}
+		if rule.Filter.And != nil {
+			filterCount++
+		}
+		if rule.Filter.Tag != nil {
+			filterCount++
+		}
+
+		if filterCount == 0 {
+			return fmt.Errorf("filter must contain at least one condition in rule %d", i)
+		}
+
+		// 验证Expiration配置
+		if rule.Expiration != nil {
+			if rule.Expiration.Days < 0 {
+				return fmt.Errorf("expiration days must be non-negative in rule %d", i)
+			}
+			if rule.Expiration.Days > 0 && rule.Expiration.Date != nil {
+				return fmt.Errorf("expiration cannot have both days and date in rule %d", i)
+			}
+		}
+
+		// 验证Transition配置
+		if rule.Transition != nil {
+			if rule.Transition.Days < 0 {
+				return fmt.Errorf("transition days must be non-negative in rule %d", i)
+			}
+			if rule.Transition.Days > 0 && rule.Transition.Date != nil {
+				return fmt.Errorf("transition cannot have both days and date in rule %d", i)
+			}
+			if rule.Transition.StorageClass == "" {
+				return fmt.Errorf("storage class is required for transition in rule %d", i)
+			}
+		}
+
+		// 验证NoncurrentVersionExpiration配置
+		if rule.NoncurrentVersionExpiration != nil {
+			if rule.NoncurrentVersionExpiration.NoncurrentDays <= 0 {
+				return fmt.Errorf("noncurrent version expiration days must be positive in rule %d", i)
+			}
+		}
+
+		// 验证NoncurrentVersionTransition配置
+		if rule.NoncurrentVersionTransition != nil {
+			if rule.NoncurrentVersionTransition.NoncurrentDays <= 0 {
+				return fmt.Errorf("noncurrent version transition days must be positive in rule %d", i)
+			}
+			if rule.NoncurrentVersionTransition.StorageClass == "" {
+				return fmt.Errorf("storage class is required for noncurrent version transition in rule %d", i)
+			}
+		}
+
+		// 验证AbortIncompleteMultipartUpload配置
+		if rule.AbortIncompleteMultipartUpload != nil {
+			if rule.AbortIncompleteMultipartUpload.DaysAfterInitiation <= 0 {
+				return fmt.Errorf("abort incomplete multipart upload days must be positive in rule %d", i)
+			}
+		}
+	}
+
+	return nil
 }
