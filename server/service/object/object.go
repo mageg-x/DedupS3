@@ -29,6 +29,7 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -87,7 +88,9 @@ type BaseObjectParams struct {
 }
 
 type DeleteObjectsRequest struct {
-	XMLName xml.Name       `xml:"http://s3.amazonaws.com/doc/2006-03-01/ Delete"`
+	XMLName xml.Name `xml:"Delete"`
+	XMLNS   string   `xml:"xmlns,attr"` // S3标准命名空间，固定值为http://s3.amazonaws.com/doc/2006-03-01/
+
 	Objects []DeleteObject `xml:"Object"`
 	Quiet   *bool          `xml:"Quiet,omitempty"`
 }
@@ -133,16 +136,17 @@ type ListObjectsResponse struct {
 	Name  string `xml:"Name"` // Bucket 名称
 
 	// 可选字段（omitempty 控制：nil 或零值时不输出）
-	Prefix       *string `xml:"Prefix,omitempty"`
-	Marker       *string `xml:"Marker,omitempty"`
-	MaxKeys      *int    `xml:"MaxKeys,omitempty"`
-	Delimiter    *string `xml:"Delimiter,omitempty"`
-	IsTruncated  *bool   `xml:"IsTruncated,omitempty"`
-	NextMarker   *string `xml:"NextMarker,omitempty"`
-	EncodingType *string `xml:"EncodingType,omitempty"`
+	Prefix       string `xml:"Prefix,omitempty"`
+	Marker       string `xml:"Marker,omitempty"`
+	MaxKeys      int    `xml:"MaxKeys,omitempty"`
+	Delimiter    string `xml:"Delimiter,omitempty"`
+	IsTruncated  bool   `xml:"IsTruncated,omitempty"`
+	NextMarker   string `xml:"NextMarker,omitempty"`
+	EncodingType string `xml:"EncodingType,omitempty"`
 
 	// Contents 列表（对象条目）
-	Contents []ObjectContent `xml:"Contents,omitempty"`
+	Contents       []ObjectContent `xml:"Contents,omitempty"`
+	CommonPrefixes []CommonPrefix  `xml:"CommonPrefixes,omitempty"`
 }
 
 // ListObjectsV2Response 对应 S3 ListObjects V2 响应
@@ -153,28 +157,29 @@ type ListObjectsV2Response struct {
 	Name  string `xml:"Name"` // Bucket 名称
 
 	// 可选字段（omitempty 控制：nil 或零值时不输出）
-	Prefix                *string `xml:"Prefix,omitempty"`
-	Delimiter             *string `xml:"Delimiter,omitempty"`
-	MaxKeys               *int    `xml:"MaxKeys,omitempty"`
-	EncodingType          *string `xml:"EncodingType,omitempty"`
-	IsTruncated           *bool   `xml:"IsTruncated,omitempty"`
-	KeyCount              int     `xml:"KeyCount"`
-	ContinuationToken     *string `xml:"ContinuationToken,omitempty"`
-	NextContinuationToken *string `xml:"NextContinuationToken,omitempty"`
-	StartAfter            *string `xml:"StartAfter,omitempty"`
+	Prefix                string `xml:"Prefix,omitempty"`
+	Delimiter             string `xml:"Delimiter,omitempty"`
+	MaxKeys               int    `xml:"MaxKeys,omitempty"`
+	EncodingType          string `xml:"EncodingType,omitempty"`
+	IsTruncated           bool   `xml:"IsTruncated,omitempty"`
+	KeyCount              int    `xml:"KeyCount"`
+	ContinuationToken     string `xml:"ContinuationToken,omitempty"`
+	NextContinuationToken string `xml:"NextContinuationToken,omitempty"`
+	StartAfter            string `xml:"StartAfter,omitempty"`
 
 	// Contents 列表（对象条目）
-	Contents []ObjectContent `xml:"Contents,omitempty"`
+	Contents       []ObjectContent `xml:"Contents,omitempty"`
+	CommonPrefixes []CommonPrefix  `xml:"CommonPrefixes,omitempty"`
 }
 
 // ObjectContent 表示一个对象条目
 type ObjectContent struct {
 	Key               string         `xml:"Key"`
 	LastModified      time.Time      `xml:"LastModified"`
-	ETag              meta.Etag      `xml:"ETag,omitempty"`
-	Size              int64          `xml:"Size,omitempty"`
-	StorageClass      string         `xml:"StorageClass,omitempty"`
-	Owner             *meta.Owner    `xml:"Owner,omitempty"`
+	ETag              meta.Etag      `xml:"ETag"`
+	Size              int64          `xml:"Size"`
+	StorageClass      string         `xml:"StorageClass"`
+	Owner             *meta.Owner    `xml:"Owner"`
 	RestoreStatus     *RestoreStatus `xml:"RestoreStatus,omitempty"`
 	ChecksumAlgorithm *string        `xml:"ChecksumAlgorithm,omitempty"`
 	ChecksumType      *string        `xml:"ChecksumType,omitempty"`
@@ -260,7 +265,11 @@ func (o *ObjectService) HeadObject(params *BaseObjectParams) (*meta.Object, erro
 	if object == nil {
 		var _object meta.Object
 		exist, err := o.kvstore.Get(objkey, &_object)
-		if !exist || err != nil {
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("failed to fetch object %s: %v", objkey, err)
+			return nil, err
+		}
+		if !exist {
 			logger.GetLogger("boulder").Errorf("object %s does not exist", objkey)
 			return nil, xhttp.ToError(xhttp.ErrNoSuchKey)
 		}
@@ -717,28 +726,29 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 	return object, pr, nil
 }
 
-// ListObjects 实现S3兼容的对象列表功能
-// 返回符合S3 ListObjects V1规范的响应结构
-func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimiter string, maxKeys int) ([]*meta.Object, error) {
-	// 验证参数
+// ListObjects 实现 S3 兼容的对象列表功能
+func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimiter string, maxKeys int) (objects []*meta.Object, commonPrefixes []string, isTruncated bool, nextMarker string, err error) {
+	// 设置 maxKeys 上限
 	if maxKeys <= 0 || maxKeys > 1000 {
-		maxKeys = 1000 // S3默认值和最大值
+		maxKeys = 1000
 	}
 
-	logger.GetLogger("boulder").Debugf("ListObjects request: bucket=%s, prefix=%s, marker=%s, delimiter=%s, maxKeys=%d",
-		bucket, prefix, marker, delimiter, maxKeys)
+	logger.GetLogger("boulder").Debugf(
+		"ListObjects request: bucket=%s, prefix=%s, marker=%s, delimiter=%s, maxKeys=%d",
+		bucket, prefix, marker, delimiter, maxKeys,
+	)
 
 	// 验证访问密钥
 	iamService := iam.GetIamService()
 	if iamService == nil {
 		logger.GetLogger("boulder").Errorf("failed to get iam service")
-		return nil, errors.New("failed to get iam service")
+		return nil, nil, false, "", errors.New("failed to get iam service")
 	}
 
 	ak, err := iamService.GetAccessKey(accessKeyID)
 	if err != nil || ak == nil {
 		logger.GetLogger("boulder").Errorf("failed to get access key %s", accessKeyID)
-		return nil, xhttp.ToError(xhttp.ErrAccessDenied)
+		return nil, nil, false, "", xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
 	// 检查存储桶是否存在
@@ -746,26 +756,27 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 	var bucketMeta meta.BucketMetadata
 	if exists, err := o.kvstore.Get(bucketKey, &bucketMeta); !exists || err != nil {
 		logger.GetLogger("boulder").Errorf("bucket %s does not exist", bucket)
-		return nil, xhttp.ToError(xhttp.ErrNoSuchBucket)
+		return nil, nil, false, "", xhttp.ToError(xhttp.ErrNoSuchBucket)
 	}
 
-	// 构建对象键前缀
-	prefixKey := "aws:object:" + ak.AccountID + ":" + bucket + "/"
+	// 构建 KV 存储中的前缀
+	accountPrefix := "aws:object:" + ak.AccountID + ":" + bucket + "/"
+	storePrefix := accountPrefix
 	if prefix != "" {
-		prefixKey += prefix
+		storePrefix += prefix // 如: aws:object:acc:bkt:logs/
 	}
 
-	// 设置标记
-	startKey := prefixKey
+	// 设置扫描起点
+	startKey := storePrefix
 	if marker != "" {
-		startKey = "aws:object:" + ak.AccountID + ":" + bucket + "/" + marker
+		startKey = accountPrefix + marker
 	}
 
-	// 使用KV存储的Scan方法获取对象键
-	txn, err := o.kvstore.BeginTxn(context.Background(), nil)
+	// 开启事务
+	txn, err := o.kvstore.BeginTxn(context.Background(), &kv.TxnOpt{IsReadOnly: true})
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
-		return nil, fmt.Errorf("failed to begin transaction: %v", err)
+		return nil, nil, false, "", fmt.Errorf("failed to begin transaction: %v", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -773,56 +784,189 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 		}
 	}()
 
-	// 获取对象键列表
-	keys := make([]string, 0)
-	nextKey := startKey
-	for len(keys) < maxKeys+1 {
-		scanKeys, next, err := txn.Scan(prefixKey, nextKey, maxKeys+1-len(keys))
-		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to scan objects prefix %s err: %v", prefixKey, err)
-			return nil, fmt.Errorf("failed to scan objects prefix %s err: %v", prefixKey, err)
+	if delimiter != "" {
+		// 模式 1: 有 delimiter → 启用 CommonPrefixes（分组模式）
+		seenPrefixes := make(map[string]struct{})
+		collected := 0
+		nextKey := startKey
+		var next string
+		var lastProcessedKey string
+		// 设置批次大小，动态调整
+		batchSize := 100
+		if maxKeys < 100 {
+			batchSize = maxKeys
 		}
+		for collected < maxKeys {
+			scanKeys, n, err := txn.Scan(storePrefix, nextKey, batchSize)
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("scan failed: %v", err)
+				return nil, nil, false, "", err
+			} else {
+				logger.GetLogger("boulder").Debugf("get scanKeys %#v", scanKeys)
+			}
+			if len(scanKeys) == 0 {
+				break
+			}
+			next = n
 
-		keys = append(keys, scanKeys...)
-		if next == "" {
-			break
+			// 批量获取对象源数据，减少IO操作
+			objMaps, err := txn.BatchGet(scanKeys)
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("failed to batch ge objects: %v", err)
+				return nil, nil, false, "", fmt.Errorf("failed to batch get objects: %v", err)
+			}
+
+			for storeKey, data := range objMaps {
+
+				// 超出 bucket 范围则停止
+				if !strings.HasPrefix(storeKey, accountPrefix) {
+					next = ""
+					break
+				}
+				// 提取对象 key（去掉前缀）
+				objectKey := strings.TrimPrefix(storeKey, accountPrefix)
+
+				// 如果设置了 prefix，跳过不匹配的
+				if prefix != "" && !strings.HasPrefix(objectKey, prefix) {
+					next = ""
+					break
+				}
+				lastProcessedKey = objectKey
+
+				var _obj meta.Object
+				err := json.Unmarshal(data, &_obj)
+				if err != nil {
+					logger.GetLogger("boulder").Errorf("failed to  arshal objects: %v", err)
+					return nil, nil, false, "", fmt.Errorf("failed to  arshal objects: %v", err)
+				}
+
+				// 查找第一级 delimiter
+				afterPrefix := objectKey[len(prefix):]
+				delimPos := strings.Index(afterPrefix, delimiter)
+				if delimPos != -1 {
+					// 提取第一级目录：logs/2024/
+					fullPos := len(prefix) + delimPos + len(delimiter)
+					commonPrefix := objectKey[:fullPos]
+
+					if _, exists := seenPrefixes[commonPrefix]; !exists {
+						seenPrefixes[commonPrefix] = struct{}{}
+						commonPrefixes = append(commonPrefixes, commonPrefix)
+						collected++
+
+						if collected >= maxKeys {
+							break
+						}
+					}
+				} else {
+					// 无 delimiter 在剩余部分 → 是叶子文件
+					objects = append(objects, &_obj)
+					collected++
+					if collected >= maxKeys {
+						break
+					}
+				}
+			}
+			if collected >= maxKeys {
+				break
+			}
+			if next == "" {
+				break
+			}
+			nextKey = next
 		}
-		nextKey = next
+		// 设置 isTruncated 和 nextMarker
+		isTruncated = (next != "")
+
+		if isTruncated {
+			if len(objects) > 0 {
+				nextMarker = objects[len(objects)-1].Key
+			} else if len(commonPrefixes) > 0 {
+				nextMarker = commonPrefixes[len(commonPrefixes)-1]
+			} else if lastProcessedKey != "" {
+				nextMarker = lastProcessedKey
+			}
+		}
+	} else {
+		// 模式 2: 无 delimiter → 平铺模式，只返回 Contents
+		collected := 0
+		nextKey := startKey
+		var next string
+		var lastProcessedKey string
+		for collected < maxKeys {
+			// 动态调整批次大小
+			batchSize := maxKeys - collected
+			if batchSize > 500 {
+				batchSize = 500
+			}
+
+			scanKeys, n, err := txn.Scan(storePrefix, nextKey, batchSize)
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("scan failed: %v", err)
+				return nil, nil, false, "", err
+			}
+			if len(scanKeys) == 0 {
+				break
+			}
+			next = n
+
+			// 批量获取对象源数据，减少IO操作
+			objMaps, err := txn.BatchGet(scanKeys)
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("failed to batch ge objects: %v", err)
+				return nil, nil, false, "", fmt.Errorf("failed to batch get objects: %v", err)
+			}
+			for storeKey, data := range objMaps {
+				if !strings.HasPrefix(storeKey, accountPrefix) {
+					break
+				}
+
+				objectKey := strings.TrimPrefix(storeKey, accountPrefix)
+				if prefix != "" && !strings.HasPrefix(objectKey, prefix) {
+					break
+				}
+
+				lastProcessedKey = objectKey
+
+				var _obj meta.Object
+				err := json.Unmarshal(data, &_obj)
+				if err != nil {
+					logger.GetLogger("boulder").Errorf("failed to  arshal objects: %v", err)
+					return nil, nil, false, "", fmt.Errorf("failed to  arshal objects: %v", err)
+				}
+				objects = append(objects, &_obj)
+				collected++
+				if collected >= maxKeys {
+					break
+				}
+			}
+
+			if collected >= maxKeys {
+				break
+			}
+			if next == "" {
+				break
+			}
+			nextKey = next
+		}
+		// 设置 isTruncated 和 nextMarker
+		isTruncated = (next != "")
+
+		if isTruncated && len(objects) > 0 {
+			nextMarker = objects[len(objects)-1].Key
+		} else if isTruncated && lastProcessedKey != "" {
+			nextMarker = lastProcessedKey
+		}
 	}
+
+	// 提前关闭事务
 	txn.Rollback()
 	txn = nil
-
-	// 获取object meta 信息
-	objects := make([]*meta.Object, 0)
-	batchSize := 100
-	for i := 0; i < len(keys); i += batchSize {
-		end := i + batchSize
-		if end > len(keys) {
-			end = len(keys)
-		}
-		batchKeys := keys[i:end]
-		data, err := o.kvstore.BatchGet(batchKeys)
-		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to batch ge objects: %v", err)
-			return nil, fmt.Errorf("failed to batch get objects: %v", err)
-		}
-		for _, item := range data {
-			var _obj meta.Object
-			err := json.Unmarshal(item, &_obj)
-			if err != nil {
-				logger.GetLogger("boulder").Errorf("failed to  arshal objects: %v", err)
-				return nil, fmt.Errorf("failed to  arshal objects: %v", err)
-			}
-			objects = append(objects, &_obj)
-		}
-	}
-
-	return objects, nil
+	logger.GetLogger("boulder").Debugf("get commonPrefixs %d object %d", len(commonPrefixes), len(objects))
+	return objects, commonPrefixes, isTruncated, nextMarker, nil
 }
 
 // ListObjectsV2 实现S3兼容的对象列表功能（V2版本）
-// 返回符合S3 ListObjects V2规范的响应结构
-func (o *ObjectService) ListObjectsV2(bucket, accessKeyID, prefix, continuationToken, startAfter, delimiter string, maxKeys int) ([]*meta.Object, error) {
+func (o *ObjectService) ListObjectsV2(bucket, accessKeyID, prefix, continuationToken, startAfter, delimiter string, maxKeys int) (objects []*meta.Object, commonPrefixes []string, isTruncated bool, nextToken string, err error) {
 	// 1. 解码 continuationToken → 得到 marker
 	var marker string
 	// 优先使用 StartAfter
@@ -832,14 +976,15 @@ func (o *ObjectService) ListObjectsV2(bucket, accessKeyID, prefix, continuationT
 		decoded, err := base64.StdEncoding.DecodeString(continuationToken)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to decode continuation token: %s", continuationToken)
-			return nil, xhttp.ToError(xhttp.ErrInvalidQueryParams)
+			return nil, nil, false, "", xhttp.ToError(xhttp.ErrInvalidQueryParams)
 		}
 		marker = string(decoded)
 	}
 
 	// 调用V1版本的方法获取对象列表
-	objects, err := o.ListObjects(bucket, accessKeyID, prefix, marker, delimiter, maxKeys)
-	return objects, err
+	obs, cp, t, nm, e := o.ListObjects(bucket, accessKeyID, prefix, marker, delimiter, maxKeys)
+	nextToken = base64.StdEncoding.EncodeToString([]byte(nm))
+	return obs, cp, t, nextToken, e
 }
 
 func (o *ObjectService) DeleteObject(params *BaseObjectParams) error {

@@ -101,8 +101,15 @@ func (b *BadgerStore) Set(key string, value interface{}) error {
 }
 
 // BeginTxn 开始一个新事务
-func (b *BadgerStore) BeginTxn(_ context.Context, _ *TxnOpt) (Txn, error) {
-	txn := b.db.NewTransaction(true)
+// 根据传入的TxnOpt配置事务类型和行为
+func (b *BadgerStore) BeginTxn(_ context.Context, opt *TxnOpt) (Txn, error) {
+	// 如果没有提供选项或IsReadOnly为false，则使用默认的读写事务
+	update := true
+	if opt != nil && opt.IsReadOnly {
+		update = false
+	}
+
+	txn := b.db.NewTransaction(update)
 	return &BadgerTxn{txn: txn}, nil
 }
 

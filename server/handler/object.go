@@ -18,7 +18,6 @@ package handler
 
 import (
 	"crypto/md5"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/xml"
 	"errors"
@@ -995,14 +994,20 @@ func DeleteObjectHandler(w http.ResponseWriter, r *http.Request) {
 func DeleteMultipleObjectsHandler(w http.ResponseWriter, r *http.Request) {
 	logger.GetLogger("boulder").Infof("API called: DeleteMultipleObjectsHandler")
 	bucket, _, _, accessKeyID := GetReqVar(r)
-	var deleteReq object.DeleteObjectsRequest
-	decoder := xml.NewDecoder(r.Body)
-	// 配置解码器以忽略XML命名空间，以便正确解析S3请求
-	decoder.Strict = false
-	err := decoder.Decode(&deleteReq)
+
+	// 读取请求体
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to decode DeleteObjects XML: %v", err)
+		logger.GetLogger("boulder").Errorf("failed to read request body: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	var deleteReq object.DeleteObjectsRequest
+	if err := xml.Unmarshal(body, &deleteReq); err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to decode DeleteObjects XML: %v", err)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedXML)
 		return
 	}
 
@@ -1123,7 +1128,7 @@ func ListObjectsV1Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	objects, err := _os.ListObjects(bucket, accessKeyID, prefix, marker, delimiter, maxkeys)
+	objects, commonPrefixes, isTruncated, nextMarker, err := _os.ListObjects(bucket, accessKeyID, prefix, marker, delimiter, maxkeys)
 	if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
 		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
 		return
@@ -1139,36 +1144,19 @@ func ListObjectsV1Handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := object.ListObjectsResponse{
-		XMLName:  xml.Name{Local: "ListBucketResult"},
-		XMLNS:    "http://s3.amazonaws.com/doc/2006-03-01/",
-		Name:     bucket,
-		Contents: make([]object.ObjectContent, 0, len(objects)),
+		XMLName:        xml.Name{Local: "ListBucketResult"},
+		XMLNS:          "http://s3.amazonaws.com/doc/2006-03-01/",
+		Name:           bucket,
+		Prefix:         prefix,
+		Marker:         marker,
+		Delimiter:      delimiter,
+		EncodingType:   encodingType,
+		NextMarker:     nextMarker,
+		IsTruncated:    isTruncated,
+		Contents:       make([]object.ObjectContent, 0, len(objects)),
+		CommonPrefixes: make([]object.CommonPrefix, 0, len(commonPrefixes)),
 	}
 
-	isTruncated := len(objects) > maxkeys
-
-	resp.IsTruncated = &isTruncated
-	if isTruncated && len(objects) > 0 {
-		lastKey := objects[len(objects)-1].Key
-		resp.NextMarker = &lastKey
-	}
-	if isTruncated {
-		objects = objects[:maxkeys]
-	}
-
-	// 只设置非空的可选字段
-	if prefix != "" {
-		resp.Prefix = &prefix
-	}
-	if marker != "" {
-		resp.Marker = &marker
-	}
-	if delimiter != "" {
-		resp.Delimiter = &delimiter
-	}
-	if encodingType != "" {
-		resp.Delimiter = &encodingType
-	}
 	for _, o := range objects {
 		content := object.ObjectContent{
 			Key:          o.Key,
@@ -1184,29 +1172,40 @@ func ListObjectsV1Handler(w http.ResponseWriter, r *http.Request) {
 		resp.Contents = append(resp.Contents, content)
 	}
 
+	for _, cp := range commonPrefixes {
+		resp.CommonPrefixes = append(resp.CommonPrefixes, object.CommonPrefix{
+			Prefix: cp,
+		})
+	}
+
 	// 如果 encoding-type=url，对所有字符串进行 URL 编码
 	if encodingType == "url" {
 		encode := func(s string) string {
 			return url.QueryEscape(s)
 		}
 
-		if resp.Prefix != nil {
-			encoded := encode(*resp.Prefix)
-			resp.Prefix = &encoded
+		if resp.Prefix != "" {
+			encoded := encode(resp.Prefix)
+			resp.Prefix = encoded
 		}
-		if resp.Marker != nil {
-			encoded := encode(*resp.Marker)
-			resp.Marker = &encoded
+		if resp.Marker != "" {
+			encoded := encode(resp.Marker)
+			resp.Marker = encoded
 		}
-		if resp.NextMarker != nil {
-			encoded := encode(*resp.NextMarker)
-			resp.NextMarker = &encoded
+		if resp.NextMarker != "" {
+			encoded := encode(resp.NextMarker)
+			resp.NextMarker = encoded
 		}
 
 		// 编码 Contents.Key
 		for i := range resp.Contents {
 			encoded := encode(resp.Contents[i].Key)
 			resp.Contents[i].Key = encoded
+		}
+
+		for i := range resp.CommonPrefixes {
+			encoded := encode(resp.CommonPrefixes[i].Prefix)
+			resp.CommonPrefixes[i].Prefix = encoded
 		}
 	}
 
@@ -1271,7 +1270,7 @@ func ListObjectsV2Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	objects, err := _os.ListObjectsV2(bucket, accessKeyID, prefix, continuationToken, startAfter, delimiter, maxkeys)
+	objects, commonPrefixes, isTruncated, nextToken, err := _os.ListObjectsV2(bucket, accessKeyID, prefix, continuationToken, startAfter, delimiter, maxkeys)
 	if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
 		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
 		return
@@ -1285,39 +1284,25 @@ func ListObjectsV2Handler(w http.ResponseWriter, r *http.Request) {
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
+
 	resp := &object.ListObjectsV2Response{
-		XMLName:  xml.Name{Local: "ListBucketResult"},
-		XMLNS:    "http://s3.amazonaws.com/doc/2006-03-01/",
-		Name:     bucket,
-		KeyCount: 0,
-		Contents: make([]object.ObjectContent, 0),
+		XMLName:               xml.Name{Local: "ListBucketResult"},
+		XMLNS:                 "http://s3.amazonaws.com/doc/2006-03-01/",
+		Name:                  bucket,
+		Prefix:                prefix,
+		MaxKeys:               maxkeys,
+		Delimiter:             delimiter,
+		KeyCount:              len(objects) + len(commonPrefixes),
+		IsTruncated:           isTruncated,
+		ContinuationToken:     continuationToken,
+		NextContinuationToken: nextToken,
+		EncodingType:          encodingType,
+		StartAfter:            startAfter,
+
+		Contents:       make([]object.ObjectContent, 0, len(objects)),
+		CommonPrefixes: make([]object.CommonPrefix, 0, len(commonPrefixes)),
 	}
 
-	isTruncated := len(objects) > maxkeys
-
-	resp.IsTruncated = &isTruncated
-	if isTruncated && len(objects) > 0 {
-		lastKey := objects[len(objects)-1].Key
-		token := base64.StdEncoding.EncodeToString([]byte(lastKey))
-		resp.NextContinuationToken = &token
-	}
-	if isTruncated {
-		objects = objects[:maxkeys]
-	}
-	resp.KeyCount = len(objects)
-	// 只设置非空的可选字段
-	if prefix != "" {
-		resp.Prefix = &prefix
-	}
-	if startAfter != "" {
-		resp.StartAfter = &startAfter
-	}
-	if delimiter != "" {
-		resp.Delimiter = &delimiter
-	}
-	if encodingType != "" {
-		resp.Delimiter = &encodingType
-	}
 	for _, o := range objects {
 		content := object.ObjectContent{
 			Key:          o.Key,
@@ -1333,25 +1318,37 @@ func ListObjectsV2Handler(w http.ResponseWriter, r *http.Request) {
 		resp.Contents = append(resp.Contents, content)
 	}
 
+	for _, cp := range commonPrefixes {
+		resp.CommonPrefixes = append(resp.CommonPrefixes, object.CommonPrefix{
+			Prefix: cp,
+		})
+
+	}
+
 	// 如果 encoding-type=url，对所有字符串进行 URL 编码
 	if encodingType == "url" {
 		encode := func(s string) string {
 			return url.QueryEscape(s)
 		}
 
-		if resp.Prefix != nil {
-			encoded := encode(*resp.Prefix)
-			resp.Prefix = &encoded
+		if resp.Prefix != "" {
+			encoded := encode(resp.Prefix)
+			resp.Prefix = encoded
 		}
-		if resp.StartAfter != nil {
-			encoded := encode(*resp.StartAfter)
-			resp.StartAfter = &encoded
+		if resp.StartAfter != "" {
+			encoded := encode(resp.StartAfter)
+			resp.StartAfter = encoded
 		}
 
 		// 编码 Contents.Key
 		for i := range resp.Contents {
 			encoded := encode(resp.Contents[i].Key)
 			resp.Contents[i].Key = encoded
+		}
+
+		for i := range resp.CommonPrefixes {
+			encoded := encode(resp.CommonPrefixes[i].Prefix)
+			resp.CommonPrefixes[i].Prefix = encoded
 		}
 	}
 	xhttp.WriteAWSSuc(w, r, resp)

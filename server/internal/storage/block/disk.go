@@ -13,12 +13,12 @@ import (
 
 // DiskStore 实现基于磁盘的存储后端
 type DiskStore struct {
-	conf xconf.DiskConfig
+	conf *xconf.DiskConfig
 	mu   sync.RWMutex
 }
 
 // NewDiskStore  创建新的磁盘存储
-func NewDiskStore(c xconf.DiskConfig) (*DiskStore, error) {
+func NewDiskStore(c *xconf.DiskConfig) (*DiskStore, error) {
 	if err := os.MkdirAll(c.Path, 0755); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to create disk store directory: %v", err)
 		return nil, err
@@ -145,7 +145,7 @@ func (d *DiskStore) DeleteBlock(blockID string) error {
 	if err := os.Remove(path); err != nil {
 		if os.IsNotExist(err) {
 			logger.GetLogger("boulder").Debugf("Block %s does not exist for deletion", blockID)
-			return ErrBlockNotFound
+			return nil
 		}
 		logger.GetLogger("boulder").Errorf("failed to delete block %s: %v", blockID, err)
 		return fmt.Errorf("failed to delete block %s: %w", blockID, err)
@@ -220,8 +220,9 @@ func (d *DiskStore) List() (<-chan string, <-chan error) {
 
 // blockPath 获取块的完整路径
 func (d *DiskStore) blockPath(blockID string) string {
-	dir1 := blockID[:2]
-	dir2 := blockID[2:4]
-	dir3 := blockID[4:6]
+	n := len(blockID)
+	dir1 := blockID[n-2:]      // 最后2位
+	dir2 := blockID[n-4 : n-2] // 倒数第3-4位
+	dir3 := blockID[n-6 : n-4] // 倒数第5-6位
 	return filepath.Join(d.conf.Path, dir1, dir2, dir3, blockID)
 }

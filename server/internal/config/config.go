@@ -73,8 +73,8 @@ type DiskConfig struct {
 
 // BlockConfig 存储Block相关配置
 type BlockConfig struct {
-	S3   *S3Config  `yaml:"s3" json:"s3"`
-	Disk DiskConfig `yaml:"disk" json:"disk"`
+	S3   *S3Config   `yaml:"s3" json:"s3"`
+	Disk *DiskConfig `yaml:"disk" json:"disk"`
 }
 
 // RedisConfig Redis集群配置

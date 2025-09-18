@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 	xconf "github.com/mageg-x/boulder/internal/config"
 	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/mageg-x/boulder/internal/logger"
@@ -30,7 +31,7 @@ type S3Store struct {
 
 // NewS3Store NewS3Storage 创建新的S3存储后端
 func NewS3Store(c *xconf.S3Config) (*S3Store, error) {
-	logger.GetLogger("boulder").Infof("Creating new S3 store with bucket: %s", c.Bucket)
+	logger.GetLogger("boulder").Infof("Creating new S3 store with bucket: %#v", c)
 
 	ctx := context.Background()
 
@@ -61,7 +62,6 @@ func NewS3Store(c *xconf.S3Config) (*S3Store, error) {
 	// 创建 S3 客户端（对接 MinIO 等私有服务需加选项）
 	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
 		o.BaseEndpoint = aws.String(c.Endpoint)
-		// 对接 MinIO/OSS/COS 等需要PathStyle的情况
 		o.UsePathStyle = c.UsePathStyle
 		logger.GetLogger("boulder").Debugf("Use path style: %v", c.UsePathStyle)
 	})
@@ -92,7 +92,7 @@ func (s *S3Store) WriteBlock(blockID string, data []byte) error {
 	})
 
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to write block %s to S3: %v", blockID, err)
+		logger.GetLogger("boulder").Errorf("Failed to write block %s  %s  %s len :%d to S3 failed error is %v, config is %#v", s.conf.Bucket, key, blockID, len(data), err, s.conf)
 		return fmt.Errorf("failed to write block %s to S3: %w", blockID, err)
 	}
 
@@ -152,7 +152,13 @@ func (s *S3Store) DeleteBlock(blockID string) error {
 	})
 
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to delete block %s from S3: %v", blockID, err)
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) {
+			if apiErr.ErrorCode() == "NotFound" {
+				return nil
+			}
+		}
+
 		return fmt.Errorf("failed to delete block %s from S3: %w", blockID, err)
 	}
 
@@ -291,14 +297,9 @@ func (s *S3Store) List() (<-chan string, <-chan error) {
 
 // blockKey 获取块在S3中的键
 func (s *S3Store) blockKey(blockID string) string {
-	// 使用两级目录分散对象
-	if len(blockID) < 20 {
-		// 处理短 blockID 的情况
-		logger.GetLogger("boulder").Debugf("Short blockID detected: %s", blockID)
-		return path.Join("blocks", blockID)
-	}
-	dir1 := blockID[:2]
-	dir2 := blockID[2:4]
-	dir3 := blockID[4:6]
+	n := len(blockID)
+	dir1 := blockID[n-2:]      // 最后2位
+	dir2 := blockID[n-4 : n-2] // 倒数第3-4位
+	dir3 := blockID[n-6 : n-4] // 倒数第5-6位
 	return path.Join("blocks", dir1, dir2, dir3, blockID)
 }

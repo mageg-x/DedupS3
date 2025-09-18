@@ -110,10 +110,20 @@ func main() {
 	// 初始化 缺省block存储
 	bs := storage.GetStorageService()
 	store, _ := bs.AddStorage("disk", "STANDARD", config.BlockConfig{
-		Disk: config.DiskConfig{
+		Disk: &config.DiskConfig{
 			Path: "./data/blocks",
 		},
 	})
+	//store, _ := bs.AddStorage("s3", "STANDARD", config.BlockConfig{
+	//	S3: &config.S3Config{
+	//		Endpoint:     "http://192.168.8.76:9000",
+	//		AccessKey:    "steven-ak01",
+	//		SecretKey:    "steven-sk01",
+	//		Region:       "us-east-1",
+	//		Bucket:       "b0001",
+	//		UsePathStyle: true,
+	//	},
+	//})
 	stores := bs.ListStorages()
 
 	logger.GetLogger("boulder").Infof("list store %v strores %#v", store, stores)

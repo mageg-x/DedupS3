@@ -39,7 +39,7 @@ import (
 )
 
 const (
-	PRE_UPLOAD_BLOCK_NUM   = 19
+	PRE_UPLOAD_BLOCK_NUM   = 20
 	MAX_BUCKET_HEADER_SIZE = 200 * 1024
 	MAX_BUCKET_SIZE        = 64 * 1024 * 1024
 )

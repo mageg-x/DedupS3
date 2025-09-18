@@ -21,6 +21,17 @@ import (
 	"golang.org/x/crypto/pbkdf2"
 )
 
+func IncrementKey(s string) string {
+	bytes := []byte(s)
+	for i := len(bytes) - 1; i >= 0; i-- {
+		if bytes[i] < 0xFF {
+			bytes[i]++
+			return string(bytes[:i+1])
+		}
+	}
+	return s + "\x00"
+}
+
 // TrimLeadingSlash 去前导 /   合并多个 /  处理 . 和 ..   规范化路径
 func TrimLeadingSlash(ep string) string {
 	if len(ep) > 0 && ep[0] == '/' {

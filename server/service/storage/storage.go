@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/mageg-x/boulder/internal/logger"
@@ -81,7 +82,7 @@ func (s *StorageService) AddStorage(strType, strClass string, conf config.BlockC
 	}
 	// 检查 ID 是否已存在
 	id := ""
-	switch strType {
+	switch strings.ToLower(strType) {
 	case "s3":
 		//根据 Endpoint, bucket, region 生成uuid
 		id = hex.EncodeToString(utils.HmacSHA256([]byte(conf.S3.Region+conf.S3.Endpoint+conf.S3.Bucket), "aws:storage"))
@@ -109,7 +110,12 @@ func (s *StorageService) AddStorage(strType, strClass string, conf config.BlockC
 
 	key := "aws:storage:" + id
 	var existing meta.Storage
-	if ok, err := txn.Get(key, &existing); err == nil && ok {
+	ok, err := txn.Get(key, &existing)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to get  storage %s : %v", key, err)
+		return nil, fmt.Errorf("failed to get  storage %s : %v", key, err)
+	}
+	if ok {
 		logger.GetLogger("boulder").Warnf("storage with id %s already exists", id)
 		return nil, errors.New("storage with this id already exists")
 	}
@@ -170,6 +176,10 @@ func (s *StorageService) GetStorage(id string) (*meta.Storage, error) {
 		logger.GetLogger("boulder").Debugf("creating s3 block store for bucket: %s", storage.Conf.S3.Bucket)
 		inst, err = block.NewS3Store(storage.Conf.S3)
 	case "disk":
+		if storage.Conf.Disk == nil {
+			logger.GetLogger("boulder").Error("disk storage not configured")
+			return nil, errors.New("disk storage not configured")
+		}
 		logger.GetLogger("boulder").Debugf("creating disk block store at path: %s", storage.Conf.Disk.Path)
 		inst, err = block.NewDiskStore(storage.Conf.Disk)
 	default:

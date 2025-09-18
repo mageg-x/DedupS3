@@ -22,6 +22,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/tikv/client-go/v2/txnkv/txnsnapshot"
+
 	tikverr "github.com/tikv/client-go/v2/error"
 	"github.com/tikv/client-go/v2/tikv"
 	pd "github.com/tikv/pd/client"
@@ -38,6 +40,11 @@ type TiKVStore struct {
 // TiKVTxn 基于TiKV的事务实现
 type TiKVTxn struct {
 	txn *tikv.KVTxn
+}
+
+// TiKVReadOnlyTxn 只读事务包装器
+type TiKVReadOnlyTxn struct {
+	snapshot *txnsnapshot.KVSnapshot
 }
 
 // InitTiKVStore 初始化TiKV存储
@@ -148,13 +155,22 @@ func (t *TiKVStore) Set(key string, value interface{}) error {
 }
 
 // BeginTxn 开始一个新事务
-func (t *TiKVStore) BeginTxn(_ context.Context, _ *TxnOpt) (Txn, error) {
+func (t *TiKVStore) BeginTxn(_ context.Context, opt *TxnOpt) (Txn, error) {
 	txn, err := t.client.Begin()
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to begin txn: %v", err)
 		return nil, err
 	}
-	return &TiKVTxn{txn: txn}, nil
+
+	// 对于只读事务，我们通常设置低优先级
+	if opt != nil && opt.IsReadOnly {
+		// 只读事务使用快照
+		snapshot := t.client.GetSnapshot(0) // 0 表示最新版本
+		// 创建只读事务包装器
+		return &TiKVReadOnlyTxn{snapshot: snapshot}, nil
+	} else {
+		return &TiKVTxn{txn: txn}, nil
+	}
 }
 
 // Close 关闭连接
@@ -402,4 +418,137 @@ func (t *TiKVTxn) Scan(prefix string, startKey string, limit int) ([]string, str
 		nextKey = lastKey
 	}
 	return keys, nextKey, nil
+}
+
+// Get 在只读事务中获取值
+func (t *TiKVReadOnlyTxn) Get(key string, value interface{}) (bool, error) {
+	data, exists, err := t.GetRaw(key)
+	if err != nil {
+		return false, err
+	}
+	if !exists {
+		return false, nil
+	}
+
+	if err := json.Unmarshal(data, value); err != nil {
+		logger.GetLogger("boulder").Errorf("JSON unmarshal error for key %s: %v", key, err)
+		return true, fmt.Errorf("json unmarshal error: %w", err)
+	}
+	return true, nil
+}
+
+// GetRaw 在只读事务中获取原始字节数据
+func (t *TiKVReadOnlyTxn) GetRaw(key string) ([]byte, bool, error) {
+	data, err := t.snapshot.Get(context.Background(), []byte(key))
+	if err != nil {
+		if errors.Is(err, tikverr.ErrNotExist) {
+			return nil, false, nil
+		}
+		logger.GetLogger("boulder").Errorf("Error getting raw data for key %s: %v", key, err)
+		return nil, false, err
+	}
+
+	if data == nil {
+		return nil, false, nil
+	}
+	return data, true, nil
+}
+
+// BatchGet 在只读事务中批量获取值
+func (t *TiKVReadOnlyTxn) BatchGet(keys []string) (map[string][]byte, error) {
+	ks := make([][]byte, 0, len(keys))
+	for _, key := range keys {
+		ks = append(ks, []byte(key))
+	}
+
+	// 直接使用快照的批量获取方法
+	values, err := t.snapshot.BatchGet(context.Background(), ks)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to BatchGet keys: %v", err)
+		return nil, fmt.Errorf("failed to BatchGet keys: %w", err)
+	}
+
+	return values, nil
+}
+
+// Scan 在只读事务中扫描键
+func (t *TiKVReadOnlyTxn) Scan(prefix string, startKey string, limit int) ([]string, string, error) {
+	// 确定起始键
+	start := []byte(startKey)
+	if startKey == "" {
+		start = []byte(prefix)
+	}
+	// 计算结束前缀
+	end := make([]byte, len(prefix))
+	copy(end, prefix)
+	for i := len(end) - 1; i >= 0; i-- {
+		if end[i] < 0xFF {
+			end[i]++
+			end = end[:i+1]
+			break
+		}
+		// 如果字节是0xFF，继续向前寻找可以递增的字节
+		if i == 0 {
+			// 整个前缀都是0xFF，需要特殊处理
+			end = append([]byte(prefix), 0x00)
+		}
+	}
+
+	// 执行扫描
+	iter, err := t.snapshot.Iter(start, end)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to create iterator for prefix %s: %v", prefix, err)
+		return nil, "", fmt.Errorf("failed to create iterator: %w", err)
+	}
+	defer iter.Close()
+
+	keys := make([]string, 0)
+	for iter.Valid() && len(keys) < limit {
+		key := iter.Key()
+		keys = append(keys, string(key))
+		iter.Next() // 移动到下一个键
+	}
+
+	// 确定下一个起始键
+	var nextKey string
+	if len(keys) == limit && len(keys) > 0 {
+		lastKey := keys[len(keys)-1]
+		nextKey = lastKey
+	}
+	return keys, nextKey, nil
+}
+
+// Set 只读事务不支持写操作，返回错误
+func (t *TiKVReadOnlyTxn) Set(key string, value interface{}) error {
+	return fmt.Errorf("write operations not supported in read-only transaction")
+}
+
+// SetNX 只读事务不支持写操作，返回错误
+func (t *TiKVReadOnlyTxn) SetNX(key string, value interface{}) error {
+	return fmt.Errorf("write operations not supported in read-only transaction")
+}
+
+// BatchSet 只读事务不支持写操作，返回错误
+func (t *TiKVReadOnlyTxn) BatchSet(kvs map[string]interface{}) error {
+	return fmt.Errorf("write operations not supported in read-only transaction")
+}
+
+// Delete 只读事务不支持写操作，返回错误
+func (t *TiKVReadOnlyTxn) Delete(key string) error {
+	return fmt.Errorf("write operations not supported in read-only transaction")
+}
+
+// DeletePrefix 只读事务不支持写操作，返回错误
+func (t *TiKVReadOnlyTxn) DeletePrefix(prefix string, limit int32) error {
+	return fmt.Errorf("write operations not supported in read-only transaction")
+}
+
+// Commit 只读事务不需要提交，直接返回nil
+func (t *TiKVReadOnlyTxn) Commit() error {
+	return nil
+}
+
+// Rollback 只读事务不需要回滚，直接返回nil
+func (t *TiKVReadOnlyTxn) Rollback() error {
+	return nil
 }

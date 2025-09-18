@@ -75,4 +75,6 @@ type Txn interface {
 }
 
 type TxnOpt struct {
+	// IsReadOnly 是否为只读事务
+	IsReadOnly bool
 }
