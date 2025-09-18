@@ -797,27 +797,30 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 			batchSize = maxKeys
 		}
 		for collected < maxKeys {
+			logger.GetLogger("boulder").Debugf("Scan from  %s", nextKey)
 			scanKeys, n, err := txn.Scan(storePrefix, nextKey, batchSize)
 			if err != nil {
 				logger.GetLogger("boulder").Errorf("scan failed: %v", err)
 				return nil, nil, false, "", err
 			} else {
-				logger.GetLogger("boulder").Debugf("get scanKeys %#v", scanKeys)
+				logger.GetLogger("boulder").Debugf("get scanKeys %#v , nextkey %s", scanKeys, n)
 			}
+
+			next = n
 			if len(scanKeys) == 0 {
 				break
 			}
-			next = n
-
 			// 批量获取对象源数据，减少IO操作
 			objMaps, err := txn.BatchGet(scanKeys)
 			if err != nil {
 				logger.GetLogger("boulder").Errorf("failed to batch ge objects: %v", err)
 				return nil, nil, false, "", fmt.Errorf("failed to batch get objects: %v", err)
 			}
-
-			for storeKey, data := range objMaps {
-
+			for _, storeKey := range scanKeys {
+				data, ok := objMaps[storeKey]
+				if !ok {
+					continue
+				}
 				// 超出 bucket 范围则停止
 				if !strings.HasPrefix(storeKey, accountPrefix) {
 					next = ""
@@ -857,6 +860,11 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 							break
 						}
 					}
+
+					// 使用 IncrementKey 确保跳过，兼容 UTF-8
+					next = utils.IncrementKey(accountPrefix + commonPrefix)
+					logger.GetLogger("boulder").Debugf("%s get next %s", accountPrefix+commonPrefix, next)
+					break
 				} else {
 					// 无 delimiter 在剩余部分 → 是叶子文件
 					objects = append(objects, &_obj)
@@ -904,10 +912,11 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 				logger.GetLogger("boulder").Errorf("scan failed: %v", err)
 				return nil, nil, false, "", err
 			}
+
+			next = n
 			if len(scanKeys) == 0 {
 				break
 			}
-			next = n
 
 			// 批量获取对象源数据，减少IO操作
 			objMaps, err := txn.BatchGet(scanKeys)
@@ -915,7 +924,11 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 				logger.GetLogger("boulder").Errorf("failed to batch ge objects: %v", err)
 				return nil, nil, false, "", fmt.Errorf("failed to batch get objects: %v", err)
 			}
-			for storeKey, data := range objMaps {
+			for _, storeKey := range scanKeys {
+				data, ok := objMaps[storeKey]
+				if !ok {
+					continue
+				}
 				if !strings.HasPrefix(storeKey, accountPrefix) {
 					break
 				}

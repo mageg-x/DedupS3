@@ -243,7 +243,7 @@ func (b *BucketService) ListBuckets(params *BaseBucketParams) ([]*meta.BucketMet
 		DisplayName: ac.Name,
 	}
 
-	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
+	txn, err := b.kvstore.BeginTxn(context.Background(), &kv.TxnOpt{IsReadOnly: true})
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
 		return nil, nil, fmt.Errorf("failed to initialize kvstore txn: %v", err)

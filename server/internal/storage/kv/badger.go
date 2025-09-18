@@ -53,7 +53,7 @@ func InitBadgerStore(cfg xconf.BadgerConfig) (*BadgerStore, error) {
 }
 
 func (b *BadgerStore) Get(key string, value interface{}) (bool, error) {
-	txn, err := b.BeginTxn(context.Background(), nil)
+	txn, err := b.BeginTxn(context.Background(), &TxnOpt{IsReadOnly: true})
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to initialize tikv txn: %v", err)
 		return false, err
@@ -63,7 +63,7 @@ func (b *BadgerStore) Get(key string, value interface{}) (bool, error) {
 }
 
 func (b *BadgerStore) GetRaw(key string) ([]byte, bool, error) {
-	txn, err := b.BeginTxn(context.Background(), nil)
+	txn, err := b.BeginTxn(context.Background(), &TxnOpt{IsReadOnly: true})
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to initialize tikv txn: %v", err)
 		return nil, false, err
@@ -73,7 +73,7 @@ func (b *BadgerStore) GetRaw(key string) ([]byte, bool, error) {
 }
 
 func (b *BadgerStore) BatchGet(keys []string) (map[string][]byte, error) {
-	txn, err := b.BeginTxn(context.Background(), nil)
+	txn, err := b.BeginTxn(context.Background(), &TxnOpt{IsReadOnly: true})
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to initialize tikv txn: %v", err)
 		return nil, err
