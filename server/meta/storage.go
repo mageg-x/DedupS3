@@ -19,17 +19,18 @@ package meta
 
 import (
 	"fmt"
+
 	"github.com/mageg-x/boulder/internal/config"
 	"github.com/mageg-x/boulder/internal/storage/block"
 )
 
 // Storage 表示单个存储实例的元数据
 type Storage struct {
-	ID       string             `json:"id" msgpack:"id"`       // 唯一标识符
-	Class    string             `json:"class" msgpack:"class"` // 存储类型 (标准， 低频， 归档存储)
-	Type     string             `json:"type" msgpack:"type"`   // 存储类别 (s3, disk, etc.)
-	Conf     config.BlockConfig `json:"conf" msgpack:"conf"`   // 存储配置
-	Instance block.BlockStore   `json:"-" msgpack:"-"`         // 实际读写实例
+	ID       string               `json:"id" msgpack:"id"`       // 唯一标识符
+	Class    string               `json:"class" msgpack:"class"` // 存储类型 (标准， 低频， 归档存储)
+	Type     string               `json:"type" msgpack:"type"`   // 存储类别 (s3, disk, etc.)
+	Conf     config.StorageConfig `json:"conf" msgpack:"conf"`   // 存储配置
+	Instance block.BlockStore     `json:"-" msgpack:"-"`         // 实际读写实例
 }
 
 func (s *Storage) String() string {

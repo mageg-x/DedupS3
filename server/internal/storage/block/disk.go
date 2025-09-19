@@ -2,6 +2,7 @@
 package block
 
 import (
+	"context"
 	"fmt"
 	xconf "github.com/mageg-x/boulder/internal/config"
 	"github.com/mageg-x/boulder/internal/logger"
@@ -47,7 +48,7 @@ func (d *DiskStore) Type() string {
 }
 
 // WriteBlock 写入块到磁盘
-func (d *DiskStore) WriteBlock(blockID string, data []byte) error {
+func (d *DiskStore) WriteBlock(ctx context.Context, blockID string, data []byte) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -221,8 +222,8 @@ func (d *DiskStore) List() (<-chan string, <-chan error) {
 // blockPath 获取块的完整路径
 func (d *DiskStore) blockPath(blockID string) string {
 	n := len(blockID)
-	dir1 := blockID[n-2:]      // 最后2位
-	dir2 := blockID[n-4 : n-2] // 倒数第3-4位
-	dir3 := blockID[n-6 : n-4] // 倒数第5-6位
+	dir1 := blockID[n-3:]      // 最后3位
+	dir2 := blockID[n-6 : n-3] // 倒数第4-6位
+	dir3 := blockID[n-9 : n-6] // 倒数第7-9位
 	return filepath.Join(d.conf.Path, dir1, dir2, dir3, blockID)
 }

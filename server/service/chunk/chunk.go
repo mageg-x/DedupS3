@@ -161,11 +161,13 @@ func (c *ChunkService) Split(ctx context.Context, r io.Reader, outputChan chan *
 	// 创建CDC分块器
 	chunker, err := fastcdc.NewChunker("fastcdc", r, opt)
 	if err != nil {
-		return fmt.Errorf("error creating chunker: %v", err)
+		return fmt.Errorf("error creating chunker: %w", err)
 	}
 	var prevChunk *meta.Chunk
 
 	//hashfile, _ := os.Create(fmt.Sprintf("%s.hash", obj.Key))
+	//defer hashfile.Close()
+	//hashfile, _ := os.OpenFile("split.chunkid", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	//defer hashfile.Close()
 
 	objSize := 0 // 统计真实长度
@@ -174,14 +176,14 @@ func (c *ChunkService) Split(ctx context.Context, r io.Reader, outputChan chan *
 		// 检查 context 是否已取消
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("fast cdc %s/%s be canceled: %v", obj.Bucket, obj.Key, ctx.Err())
+			return fmt.Errorf("fast cdc %s/%s be canceled: %w", obj.Bucket, obj.Key, ctx.Err())
 		default:
 			// 继续执行
 		}
 
 		chunkData, err := chunker.Next()
 		if err != nil && err != io.EOF {
-			return fmt.Errorf("cdc chunk %s/%s error: %v", obj.Bucket, obj.Key, err)
+			return fmt.Errorf("cdc chunk %s/%s error: %w", obj.Bucket, obj.Key, err)
 		}
 
 		objSize += len(chunkData)
@@ -198,6 +200,7 @@ func (c *ChunkService) Split(ctx context.Context, r io.Reader, outputChan chan *
 			} else {
 				// 发送前一个分片（如果有）
 				if prevChunk != nil {
+					//hashfile.WriteString(fmt.Sprintf("%s  %s\n", obj.Key, prevChunk.Hash))
 					outputChan <- prevChunk
 				}
 				// 当前分片成为新的前一个分片
@@ -212,6 +215,7 @@ func (c *ChunkService) Split(ctx context.Context, r io.Reader, outputChan chan *
 	}
 	// 发送最后一个分片（可能是合并后的）
 	if prevChunk != nil {
+		//hashfile.WriteString(fmt.Sprintf("%s  %s\n", obj.Key, prevChunk.Hash))
 		outputChan <- prevChunk
 	}
 	logger.GetLogger("boulder").Infof("split object %s/%s  to chunk finished, get size %d:%d", obj.Bucket, obj.Key, objSize, obj.Size)
@@ -234,7 +238,7 @@ func (c *ChunkService) Dedup(ctx context.Context, inputChan, dedupChan chan *met
 		case <-ctx.Done():
 			// 超时或取消，退出循环
 			logger.GetLogger("boulder").Warnf("chunking timed out or cancelled: %v", ctx.Err())
-			return nil, fmt.Errorf("chunking timed out or cancelled for %s/%s: %v", obj.Bucket, obj.Key, ctx.Err())
+			return nil, fmt.Errorf("chunking timed out or cancelled for %s/%s: %w", obj.Bucket, obj.Key, ctx.Err())
 		case chunk, ok := <-inputChan:
 			if ok && chunk != nil {
 				//logger.GetLogger("boulder").Debugf("get cdc chunk %d fp %s", chunk.Size, chunk.Hash)
@@ -257,7 +261,7 @@ func (c *ChunkService) Dedup(ctx context.Context, inputChan, dedupChan chan *met
 				_chunks, err := c.kvstore.BatchGet(keys)
 				if err != nil {
 					logger.GetLogger("boulder").Errorf("%s/%s batch get failed: %v", obj.Bucket, obj.Key, err)
-					return nil, fmt.Errorf("%s/%s batch get failed: %v", obj.Bucket, obj.Key, err)
+					return nil, fmt.Errorf("%s/%s batch get failed: %w", obj.Bucket, obj.Key, err)
 				}
 
 				for _, item := range batchDedup {
@@ -269,7 +273,7 @@ func (c *ChunkService) Dedup(ctx context.Context, inputChan, dedupChan chan *met
 						err = json.Unmarshal(_chunks[chunkKey], &_chunk)
 						if err != nil {
 							logger.GetLogger("boulder").Errorf("%s/%s chunk unmarshal failed: %v", obj.Bucket, obj.Key, err)
-							return nil, fmt.Errorf("%s/%s chunk unmarshal failed: %v", obj.Bucket, obj.Key, err)
+							return nil, fmt.Errorf("%s/%s chunk unmarshal failed: %w", obj.Bucket, obj.Key, err)
 						}
 
 						chunkFilter[item.Hash] = _chunk.BlockID
@@ -320,7 +324,7 @@ func (c *ChunkService) Assemble(ctx context.Context, dedupChan chan *meta.Chunk,
 		select {
 		case <-ctx.Done():
 			logger.GetLogger("boulder").Warnf(" assemble chunk be cancelled: %v", ctx.Err())
-			return blocks, fmt.Errorf("assemble chunk be cancelled for %s/%s: %v", obj.Bucket, obj.Key, ctx.Err())
+			return blocks, fmt.Errorf("assemble chunk be cancelled for %s/%s: %w", obj.Bucket, obj.Key, ctx.Err())
 		case chunk, ok := <-dedupChan:
 			bs := block.GetBlockService()
 			if bs == nil {
@@ -331,7 +335,7 @@ func (c *ChunkService) Assemble(ctx context.Context, dedupChan chan *meta.Chunk,
 			_block, err := bs.PutChunk(chunk, obj)
 			if err != nil {
 				logger.GetLogger("boulder").Errorf("%s/%s put chunk failed: %v", obj.Bucket, obj.Key, err)
-				return blocks, fmt.Errorf("%s/%s put chunk failed: %v", obj.Bucket, obj.Key, err)
+				return blocks, fmt.Errorf("%s/%s put chunk failed: %w", obj.Bucket, obj.Key, err)
 			}
 
 			if _block != nil {
@@ -428,7 +432,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 	txn, err := c.kvstore.BeginTxn(ctx, nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("%s/%s create transaction failed: %v", obj.Bucket, obj.Key, err)
-		return fmt.Errorf("%s/%s create transaction failed: %v", obj.Bucket, obj.Key, err)
+		return fmt.Errorf("%s/%s create transaction failed: %w", obj.Bucket, obj.Key, err)
 	}
 	defer func() {
 		if txn != nil {
@@ -451,7 +455,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 		exists, e := txn.Get(chunkey, &_old_chunk)
 		if e != nil {
 			logger.GetLogger("boulder").Errorf("%s/%s get chunk failed: %v", obj.Bucket, obj.Key, err)
-			return fmt.Errorf("%s/%s get chunk %s failed: %v", obj.Bucket, obj.Key, chunkey, err)
+			return fmt.Errorf("%s/%s get chunk %s failed: %w", obj.Bucket, obj.Key, chunkey, err)
 		}
 
 		if exists {
@@ -469,7 +473,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 			e := txn.Set(chunkey, &_old_chunk)
 			if e != nil {
 				logger.GetLogger("boulder").Errorf("%s/%s set chunk %s failed: %v", obj.Bucket, obj.Key, _old_chunk.Hash, err)
-				return fmt.Errorf("%s/%s set chunk failed: %v", obj.Bucket, obj.Key, err)
+				return fmt.Errorf("%s/%s set chunk failed: %w", obj.Bucket, obj.Key, err)
 			} else {
 				logger.GetLogger("boulder").Debugf("%s/%s refresh set chunk: %s to block %s:%s", obj.Bucket, obj.Key, chunk.Hash, chunk.BlockID, _old_chunk.BlockID)
 			}
@@ -478,7 +482,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 			e := txn.Set(chunkey, &chunk)
 			if e != nil {
 				logger.GetLogger("boulder").Errorf("%s/%s set chunk %s failed: %v", obj.Bucket, obj.Key, chunkey, err)
-				return fmt.Errorf("%s/%s set chunk failed: %v", obj.Bucket, obj.Key, err)
+				return fmt.Errorf("%s/%s set chunk failed: %w", obj.Bucket, obj.Key, err)
 			} else {
 				chunk2block[chunk.Hash] = chunk.BlockID
 				logger.GetLogger("boulder").Debugf("%s/%s refresh set chunk: %s to block %s", obj.Bucket, obj.Key, chunk.Hash, chunk.BlockID)
@@ -493,7 +497,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 		exists, err := txn.Get(blockKey, &_oldBlock)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("%s/%s get block %s failed: %v", obj.Bucket, obj.Key, blockKey, err)
-			return fmt.Errorf("%s/%s get block %s failed: %v", obj.Bucket, obj.Key, blockKey, err)
+			return fmt.Errorf("%s/%s get block %s failed: %w", obj.Bucket, obj.Key, blockKey, err)
 		}
 		_curBlock := item
 		if exists {
@@ -516,7 +520,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 		err = txn.Set(blockKey, _curBlock)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("%s/%s/%s set block meta failed: %v", obj.Bucket, obj.Key, _curBlock.ID, err)
-			return fmt.Errorf("%s/%s set block meta failed: %v", obj.Bucket, obj.Key, err)
+			return fmt.Errorf("%s/%s set block meta failed: %w", obj.Bucket, obj.Key, err)
 		} else {
 			logger.GetLogger("boulder").Debugf("%s/%s/%s set block meta   ok", obj.Bucket, obj.Key, _curBlock.ID)
 		}
@@ -524,6 +528,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 
 	//写入object meta信息
 	objKey := objPrefix + accountID + ":" + obj.Bucket + "/" + obj.Key
+	obj.Chunks = make([]string, 0, len(allChunk))
 	for _, _chunk := range allChunk {
 		obj.Chunks = append(obj.Chunks, _chunk.Hash)
 	}
@@ -536,7 +541,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 		exists, err := txn.Get(objKey, &_obj)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("%s/%s get object failed: %v", obj.Bucket, obj.Key, err)
-			return fmt.Errorf("%s/%s get object failed: %v", obj.Bucket, obj.Key, err)
+			return fmt.Errorf("%s/%s get object failed: %w", obj.Bucket, obj.Key, err)
 		}
 		if exists && len(_obj.Chunks) > 0 {
 			gcChunks = append(gcChunks, _obj.Chunks...)
@@ -549,7 +554,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 		exists, err := txn.Get(objKey, &_obj)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("%s/%s get object failed: %v", obj.Bucket, obj.Key, err)
-			return fmt.Errorf("%s/%s get object failed: %v", obj.Bucket, obj.Key, err)
+			return fmt.Errorf("%s/%s get object failed: %w", obj.Bucket, obj.Key, err)
 		}
 		if exists && len(_obj.Chunks) > 0 {
 			gcChunks = append(gcChunks, _obj.Chunks...)
@@ -572,7 +577,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 		err = txn.Set(gckey, &gcChunks)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("%s/%s set task chunk failed: %v", obj.Bucket, obj.Key, err)
-			return fmt.Errorf("%s/%s set task chunk failed: %v", obj.Bucket, obj.Key, err)
+			return fmt.Errorf("%s/%s set task chunk failed: %w", obj.Bucket, obj.Key, err)
 		} else {
 			logger.GetLogger("boulder").Infof("%s/%s set gc chunk %s delay to proccess", obj.Bucket, obj.Key, gckey)
 		}
@@ -601,7 +606,7 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("set object %s/%s meta info failed: %v", obj.Bucket, obj.Key, err)
-		return fmt.Errorf("set object %s/%s meta info failed: %v", obj.Bucket, obj.Key, err)
+		return fmt.Errorf("set object %s/%s meta info failed: %w", obj.Bucket, obj.Key, err)
 	} else {
 		logger.GetLogger("boulder").Debugf("set object %s/%s meta  ok", obj.Bucket, obj.Key)
 	}
@@ -660,14 +665,14 @@ func (c *ChunkService) BatchGet(storageID string, chunkIDs []string) ([]*meta.Ch
 		result, err := c.kvstore.BatchGet(batchKeys)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to batchGet chunks: %v", err)
-			return nil, fmt.Errorf("failed to batchGet chunks: %v", err)
+			return nil, fmt.Errorf("failed to batchGet chunks: %w", err)
 		}
 		for k, v := range result {
 			var chunk meta.Chunk
 			err := json.Unmarshal(v, &chunk)
 			if err != nil {
 				logger.GetLogger("boulder").Errorf("failed to Unmarshal chunks %s err: %v", k, err)
-				return nil, fmt.Errorf("failed to Unmarshal chunks %s err: %v", k, err)
+				return nil, fmt.Errorf("failed to Unmarshal chunks %s err: %w", k, err)
 			}
 			chunkMap[chunk.Hash] = &chunk
 

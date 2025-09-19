@@ -365,7 +365,7 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 	bs := storage.GetStorageService()
 	if bs == nil {
 		logger.GetLogger("boulder").Errorf("failed to get storage service")
-		return nil, fmt.Errorf("failed to get storage service")
+		return nil, errors.New("failed to get storage service")
 	}
 
 	scs := bs.GetStoragesByClass(storageClass)
@@ -393,7 +393,7 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 	chunker := chunk.GetChunkService()
 	if chunker == nil {
 		logger.GetLogger("boulder").Errorf("failed to get chunk service")
-		return nil, fmt.Errorf("failed to get chunk service")
+		return nil, errors.New("failed to get chunk service")
 	}
 
 	defer func() {
@@ -409,7 +409,7 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 		bodyBytes, err := io.ReadAll(r)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to read request body %v", err)
-			return nil, fmt.Errorf("failed to read request body %v", err)
+			return nil, fmt.Errorf("failed to read request body %w", err)
 		}
 		if len(bodyBytes) <= 1024 {
 			objectInfo.ChunksInline = &meta.InlineChunk{
@@ -420,7 +420,7 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 			compress, err := utils.Compress(bodyBytes)
 			if err != nil {
 				logger.GetLogger("boulder").Errorf("failed to compress request body %v", err)
-				return nil, fmt.Errorf("failed to compress request body %v", err)
+				return nil, fmt.Errorf("failed to compress request body %w", err)
 			}
 			logger.GetLogger("boulder").Infof("object %s/%s data compress size %d/%d", objectInfo.Bucket, objectInfo.Key, len(compress), len(bodyBytes))
 			if len(compress) <= 1024 {
@@ -441,7 +441,7 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 			err = chunker.WriteMeta(context.Background(), ak.AccountID, nil, nil, objectInfo, objPrefix)
 			if err != nil {
 				logger.GetLogger("boulder").Errorf("failed to write %s/%s object inline chunk %v", objectInfo.Bucket, objectInfo.Key, err)
-				return nil, fmt.Errorf("failed to write %s/%s object inline chunk %v", objectInfo.Bucket, objectInfo.Key, err)
+				return nil, fmt.Errorf("failed to write %s/%s object inline chunk %w", objectInfo.Bucket, objectInfo.Key, err)
 			}
 			return objectInfo, nil
 		} else {
@@ -576,13 +576,13 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 			return object, readCloser, nil
 		}
 		logger.GetLogger("boulder").Errorf("failed to get the range of object %s , err %v", objkey, err)
-		return nil, nil, fmt.Errorf("failed to get the range of object %s , err %v", objkey, err)
+		return nil, nil, fmt.Errorf("failed to get the range of object %s , err %w", objkey, err)
 	}
 
 	cs := chunk.GetChunkService()
 	if cs == nil {
 		logger.GetLogger("boulder").Errorf("failed to get the chunk service")
-		return nil, nil, fmt.Errorf("failed to get the chunk service")
+		return nil, nil, errors.New("failed to get the chunk service")
 	}
 	chunks, err := cs.BatchGet(object.DataLocation, object.Chunks)
 	if err != nil || chunks == nil || len(chunks) != len(object.Chunks) {
@@ -608,12 +608,12 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 	bs := block.GetBlockService()
 	if bs == nil {
 		logger.GetLogger("boulder").Errorf("failed to get the block service")
-		return nil, nil, fmt.Errorf("failed to get the block service")
+		return nil, nil, errors.New("failed to get the block service")
 	}
 	blocks, err := bs.BatchGet(object.DataLocation, bids)
 	if err != nil || blocks == nil || len(blocks) != len(bids) {
 		logger.GetLogger("boulder").Errorf("failed to get the block meta %d:%d", len(bids), len(blocks))
-		return nil, nil, fmt.Errorf("failed to get the block meta")
+		return nil, nil, errors.New("failed to get the block meta")
 	}
 	for _, _block := range blocks {
 		blockIDs[_block.ID] = _block
@@ -628,7 +628,7 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 	ss := storage.GetStorageService()
 	if ss == nil {
 		logger.GetLogger("boulder").Errorf("failed to get storage service")
-		return nil, nil, fmt.Errorf("failed to get storage service")
+		return nil, nil, errors.New("failed to get storage service")
 	}
 
 	scs := ss.GetStoragesByClass(storageClass)
@@ -776,7 +776,7 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 	txn, err := o.kvstore.BeginTxn(context.Background(), &kv.TxnOpt{IsReadOnly: true})
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
-		return nil, nil, false, "", fmt.Errorf("failed to begin transaction: %v", err)
+		return nil, nil, false, "", fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -814,7 +814,7 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 			objMaps, err := txn.BatchGet(scanKeys)
 			if err != nil {
 				logger.GetLogger("boulder").Errorf("failed to batch ge objects: %v", err)
-				return nil, nil, false, "", fmt.Errorf("failed to batch get objects: %v", err)
+				return nil, nil, false, "", fmt.Errorf("failed to batch get objects: %w", err)
 			}
 			for _, storeKey := range scanKeys {
 				data, ok := objMaps[storeKey]
@@ -840,7 +840,7 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 				err := json.Unmarshal(data, &_obj)
 				if err != nil {
 					logger.GetLogger("boulder").Errorf("failed to  arshal objects: %v", err)
-					return nil, nil, false, "", fmt.Errorf("failed to  arshal objects: %v", err)
+					return nil, nil, false, "", fmt.Errorf("failed to  arshal objects: %w", err)
 				}
 
 				// 查找第一级 delimiter
@@ -922,7 +922,7 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 			objMaps, err := txn.BatchGet(scanKeys)
 			if err != nil {
 				logger.GetLogger("boulder").Errorf("failed to batch ge objects: %v", err)
-				return nil, nil, false, "", fmt.Errorf("failed to batch get objects: %v", err)
+				return nil, nil, false, "", fmt.Errorf("failed to batch get objects: %w", err)
 			}
 			for _, storeKey := range scanKeys {
 				data, ok := objMaps[storeKey]
@@ -944,7 +944,7 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 				err := json.Unmarshal(data, &_obj)
 				if err != nil {
 					logger.GetLogger("boulder").Errorf("failed to  arshal objects: %v", err)
-					return nil, nil, false, "", fmt.Errorf("failed to  arshal objects: %v", err)
+					return nil, nil, false, "", fmt.Errorf("failed to  arshal objects: %w", err)
 				}
 				objects = append(objects, &_obj)
 				collected++
@@ -1017,7 +1017,7 @@ func (o *ObjectService) DeleteObject(params *BaseObjectParams) error {
 	txn, err := o.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
-		return fmt.Errorf("failed to begin transaction: %v", err)
+		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -1041,7 +1041,7 @@ func (o *ObjectService) DeleteObject(params *BaseObjectParams) error {
 		err = txn.Set(gckey, &gcChunks)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("%s/%s set task chunk failed: %v", _object.Bucket, _object.Key, err)
-			return fmt.Errorf("%s/%s set task chunk failed: %v", _object.Bucket, _object.Key, err)
+			return fmt.Errorf("%s/%s set task chunk failed: %w", _object.Bucket, _object.Key, err)
 		} else {
 			logger.GetLogger("boulder").Infof("%s/%s set gc chunk %s delay to proccess", _object.Bucket, _object.Key, gckey)
 		}
@@ -1049,13 +1049,15 @@ func (o *ObjectService) DeleteObject(params *BaseObjectParams) error {
 	err = txn.Delete(objkey)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("%s/%s delete object failed: %v", _object.Bucket, _object.Key, err)
-		return fmt.Errorf("%s/%s delete object failed: %v", _object.Bucket, _object.Key, err)
+		return fmt.Errorf("%s/%s delete object failed: %w", _object.Bucket, _object.Key, err)
+	} else {
+		logger.GetLogger("boulder").Debug("delete object %s/%s  chunk %d", _object.Bucket, _object.Key, len(_object.Chunks))
 	}
 
 	err = txn.Commit()
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("%s/%s commit object failed: %v", _object.Bucket, _object.Key, err)
-		return fmt.Errorf("%s/%s commit object failed: %v", _object.Bucket, _object.Key, err)
+		return fmt.Errorf("%s/%s commit object failed: %w", _object.Bucket, _object.Key, err)
 	}
 	txn = nil
 
@@ -1143,7 +1145,7 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 	bs := storage.GetStorageService()
 	if bs == nil {
 		logger.GetLogger("boulder").Errorf("failed to get storage service")
-		return nil, fmt.Errorf("failed to get storage service")
+		return nil, errors.New("failed to get storage service")
 	}
 
 	scs := bs.GetStoragesByClass(storageClass)
@@ -1164,7 +1166,7 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 		txn, err := o.kvstore.BeginTxn(context.Background(), nil)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
-			return nil, fmt.Errorf("failed to begin transaction: %v", err)
+			return nil, fmt.Errorf("failed to begin transaction: %w", err)
 		}
 		defer func() {
 			if txn != nil {
@@ -1176,13 +1178,13 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 			var _chunk meta.Chunk
 			if exists, e := txn.Get(chunkey, &_chunk); e != nil || !exists {
 				logger.GetLogger("boulder").Errorf("%s/%s get chunk failed: %v", srcobj.Bucket, srcobj.Key, err)
-				return nil, fmt.Errorf("%s/%s get chunk %s failed: %v", srcobj.Bucket, srcobj.Key, chunkey, err)
+				return nil, fmt.Errorf("%s/%s get chunk %s failed: %w", srcobj.Bucket, srcobj.Key, chunkey, err)
 			}
 			// 引用计数加1
 			_chunk.RefCount += 1
 			if e := txn.Set(chunkey, &_chunk); e != nil {
 				logger.GetLogger("boulder").Errorf("%s/%s set chunk %s failed: %v", dstobj.Bucket, dstobj.Key, _chunk.Hash, err)
-				return nil, fmt.Errorf("%s/%s set chunk failed: %v", dstobj.Bucket, dstobj.Key, err)
+				return nil, fmt.Errorf("%s/%s set chunk failed: %w", dstobj.Bucket, dstobj.Key, err)
 			} else {
 				logger.GetLogger("boulder").Debugf("%s/%s refresh set chunk: %s", dstobj.Bucket, dstobj.Key, _chunk.Hash)
 			}
@@ -1193,7 +1195,7 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 		exists, err = txn.Get(dstobjKey, &_dstobj)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("%s/%s get object failed: %v", _dstobj.Bucket, _dstobj.Key, err)
-			return nil, fmt.Errorf("%s/%s get object failed: %v", _dstobj.Bucket, _dstobj.Key, err)
+			return nil, fmt.Errorf("%s/%s get object failed: %w", _dstobj.Bucket, _dstobj.Key, err)
 		}
 		if exists && len(_dstobj.Chunks) > 0 {
 			gckey := task.GCChunkPrefix + utils.GenUUID()
@@ -1204,7 +1206,7 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 			err = txn.Set(gckey, &gcChunks)
 			if err != nil {
 				logger.GetLogger("boulder").Errorf("%s/%s set task chunk failed: %v", _dstobj.Bucket, _dstobj.Key, err)
-				return nil, fmt.Errorf("%s/%s set task chunk failed: %v", _dstobj.Bucket, _dstobj.Key, err)
+				return nil, fmt.Errorf("%s/%s set task chunk failed: %w", _dstobj.Bucket, _dstobj.Key, err)
 			} else {
 				logger.GetLogger("boulder").Infof("%s/%s set gc chunk %s delay to proccess", _dstobj.Bucket, _dstobj.Key, gckey)
 			}
@@ -1213,7 +1215,7 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 		err = txn.Set(dstobjKey, dstobj)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("set object %s/%s meta info failed: %v", dstobj.Bucket, dstobj.Key, err)
-			return nil, fmt.Errorf("set object %s/%s meta info failed: %v", dstobj.Bucket, dstobj.Key, err)
+			return nil, fmt.Errorf("set object %s/%s meta info failed: %w", dstobj.Bucket, dstobj.Key, err)
 		} else {
 			logger.GetLogger("boulder").Debugf("set object %s/%s meta  ok", dstobj.Bucket, dstobj.Key)
 		}
@@ -1364,7 +1366,7 @@ func (o *ObjectService) PutObjectTagging(params *BaseObjectParams, tags map[stri
 	txn, err := o.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
-		return nil, fmt.Errorf("failed to begin transaction: %v", err)
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -1381,7 +1383,7 @@ func (o *ObjectService) PutObjectTagging(params *BaseObjectParams, tags map[stri
 	// 保存更新后的对象
 	if err := txn.Set(objKey, &object); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to update object tags: %v", err)
-		return nil, fmt.Errorf("failed to update object tags: %v", err)
+		return nil, fmt.Errorf("failed to update object tags: %w", err)
 	}
 
 	// 提交事务
@@ -1464,7 +1466,7 @@ func (o *ObjectService) PutObjectAcl(params *BaseObjectParams, acp *meta.AccessC
 	txn, err := o.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
-		return nil, fmt.Errorf("failed to begin transaction: %v", err)
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -1480,7 +1482,7 @@ func (o *ObjectService) PutObjectAcl(params *BaseObjectParams, acp *meta.AccessC
 	// 保存更新后的对象
 	if err := txn.Set(objKey, &object); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to update object acl: %v", err)
-		return nil, fmt.Errorf("failed to update object acl: %v", err)
+		return nil, fmt.Errorf("failed to update object acl: %w", err)
 	}
 
 	// 提交事务
@@ -1529,7 +1531,7 @@ func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, er
 	dstObjOK, err := o.kvstore.Get(dstobjkey, &dstObj)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to check destination object: %v", err)
-		return nil, fmt.Errorf("failed to check destination object: %v", err)
+		return nil, fmt.Errorf("failed to check destination object: %w", err)
 	}
 
 	// 验证目标对象条件
@@ -1620,7 +1622,7 @@ func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, er
 	txn, err := o.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
-		return nil, fmt.Errorf("failed to begin transaction: %v", err)
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -1638,7 +1640,7 @@ func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, er
 		err = txn.Set(gckey, &gcChunks)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("%s/%s set task chunk failed: %v", dstObj.Bucket, dstObj.Key, err)
-			return nil, fmt.Errorf("%s/%s set task chunk failed: %v", dstObj.Bucket, dstObj.Key, err)
+			return nil, fmt.Errorf("%s/%s set task chunk failed: %w", dstObj.Bucket, dstObj.Key, err)
 		} else {
 			logger.GetLogger("boulder").Infof("%s/%s set gc chunk %s delay to proccess", dstObj.Bucket, dstObj.Key, gckey)
 		}
@@ -1648,7 +1650,7 @@ func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, er
 	err = txn.Delete(srcobjkey)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to delete object %s : %v", srcobjkey, err)
-		return nil, fmt.Errorf("failed to delete object: %v", err)
+		return nil, fmt.Errorf("failed to delete object: %w", err)
 	}
 
 	//重新设置 新key
@@ -1657,7 +1659,7 @@ func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, er
 	err = txn.Set(dstobjkey, &srcobj)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to update object %s : %v", dstobjkey, err)
-		return nil, fmt.Errorf("failed to update object: %v", err)
+		return nil, fmt.Errorf("failed to update object: %w", err)
 	}
 
 	//  提交事务

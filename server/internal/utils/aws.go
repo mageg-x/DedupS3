@@ -423,7 +423,7 @@ func ExtractTags(header http.Header) (map[string]string, error) {
 	// URL 解码（因为 key 和 value 都可能被编码）
 	decoded, err := url.QueryUnescape(tagHeader)
 	if err != nil {
-		return nil, fmt.Errorf("invalid tagging: malformed URL encoding: %v", err)
+		return nil, fmt.Errorf("invalid tagging: malformed URL encoding: %w", err)
 	}
 
 	// 按 & 分割

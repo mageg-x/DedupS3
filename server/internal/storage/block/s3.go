@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
@@ -24,9 +25,10 @@ import (
 
 // S3Store 实现基于S3的存储后端
 type S3Store struct {
-	client *s3.Client
-	conf   *xconf.S3Config
-	ctx    context.Context
+	client   *s3.Client
+	uploader *manager.Uploader
+	conf     *xconf.S3Config
+	ctx      context.Context
 }
 
 // NewS3Store NewS3Storage 创建新的S3存储后端
@@ -56,7 +58,7 @@ func NewS3Store(c *xconf.S3Config) (*S3Store, error) {
 	)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("Failed to load SDK configuration: %v", err)
-		return nil, fmt.Errorf("failed to load SDK configuration: %v", err)
+		return nil, fmt.Errorf("failed to load SDK configuration: %w", err)
 	}
 
 	// 创建 S3 客户端（对接 MinIO 等私有服务需加选项）
@@ -66,11 +68,18 @@ func NewS3Store(c *xconf.S3Config) (*S3Store, error) {
 		logger.GetLogger("boulder").Debugf("Use path style: %v", c.UsePathStyle)
 	})
 
+	// 创建 Uploader
+	uploader := manager.NewUploader(client, func(u *manager.Uploader) {
+		u.Concurrency = 12           // 改为 12 路并发
+		u.PartSize = 5 * 1024 * 1024 // 5MB 每片
+	})
+
 	logger.GetLogger("boulder").Infof("S3 store initialized successfully")
 	return &S3Store{
-		client: client,
-		conf:   c,
-		ctx:    ctx,
+		client:   client,
+		uploader: uploader,
+		conf:     c,
+		ctx:      ctx,
 	}, nil
 }
 
@@ -80,12 +89,16 @@ func (s *S3Store) Type() string {
 }
 
 // WriteBlock 写入块到S3
-func (s *S3Store) WriteBlock(blockID string, data []byte) error {
-	ctx, cancel := context.WithCancel(s.ctx)
-	defer cancel()
-
+func (s *S3Store) WriteBlock(ctx context.Context, blockID string, data []byte) error {
 	key := s.blockKey(blockID)
-	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+
+	//_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+	//	Bucket: aws.String(s.conf.Bucket),
+	//	Key:    aws.String(key),
+	//	Body:   bytes.NewReader(data),
+	//})
+
+	_, err := s.uploader.Upload(ctx, &s3.PutObjectInput{
 		Bucket: aws.String(s.conf.Bucket),
 		Key:    aws.String(key),
 		Body:   bytes.NewReader(data),
@@ -298,8 +311,8 @@ func (s *S3Store) List() (<-chan string, <-chan error) {
 // blockKey 获取块在S3中的键
 func (s *S3Store) blockKey(blockID string) string {
 	n := len(blockID)
-	dir1 := blockID[n-2:]      // 最后2位
-	dir2 := blockID[n-4 : n-2] // 倒数第3-4位
-	dir3 := blockID[n-6 : n-4] // 倒数第5-6位
+	dir1 := blockID[n-3:]      // 最后3位
+	dir2 := blockID[n-6 : n-3] // 倒数第4-6位
+	dir3 := blockID[n-9 : n-6] // 倒数第7-9位
 	return path.Join("blocks", dir1, dir2, dir3, blockID)
 }

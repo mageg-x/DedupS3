@@ -193,7 +193,7 @@ func (m *MultiPartService) AbortMultipartUpload(params *object.BaseObjectParams)
 	exists, err := m.kvstore.Get(uploadKey, &upload)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to get multipart upload: %v", err)
-		return fmt.Errorf("failed to get multipart upload: %v", err)
+		return fmt.Errorf("failed to get multipart upload: %w", err)
 	}
 	if !exists {
 		// 根据S3规范，中止不存在的上传任务应该返回204 No Content
@@ -205,7 +205,7 @@ func (m *MultiPartService) AbortMultipartUpload(params *object.BaseObjectParams)
 	txn, err := m.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
-		return fmt.Errorf("failed to begin transaction: %v", err)
+		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -226,23 +226,23 @@ func (m *MultiPartService) AbortMultipartUpload(params *object.BaseObjectParams)
 		keys, nextKey, err := txn.Scan(prefix, startKey, 100)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to scan multipart upload parts: %v", err)
-			return fmt.Errorf("failed to scan multipart upload parts: %v", err)
+			return fmt.Errorf("failed to scan multipart upload parts: %w", err)
 		}
 		partBytes, err := txn.BatchGet(keys)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to get multipart upload part meta: %v", err)
-			return fmt.Errorf("failed to get multipart upload part meta: %v", err)
+			return fmt.Errorf("failed to get multipart upload part meta: %w", err)
 		}
 		if len(partBytes) != len(keys) {
 			logger.GetLogger("boulder").Errorf("unexpected number of parts: expected %d, got %d", len(keys), len(partBytes))
-			return fmt.Errorf("inconsistent part count")
+			return errors.New("inconsistent part count")
 		}
 
 		for _, data := range partBytes {
 			var part meta.PartObject
 			if err := json.Unmarshal(data, &part); err != nil {
 				logger.GetLogger("boulder").Errorf("failed to unmarshal part meta: %v", err)
-				return fmt.Errorf("failed to unmarshal part meta: %v", err)
+				return fmt.Errorf("failed to unmarshal part meta: %w", err)
 			}
 			gcChunks.ChunkIDs = append(gcChunks.ChunkIDs, part.Chunks...)
 		}
@@ -255,26 +255,27 @@ func (m *MultiPartService) AbortMultipartUpload(params *object.BaseObjectParams)
 	// 删除上传任务自己的 uploadid下的 元数据
 	if err := txn.DeletePrefix(uploadKey, 0); err != nil { // 传0表示无限制删除
 		logger.GetLogger("boulder").Errorf("failed to delete upload info: %v", err)
-		return fmt.Errorf("failed to delete upload info: %v", err)
+		return fmt.Errorf("failed to delete upload info: %w", err)
+	}
+
+	if len(gcChunks.ChunkIDs) > 0 {
+		err = txn.Set(gckey, &gcChunks)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("aborted multipart upload %s/%s/%s set task chunk failed: %v", params.BucketName, params.ObjKey, params.UploadID, err)
+			return fmt.Errorf("aborted multipart upload %s/%s/%s set task chunk failed: %w", params.BucketName, params.ObjKey, params.UploadID, err)
+		} else {
+			logger.GetLogger("boulder").Infof("aborted multipart upload %s/%s/%s set gc chunk %s delay to proccess", params.BucketName, params.ObjKey, params.UploadID, gckey)
+		}
 	}
 
 	// 提交事务
 	if err := txn.Commit(); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
-		return fmt.Errorf("failed to commit transaction: %v", err)
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	txn = nil
 
-	if len(gcChunks.ChunkIDs) > 0 {
-		err = m.kvstore.Set(gckey, &gcChunks)
-		if err != nil {
-			logger.GetLogger("boulder").Errorf("aborted multipart upload %s/%s/%s set task chunk failed: %v", params.BucketName, params.ObjKey, params.UploadID, err)
-			return fmt.Errorf("aborted multipart upload %s/%s/%s set task chunk failed: %v", params.BucketName, params.ObjKey, params.UploadID, err)
-		} else {
-			logger.GetLogger("boulder").Infof("aborted multipart upload %s/%s/%s set gc chunk %s delay to proccess", params.BucketName, params.ObjKey, params.UploadID, gckey)
-		}
-	}
 	logger.GetLogger("boulder").Infof("aborted multipart upload: bucket=%s, key=%s, uploadID=%s",
 		params.BucketName, params.ObjKey, params.UploadID)
 
@@ -316,7 +317,7 @@ func (m *MultiPartService) WritePartMeta(cs *chunk.ChunkService, chunks []*meta.
 			time.Sleep(sleep)
 		} else {
 			logger.GetLogger("boulder").Errorf("transmission write object %s/%s  meta info failed: %v，retry times %d", part.Bucket, part.Key, txErr, i+1)
-			txErr = fmt.Errorf("transmission write object %s/%s  meta info failed: %v，retry times %d", part.Bucket, part.Key, txErr, i+1)
+			txErr = fmt.Errorf("transmission write object %s/%s  meta info failed: %w，retry times %d", part.Bucket, part.Key, txErr, i+1)
 		}
 	}
 	return txErr
@@ -363,7 +364,7 @@ func (m *MultiPartService) CreateMultipartUpload(headers http.Header, params *ob
 	bs := storage.GetStorageService()
 	if bs == nil {
 		logger.GetLogger("boulder").Errorf("failed to get storage service")
-		return nil, fmt.Errorf("failed to get storage service")
+		return nil, errors.New("failed to get storage service")
 	}
 
 	scs := bs.GetStoragesByClass(storageClass)
@@ -463,7 +464,7 @@ func (m *MultiPartService) CreateMultipartUpload(headers http.Header, params *ob
 	txn, err := m.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to begin transaction for multi upload %s", key)
-		return nil, fmt.Errorf("failed to begin transaction for multi upload %s", key)
+		return nil, fmt.Errorf("failed to begin transaction for multi upload %s: %w", key, err)
 	}
 	defer func() {
 		if txn != nil {
@@ -473,12 +474,12 @@ func (m *MultiPartService) CreateMultipartUpload(headers http.Header, params *ob
 	err = txn.Set(key, &upload)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to set multi upload meta %s uploadid %s ", key, uploadID)
-		return nil, fmt.Errorf("failed to set multi upload meta %s uploadid %s ", key, uploadID)
+		return nil, fmt.Errorf("failed to set multi upload meta %s uploadid %s: %w", key, uploadID, err)
 	}
 	err = txn.Commit()
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("create multi upload %s uploadid %s  failed to commit transaction", key, uploadID)
-		return nil, fmt.Errorf("create multi upload %s uploadid %s failed to commit transaction", key, uploadID)
+		return nil, fmt.Errorf("create multi upload %s uploadid %s failed to commit transaction: %w", key, uploadID, err)
 	} else {
 		logger.GetLogger("boulder").Infof("create multi upload %s uploadid %s success", key, uploadID)
 	}
@@ -549,13 +550,13 @@ func (m *MultiPartService) UploadPart(r io.Reader, params *object.BaseObjectPara
 	chunker := chunk.GetChunkService()
 	if chunker == nil {
 		logger.GetLogger("boulder").Errorf("failed to get chunk service")
-		return nil, fmt.Errorf("failed to get chunk service")
+		return nil, errors.New("failed to get chunk service")
 	}
 
 	err = chunker.DoChunk(r, meta.PartToBaseObject(part), m.WritePartMeta)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to chunk object: %v", err)
-		return nil, fmt.Errorf("failed to chunk object: %v", err)
+		return nil, fmt.Errorf("failed to chunk object: %w", err)
 	}
 	return part, nil
 }
@@ -619,7 +620,7 @@ func (m *MultiPartService) UploadPartCopy(srcBucket, srcObject string, params *o
 		txn, err := m.kvstore.BeginTxn(context.Background(), nil)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
-			return nil, fmt.Errorf("failed to begin transaction: %v", err)
+			return nil, fmt.Errorf("failed to begin transaction: %w", err)
 		}
 		defer func() {
 			if txn != nil {
@@ -632,13 +633,13 @@ func (m *MultiPartService) UploadPartCopy(srcBucket, srcObject string, params *o
 			var _chunk meta.Chunk
 			if exists, e := txn.Get(chunkey, &_chunk); e != nil || !exists {
 				logger.GetLogger("boulder").Errorf("%s/%s get chunk failed: %v", srcObj.Bucket, srcObj.Key, err)
-				return nil, fmt.Errorf("%s/%s get chunk %s failed: %v", srcObj.Bucket, srcObj.Key, chunkey, err)
+				return nil, fmt.Errorf("%s/%s get chunk %s failed: %w", srcObj.Bucket, srcObj.Key, chunkey, err)
 			}
 			// 引用计数加1
 			_chunk.RefCount += 1
 			if e := txn.Set(chunkey, &_chunk); e != nil {
 				logger.GetLogger("boulder").Errorf("%s/%s set chunk %s failed: %v", upload.Bucket, upload.Key, _chunk.Hash, err)
-				return nil, fmt.Errorf("%s/%s set chunk failed: %v", upload.Bucket, upload.Key, err)
+				return nil, fmt.Errorf("%s/%s set chunk failed: %w", upload.Bucket, upload.Key, err)
 			} else {
 				logger.GetLogger("boulder").Debugf("%s/%s refresh set chunk: %s", upload.Bucket, upload.Key, _chunk.Hash)
 			}
@@ -647,10 +648,10 @@ func (m *MultiPartService) UploadPartCopy(srcBucket, srcObject string, params *o
 		partKey := fmt.Sprintf("aws:upload:%s:%s/%s/%s/%d",
 			ak.AccountID, upload.Bucket, upload.Key, upload.UploadID, params.PartNumber)
 		if err := txn.Set(partKey, part); err != nil {
-			return nil, fmt.Errorf("failed to save part meta: %v", err)
+			return nil, fmt.Errorf("failed to save part meta: %w", err)
 		}
 		if err := txn.Commit(); err != nil {
-			return nil, fmt.Errorf("failed to commit part: %v", err)
+			return nil, fmt.Errorf("failed to commit part: %w", err)
 		}
 		txn = nil
 	} else {
@@ -688,7 +689,7 @@ func (m *MultiPartService) CompleteMultipartUpload(cliParts []meta.PartETag, par
 	exists, err := m.kvstore.Get(uploadKey, &upload)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to get multipart upload: %v", err)
-		return nil, fmt.Errorf("failed to get multipart upload: %v", err)
+		return nil, fmt.Errorf("failed to get multipart upload: %w", err)
 	}
 	if !exists {
 		logger.GetLogger("boulder").Errorf("multipart upload not found: %s", uploadKey)
@@ -699,22 +700,22 @@ func (m *MultiPartService) CompleteMultipartUpload(cliParts []meta.PartETag, par
 	// 获取当前对象是否存在
 	oldObjKey := "aws:object:" + ak.AccountID + ":" + params.BucketName + "/" + params.ObjKey
 	var oldObj meta.Object
-	exists, err = m.kvstore.Get(oldObjKey, &oldObj)
+	existsOldObj, err := m.kvstore.Get(oldObjKey, &oldObj)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to get existing object %s: %v", oldObjKey, err)
-		return nil, fmt.Errorf("failed to check existing object %s : %v", oldObjKey, err)
+		return nil, fmt.Errorf("failed to check existing object %s : %w", oldObjKey, err)
 	}
 
 	// If-None-Match: *
 	if params.IfNoneMatch == "*" {
-		if exists {
+		if existsOldObj {
 			return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 		}
 	}
 
 	// If-Match: "etag"
 	if params.IfMatch != "" {
-		if !exists {
+		if !existsOldObj {
 			return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 		}
 
@@ -725,42 +726,37 @@ func (m *MultiPartService) CompleteMultipartUpload(cliParts []meta.PartETag, par
 	// === 条件检查结束 ===
 
 	// 开启事务
-	txn, err := m.kvstore.BeginTxn(context.Background(), nil)
+	txnReadOnly, err := m.kvstore.BeginTxn(context.Background(), &kv.TxnOpt{IsReadOnly: true})
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
-		return nil, fmt.Errorf("failed to begin transaction: %v", err)
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer func() {
-		if txn != nil {
-			_ = txn.Rollback()
-		}
-	}()
 
 	// 扫描所有 Part 元数据
 	prefix := uploadKey + "/"
 	var allParts []*meta.PartObject
 	startKey := ""
 	for {
-		keys, nextKey, err := txn.Scan(prefix, startKey, 100)
+		keys, nextKey, err := txnReadOnly.Scan(prefix, startKey, 100)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to scan multipart upload parts: %v", err)
-			return nil, fmt.Errorf("failed to scan multipart upload parts: %v", err)
+			return nil, fmt.Errorf("failed to scan multipart upload parts: %w", err)
 		}
-		partBytes, err := txn.BatchGet(keys)
+		partBytes, err := txnReadOnly.BatchGet(keys)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to get multipart upload part meta: %v", err)
-			return nil, fmt.Errorf("failed to get multipart upload part meta: %v", err)
+			return nil, fmt.Errorf("failed to get multipart upload part meta: %w", err)
 		}
 		if len(partBytes) != len(keys) {
 			logger.GetLogger("boulder").Errorf("unexpected number of parts: expected %d, got %d", len(keys), len(partBytes))
-			return nil, fmt.Errorf("inconsistent part count")
+			return nil, errors.New("inconsistent part count")
 		}
 
 		for _, data := range partBytes {
 			var part meta.PartObject
 			if err := json.Unmarshal(data, &part); err != nil {
 				logger.GetLogger("boulder").Errorf("failed to unmarshal part meta: %v", err)
-				return nil, fmt.Errorf("failed to unmarshal part meta: %v", err)
+				return nil, fmt.Errorf("failed to unmarshal part meta: %w", err)
 			}
 			allParts = append(allParts, &part)
 		}
@@ -854,25 +850,64 @@ func (m *MultiPartService) CompleteMultipartUpload(cliParts []meta.PartETag, par
 		Owner:              upload.Owner,
 	}
 
-	// 保存对象
-	objKey := "aws:object:" + ak.AccountID + ":" + obj.Bucket + "/" + obj.Key
-	if err := txn.Set(objKey, obj); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to save object: %v", err)
-		return nil, fmt.Errorf("failed to save object: %v", err)
-	}
+	maxRetryTimes := 3
+	for i := 0; i < maxRetryTimes; i++ {
+		txn, err := m.kvstore.BeginTxn(context.Background(), nil)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
+			return nil, fmt.Errorf("failed to begin transaction: %w", err)
+		}
+		defer func() {
+			if txn != nil {
+				_ = txn.Rollback()
+			}
+		}()
 
-	// 循环删除 upload 及其所有 part（避免 DeletePrefix 限制）
-	if err := txn.DeletePrefix(uploadKey, 0); err != nil { // 传 0 表示无限制或循环删除
-		logger.GetLogger("boulder").Errorf("failed to delete upload info: %v", err)
-		return nil, fmt.Errorf("failed to delete upload info: %v", err)
-	}
+		// 保存对象
+		objKey := "aws:object:" + ak.AccountID + ":" + obj.Bucket + "/" + obj.Key
+		if err := txn.Set(objKey, obj); err != nil {
+			logger.GetLogger("boulder").Errorf("failed to save object: %v", err)
+			return nil, fmt.Errorf("failed to save object: %w", err)
+		} else {
+			logger.GetLogger("boulder").Debugf("saved multi object: %s chunk %d", objKey, len(obj.Chunks))
+		}
 
-	// 提交事务
-	if err := txn.Commit(); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
-		return nil, fmt.Errorf("failed to commit transaction: %v", err)
+		// 循环删除 upload 及其所有 part（避免 DeletePrefix 限制）
+		if err := txn.DeletePrefix(uploadKey, 0); err != nil { // 传 0 表示无限制或循环删除
+			logger.GetLogger("boulder").Errorf("failed to delete upload info: %v", err)
+			return nil, fmt.Errorf("failed to delete upload info: %w", err)
+		}
+
+		//如果是覆盖已有的对象，要先删除旧的对象
+		if existsOldObj {
+			gckey := task.GCChunkPrefix + utils.GenUUID()
+			gcChunks := task.GCChunk{
+				StorageID: oldObj.DataLocation,
+				ChunkIDs:  append([]string(nil), oldObj.Chunks...),
+			}
+			err = txn.Set(gckey, gcChunks)
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("%s/%s set task chunk failed: %v", obj.Bucket, obj.Key, err)
+				return nil, fmt.Errorf("%s/%s set task chunk failed: %w", obj.Bucket, obj.Key, err)
+			}
+		}
+
+		// 提交事务
+		if err := txn.Commit(); err != nil {
+			if i < maxRetryTimes-1 {
+				baseDelay := 500 * time.Millisecond
+				jitter := time.Duration(rand.Int63n(100)) * time.Millisecond
+				sleep := baseDelay<<uint(i) + jitter
+				time.Sleep(sleep)
+				continue
+			} else {
+				logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+				return nil, fmt.Errorf("failed to commit transaction: %w", err)
+			}
+		}
+		txn = nil // 防止 defer rollback
+		break
 	}
-	txn = nil // 防止 defer rollback
 
 	logger.GetLogger("boulder").Infof("completed multipart upload: bucket=%s, key=%s, uploadID=%s, parts=%d, size=%d",
 		obj.Bucket, obj.Key, params.UploadID, len(cliParts), totalSize)
@@ -900,7 +935,7 @@ func (m *MultiPartService) ListParts(params *object.BaseObjectParams) (*meta.Mul
 	exists, err := m.kvstore.Get(uploadKey, &upload)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to get multipart upload: %v", err)
-		return nil, nil, fmt.Errorf("failed to get multipart upload: %v", err)
+		return nil, nil, fmt.Errorf("failed to get multipart upload: %w", err)
 	}
 	if !exists {
 		logger.GetLogger("boulder").Errorf("multipart upload not found: %s", uploadKey)
@@ -911,7 +946,7 @@ func (m *MultiPartService) ListParts(params *object.BaseObjectParams) (*meta.Mul
 	txn, err := m.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
-		return nil, nil, fmt.Errorf("failed to begin transaction: %v", err)
+		return nil, nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -927,12 +962,12 @@ func (m *MultiPartService) ListParts(params *object.BaseObjectParams) (*meta.Mul
 		keys, nextKey, err := txn.Scan(prefix, startKey, 100)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to scan multipart upload parts: %v", err)
-			return nil, nil, fmt.Errorf("failed to scan multipart upload parts: %v", err)
+			return nil, nil, fmt.Errorf("failed to scan multipart upload parts: %w", err)
 		}
 		partBytes, err := txn.BatchGet(keys)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to get multipart upload part meta: %v", err)
-			return nil, nil, fmt.Errorf("failed to get multipart upload part meta: %v", err)
+			return nil, nil, fmt.Errorf("failed to get multipart upload part meta: %w", err)
 		}
 
 		for k, data := range partBytes {
@@ -940,7 +975,7 @@ func (m *MultiPartService) ListParts(params *object.BaseObjectParams) (*meta.Mul
 			var part meta.PartObject
 			if err := json.Unmarshal(data, &part); err != nil {
 				logger.GetLogger("boulder").Errorf("failed to unmarshal part meta: %v", err)
-				return nil, nil, fmt.Errorf("failed to unmarshal part meta: %v", err)
+				return nil, nil, fmt.Errorf("failed to unmarshal part meta: %w", err)
 			}
 			allParts = append(allParts, &part)
 		}
@@ -995,7 +1030,7 @@ func (m *MultiPartService) ListMultipartUploads(params *object.BaseObjectParams)
 	txn, err := m.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
-		return nil, fmt.Errorf("failed to begin transaction: %v", err)
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -1018,7 +1053,7 @@ func (m *MultiPartService) ListMultipartUploads(params *object.BaseObjectParams)
 		logger.GetLogger("boulder").Infof("list multipart uploads keys %v, nextkey : %s", keys, nextKey)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to scan multipart uploads: %v", err)
-			return nil, fmt.Errorf("failed to scan multipart uploads: %v", err)
+			return nil, fmt.Errorf("failed to scan multipart uploads: %w", err)
 		}
 
 		if len(keys) == 0 {
@@ -1029,7 +1064,7 @@ func (m *MultiPartService) ListMultipartUploads(params *object.BaseObjectParams)
 		data, err := txn.BatchGet(keys)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to batch get upload metadata: %v", err)
-			return nil, fmt.Errorf("failed to batch get upload metadata: %v", err)
+			return nil, fmt.Errorf("failed to batch get upload metadata: %w", err)
 		}
 
 		// 遍历每个 key-value
@@ -1086,7 +1121,7 @@ func (m *MultiPartService) ListMultipartUploads(params *object.BaseObjectParams)
 	// 提交事务
 	if err := txn.Commit(); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
-		return nil, fmt.Errorf("failed to commit transaction: %v", err)
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	txn = nil
 	logger.GetLogger("boulder").Infof("list multipart uploads  %#v", uploads)

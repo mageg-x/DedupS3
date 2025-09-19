@@ -73,7 +73,7 @@ func GetStorageService() *StorageService {
 }
 
 // AddStorage 注册新的存储实例
-func (s *StorageService) AddStorage(strType, strClass string, conf config.BlockConfig) (*meta.Storage, error) {
+func (s *StorageService) AddStorage(strType, strClass string, conf config.StorageConfig) (*meta.Storage, error) {
 	// 每种class 只能有一个存储
 	sl := s.GetStoragesByClass(strClass)
 	if sl != nil && len(sl) > 0 {
@@ -113,7 +113,7 @@ func (s *StorageService) AddStorage(strType, strClass string, conf config.BlockC
 	ok, err := txn.Get(key, &existing)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to get  storage %s : %v", key, err)
-		return nil, fmt.Errorf("failed to get  storage %s : %v", key, err)
+		return nil, fmt.Errorf("failed to get  storage %s : %w", key, err)
 	}
 	if ok {
 		logger.GetLogger("boulder").Warnf("storage with id %s already exists", id)
@@ -146,7 +146,7 @@ func (s *StorageService) AddStorage(strType, strClass string, conf config.BlockC
 // GetStorage 根据 ID 获取存储实例
 func (s *StorageService) GetStorage(id string) (*meta.Storage, error) {
 	if id == "" {
-		return nil, fmt.Errorf("empty storage id")
+		return nil, errors.New("empty storage id")
 	}
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -189,7 +189,7 @@ func (s *StorageService) GetStorage(id string) (*meta.Storage, error) {
 
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("error creating block store for storage id %s: %v", id, err)
-		return nil, fmt.Errorf("error creating block store: %v", err)
+		return nil, fmt.Errorf("error creating block store: %w", err)
 	}
 
 	storage.Instance = inst

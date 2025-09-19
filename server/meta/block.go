@@ -17,7 +17,7 @@ const (
 type BlockChunk struct {
 	Hash string `json:"hash" msgpack:"hash"` // 块哈希
 	Size int32  `json:"size" msgpack:"size"` // 块大小
-	Data []byte `json:"-" msgpack:"-"`       // 仅用于内存操作，不持久化
+	Data []byte `json:"-" msgpack:"data"`
 }
 
 // BlockHeader BlockData ，存放在磁盘上只包含头信息，不含 Data
@@ -45,7 +45,6 @@ type Block struct {
 	StorageID string    `json:"storage_id" msgpack:"storage_id"` // 存储后端ID
 	CreatedAt time.Time `json:"created_at" msgpack:"created_at"` // 创建时间
 	UpdatedAt time.Time `json:"updated_at" msgpack:"updated_at"` // 更新时间
-	Dirty     bool      `json:"-" msgpack:"-" default:"true"`    // 是否变更数据
 }
 
 // NewBlock 创建新块

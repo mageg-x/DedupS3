@@ -114,7 +114,7 @@ func (b *BucketService) CreateBucket(params *BaseBucketParams) error {
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
 		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
-		return fmt.Errorf("failed to get access key %s", params.AccessKeyID)
+		return fmt.Errorf("failed to get access key %s: %w", params.AccessKeyID, err)
 	}
 	ac, err := iamService.GetAccount(ak.AccountID)
 	if err != nil || ac == nil {
@@ -130,7 +130,7 @@ func (b *BucketService) CreateBucket(params *BaseBucketParams) error {
 	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
-		return fmt.Errorf("failed to initialize kvstore txn: %v", err)
+		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -161,12 +161,12 @@ func (b *BucketService) CreateBucket(params *BaseBucketParams) error {
 	err = txn.Set(key, &bm)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to put bucket: %v", err)
-		return fmt.Errorf("failed to put bucket: %v", err)
+		return fmt.Errorf("failed to put bucket: %w", err)
 	}
 
 	if err := txn.Commit(); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
-		return fmt.Errorf("failed to commit transaction: %v", err)
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	txn = nil
 
@@ -246,7 +246,7 @@ func (b *BucketService) ListBuckets(params *BaseBucketParams) ([]*meta.BucketMet
 	txn, err := b.kvstore.BeginTxn(context.Background(), &kv.TxnOpt{IsReadOnly: true})
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
-		return nil, nil, fmt.Errorf("failed to initialize kvstore txn: %v", err)
+		return nil, nil, fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 
 	defer txn.Rollback()
@@ -255,7 +255,7 @@ func (b *BucketService) ListBuckets(params *BaseBucketParams) ([]*meta.BucketMet
 	buckets, _, err := txn.Scan(prefix, "", MAX_BUCKET_NUM)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to list buckets: %v", err)
-		return nil, nil, fmt.Errorf("failed to list buckets: %v", err)
+		return nil, nil, fmt.Errorf("failed to list buckets: %w", err)
 	}
 
 	logger.GetLogger("boulder").Tracef("list buckets: %v", buckets)
@@ -301,7 +301,7 @@ func (b *BucketService) DeleteBucket(params *BaseBucketParams) error {
 	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
-		return fmt.Errorf("failed to initialize kvstore txn: %v", err)
+		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -329,7 +329,7 @@ func (b *BucketService) DeleteBucket(params *BaseBucketParams) error {
 	objects, _, err := txn.Scan(objectPrefix, "", 1)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to scan objects in bucket %s: %v", params.BucketName, err)
-		return fmt.Errorf("failed to scan objects: %v", err)
+		return fmt.Errorf("failed to scan objects: %w", err)
 	}
 
 	// 检查是否有分段上传任务
@@ -337,7 +337,7 @@ func (b *BucketService) DeleteBucket(params *BaseBucketParams) error {
 	multiparts, _, err := txn.Scan(multipartPrefix, "", 1)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to scan multipart uploads in bucket %s: %v", params.BucketName, err)
-		return fmt.Errorf("failed to scan multipart uploads: %v", err)
+		return fmt.Errorf("failed to scan multipart uploads: %w", err)
 	}
 
 	if len(objects) > 0 || len(multiparts) > 0 {
@@ -348,13 +348,13 @@ func (b *BucketService) DeleteBucket(params *BaseBucketParams) error {
 	// 删除存储桶元数据
 	if err := txn.Delete(bucketKey); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to delete bucket %s metadata: %v", params.BucketName, err)
-		return fmt.Errorf("failed to delete bucket metadata: %v", err)
+		return fmt.Errorf("failed to delete bucket metadata: %w", err)
 	}
 
 	// 提交事务
 	if err := txn.Commit(); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
-		return fmt.Errorf("failed to commit transaction: %v", err)
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	txn = nil
 
@@ -395,7 +395,7 @@ func (b *BucketService) PutBucketTagging(params *BaseBucketParams) error {
 	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
-		return fmt.Errorf("failed to initialize kvstore txn: %v", err)
+		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -439,13 +439,13 @@ func (b *BucketService) PutBucketTagging(params *BaseBucketParams) error {
 	err = txn.Set(bucketKey, &bucket)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to set bucket tags: %v", err)
-		return fmt.Errorf("failed to set bucket tags: %v", err)
+		return fmt.Errorf("failed to set bucket tags: %w", err)
 	}
 
 	// 提交事务
 	if err := txn.Commit(); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
-		return fmt.Errorf("failed to commit transaction: %v", err)
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	txn = nil
 
@@ -486,7 +486,7 @@ func (b *BucketService) PutBucketLifecycle(params *BaseBucketParams, lifecycle *
 	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
-		return fmt.Errorf("failed to initialize kvstore txn: %v", err)
+		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -533,13 +533,13 @@ func (b *BucketService) PutBucketLifecycle(params *BaseBucketParams, lifecycle *
 	err = txn.Set(bucketKey, &bucket)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to set bucket lifecycle configuration: %v", err)
-		return fmt.Errorf("failed to set bucket lifecycle configuration: %v", err)
+		return fmt.Errorf("failed to set bucket lifecycle configuration: %w", err)
 	}
 
 	// 提交事务
 	if err := txn.Commit(); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
-		return fmt.Errorf("failed to commit transaction: %v", err)
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	txn = nil
 
@@ -581,7 +581,7 @@ func (b *BucketService) PutBucketNotification(params *BaseBucketParams, notifica
 	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
-		return fmt.Errorf("failed to initialize kvstore txn: %v", err)
+		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -628,13 +628,13 @@ func (b *BucketService) PutBucketNotification(params *BaseBucketParams, notifica
 	err = txn.Set(bucketKey, &bucket)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to set bucket notification configuration: %v", err)
-		return fmt.Errorf("failed to set bucket notification configuration: %v", err)
+		return fmt.Errorf("failed to set bucket notification configuration: %w", err)
 	}
 
 	// 提交事务
 	if err := txn.Commit(); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
-		return fmt.Errorf("failed to commit transaction: %v", err)
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	txn = nil
 
@@ -676,7 +676,7 @@ func (b *BucketService) PutBucketObjectLockConfig(params *BaseBucketParams, conf
 	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
-		return fmt.Errorf("failed to initialize kvstore txn: %v", err)
+		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -722,13 +722,13 @@ func (b *BucketService) PutBucketObjectLockConfig(params *BaseBucketParams, conf
 	err = txn.Set(bucketKey, &bucket)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to set bucket object lock configuration: %v", err)
-		return fmt.Errorf("failed to set bucket object lock configuration: %v", err)
+		return fmt.Errorf("failed to set bucket object lock configuration: %w", err)
 	}
 
 	// 提交事务
 	if err := txn.Commit(); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
-		return fmt.Errorf("failed to commit transaction: %v", err)
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	txn = nil
 
@@ -770,7 +770,7 @@ func (b *BucketService) PutBucketACL(params *BaseBucketParams, acl *meta.AccessC
 	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
-		return fmt.Errorf("failed to initialize kvstore txn: %v", err)
+		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -819,13 +819,13 @@ func (b *BucketService) PutBucketACL(params *BaseBucketParams, acl *meta.AccessC
 	err = txn.Set(bucketKey, &bucket)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to set bucket ACL: %v", err)
-		return fmt.Errorf("failed to set bucket ACL: %v", err)
+		return fmt.Errorf("failed to set bucket ACL: %w", err)
 	}
 
 	// 提交事务
 	if err := txn.Commit(); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
-		return fmt.Errorf("failed to commit transaction: %v", err)
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	txn = nil
 
@@ -866,7 +866,7 @@ func (b *BucketService) PutBucketPolicy(params *BaseBucketParams, policy *meta.B
 	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
-		return fmt.Errorf("failed to initialize kvstore txn: %v", err)
+		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -904,7 +904,7 @@ func (b *BucketService) PutBucketPolicy(params *BaseBucketParams, policy *meta.B
 	err = txn.Set(bucketKey, &bucket)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to set bucket Policy: %v", err)
-		return fmt.Errorf("failed to set bucket Policy: %v", err)
+		return fmt.Errorf("failed to set bucket Policy: %w", err)
 	}
 
 	// 提交事务

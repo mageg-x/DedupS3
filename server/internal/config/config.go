@@ -19,13 +19,14 @@ package config
 
 import (
 	"fmt"
-	"github.com/mageg-x/boulder/internal/logger"
-	"os"
+	"github.com/mageg-x/boulder/internal/utils"
 	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/mageg-x/boulder/internal/logger"
 
 	"github.com/creasty/defaults"
 	"github.com/spf13/viper"
@@ -37,93 +38,102 @@ var (
 )
 
 type IAMConfig struct {
-	Username string `json:"username" yaml:"username" env:"IAM_USERNAME" default:"stevenrao"`
-	Password string `json:"password" yaml:"password" env:"IAM_PASSWORD" default:"Abcd@1234"`
-	AK       string `json:"access_key" yaml:"access_key" env:"IAM_ACCESS_KEY" default:"GGP5NTUY9WRH5NS78UVU"`
-	SK       string `json:"secret_key" yaml:"secret_key" env:"IAM_SECRET_KEY" default:"5oj6y3Jy7MO4Y2FTI5dOUvCbnOZf8mQGvbCqGN4I"`
+	Username string `json:"username" mapstructure:"username" env:"IAM_USERNAME" default:"stevenrao"`
+	Password string `json:"password" mapstructure:"password" env:"IAM_PASSWORD" default:"Abcd@1234"`
+	AK       string `json:"access_key" mapstructure:"access_key" env:"IAM_ACCESS_KEY" default:"GGP5NTUY9WRH5NS78UVU"`
+	SK       string `json:"secret_key" mapstructure:"secret_key" env:"IAM_SECRET_KEY" default:"5oj6y3Jy7MO4Y2FTI5dOUvCbnOZf8mQGvbCqGN4I"`
 }
 
 // TiKVConfig TiKV集群配置
 type TiKVConfig struct {
-	PDAddrs []string `yaml:"pd_addrs" json:"pdAddrs" env:"BOULDER_KV_TIKV_PD_ADDRS"`
+	PDAddrs []string `mapstructure:"pd_addrs" json:"pdAddrs" env:"BOULDER_KV_TIKV_PD_ADDRS"`
 }
 type BadgerConfig struct {
-	Path string `yaml:"path" json:"path" env:"BOULDER_KV_BADGER_PATH" default:"./data/kv"`
+	Path string `mapstructure:"path" json:"path" env:"BOULDER_KV_BADGER_PATH" default:"./data/kv"`
 }
 
 // KVConfig 存储KV相关配置
 type KVConfig struct {
-	TiKV   *TiKVConfig  `yaml:"tikv" json:"tikv"`
-	Badger BadgerConfig `yaml:"badger" json:"badger"`
+	TiKV   *TiKVConfig  `mapstructure:"tikv" json:"tikv"`
+	Badger BadgerConfig `mapstructure:"badger" json:"badger"`
 }
 
 // S3Config S3存储配置
 type S3Config struct {
-	AccessKey    string `yaml:"access_key" json:"accessKey" env:"BOULDER_BLOCK_S3_ACCESS_KEY"`
-	SecretKey    string `yaml:"secret_key" json:"secretKey" env:"BOULDER_BLOCK_S3_SECRET_KEY"`
-	Region       string `yaml:"region" json:"region" env:"BOULDER_BLOCK_S3_REGION" default:"us-east-1"`
-	Endpoint     string `yaml:"endpoint" json:"endpoint" env:"BOULDER_BLOCK_S3_ENDPOINT"`
-	Bucket       string `yaml:"bucket" json:"bucket" env:"BOULDER_BLOCK_S3_BUCKET" default:"blocks"`
-	UsePathStyle bool   `yaml:"usePathStyle" json:"usePathStyle" env:"BOULDER_BLOCK_S3_USE_PATH_STYLE" default:"true"`
+	AccessKey    string `mapstructure:"access_key" json:"accessKey" env:"BOULDER_BLOCK_S3_ACCESS_KEY"`
+	SecretKey    string `mapstructure:"secret_key" json:"secretKey" env:"BOULDER_BLOCK_S3_SECRET_KEY"`
+	Region       string `mapstructure:"region" json:"region" env:"BOULDER_BLOCK_S3_REGION" default:"us-east-1"`
+	Endpoint     string `mapstructure:"endpoint" json:"endpoint" env:"BOULDER_BLOCK_S3_ENDPOINT"`
+	Bucket       string `mapstructure:"bucket" json:"bucket" env:"BOULDER_BLOCK_S3_BUCKET" default:"blocks"`
+	UsePathStyle bool   `mapstructure:"use_path_style" json:"usePathStyle" env:"BOULDER_BLOCK_S3_USE_PATH_STYLE" default:"true"`
 }
 
 type DiskConfig struct {
-	Path string `yaml:"path" json:"path" env:"BOULDER_BLOCK_DISK_PATH" default:"./data/block"`
+	Path string `mapstructure:"path" json:"path" env:"BOULDER_BLOCK_DISK_PATH" default:"./data/block"`
 }
 
-// BlockConfig 存储Block相关配置
-type BlockConfig struct {
-	S3   *S3Config   `yaml:"s3" json:"s3"`
-	Disk *DiskConfig `yaml:"disk" json:"disk"`
+// StorageConfig 存储Block相关配置
+type StorageConfig struct {
+	S3   *S3Config   `mapstructure:"s3" json:"s3"`
+	Disk *DiskConfig `mapstructure:"disk" json:"disk"`
 }
 
 // RedisConfig Redis集群配置
 type RedisConfig struct {
-	Addrs    []string `yaml:"addrs" json:"addrs" env:"BOULDER_CACHE_REDIS_ADDRS"`
-	Password string   `yaml:"password" json:"password" env:"BOULDER_CACHE_REDIS_PASSWORD"`
-	DB       int      `yaml:"db" json:"db" env:"BOULDER_CACHE_REDIS_DB"`
-	PoolSize int      `yaml:"pool_size" json:"poolSize" env:"BOULDER_CACHE_REDIS_POOL_SIZE"`
+	Addrs    []string `mapstructure:"addrs" json:"addrs" env:"BOULDER_CACHE_REDIS_ADDRS"`
+	Password string   `mapstructure:"password" json:"password" env:"BOULDER_CACHE_REDIS_PASSWORD"`
+	DB       int      `mapstructure:"db" json:"db" env:"BOULDER_CACHE_REDIS_DB"`
+	PoolSize int      `mapstructure:"pool_size" json:"poolSize" env:"BOULDER_CACHE_REDIS_POOL_SIZE"`
 }
 
 // CacheConfig 存储Cache相关配置
 type CacheConfig struct {
-	Redis *RedisConfig `yaml:"redis" json:"redis"`
+	Redis *RedisConfig `mapstructure:"redis" json:"redis"`
 }
 
 // ServerConfig represents server configuration
 type ServerConfig struct {
-	Address             string        `yaml:"address" json:"address" env:"BOULDER_SERVER_ADDRESS" default:":3000"`
-	Listeners           int           `yaml:"listeners" json:"listeners" env:"BOULDER_SERVER_LISTENERS" default:"4"`
-	ConsoleAddress      string        `yaml:"console_address" json:"consoleAddress" env:"BOULDER_SERVER_CONSOLE_ADDRESS" default:":3002"`
-	ShutdownTimeout     time.Duration `yaml:"shutdown_timeout" json:"shutdownTimeout" env:"BOULDER_SERVER_SHUTDOWN_TIMEOUT" default:"30s"`
-	IdleTimeout         time.Duration `yaml:"idle_timeout" json:"idleTimeout" env:"BOULDER_SERVER_IDLE_TIMEOUT" default:"30s"`
-	ReadHeaderTimeout   time.Duration `yaml:"read_header_timeout" json:"readHeaderTimeout" env:"BOULDER_SERVER_READ_HEADER_TIMEOUT" default:"30s"`
-	ConnUserTimeout     time.Duration `yaml:"conn_user_timeout" json:"connUserTimeout" env:"BOULDER_SERVER_CONN_USER_TIMEOUT" default:"10m"`
-	ReadTimeout         time.Duration `yaml:"read_timeout" json:"readTimeout" env:"BOULDER_SERVER_READ_TIMEOUT" default:"10s"`
-	WriteTimeout        time.Duration `yaml:"write_timeout" json:"writeTimeout" env:"BOULDER_SERVER_WRITE_TIMEOUT" default:"10s"`
-	Interface           string        `yaml:"interface" json:"interface" env:"BOULDER_SERVER_INTERFACE" default:""`
-	MaxIdleConnsPerHost int           `yaml:"max_idle_conns_per_host" json:"maxIdleConnsPerHost" env:"BOULDER_SERVER_MAX_IDLE_CONNS_PER_HOST" default:"2048"`
-	Memlimit            string        `yaml:"memlimit" json:"memlimit" env:"BOULDER_SERVER_MEMLIMIT" default:"8589934592"`
-	SendBufSize         int           `yaml:"send_buf_size" json:"sendBufSize" env:"BOULDER_SERVER_SEND_BUF_SIZE" default:"8388608"`
-	RecvBufSize         int           `yaml:"recv_buf_size" json:"recvBufSize" env:"BOULDER_SERVER_RECV_BUF_SIZE" default:"8388608"`
-	Domains             []string      `yaml:"domains" json:"domains" env:"BOULDER_DOMAINS" `
+	Address             string        `mapstructure:"address" json:"address" env:"BOULDER_SERVER_ADDRESS" default:":3000"`
+	Listeners           int           `mapstructure:"listeners" json:"listeners" env:"BOULDER_SERVER_LISTENERS" default:"4"`
+	ConsoleAddress      string        `mapstructure:"console_address" json:"consoleAddress" env:"BOULDER_SERVER_CONSOLE_ADDRESS" default:":3002"`
+	ShutdownTimeout     time.Duration `mapstructure:"shutdown_timeout" json:"shutdownTimeout" env:"BOULDER_SERVER_SHUTDOWN_TIMEOUT" default:"30s"`
+	IdleTimeout         time.Duration `mapstructure:"idle_timeout" json:"idleTimeout" env:"BOULDER_SERVER_IDLE_TIMEOUT" default:"30s"`
+	ReadHeaderTimeout   time.Duration `mapstructure:"read_header_timeout" json:"readHeaderTimeout" env:"BOULDER_SERVER_READ_HEADER_TIMEOUT" default:"30s"`
+	ConnUserTimeout     time.Duration `mapstructure:"conn_user_timeout" json:"connUserTimeout" env:"BOULDER_SERVER_CONN_USER_TIMEOUT" default:"10m"`
+	ReadTimeout         time.Duration `mapstructure:"read_timeout" json:"readTimeout" env:"BOULDER_SERVER_READ_TIMEOUT" default:"10s"`
+	WriteTimeout        time.Duration `mapstructure:"write_timeout" json:"writeTimeout" env:"BOULDER_SERVER_WRITE_TIMEOUT" default:"10s"`
+	Interface           string        `mapstructure:"interface" json:"interface" env:"BOULDER_SERVER_INTERFACE" default:""`
+	MaxIdleConnsPerHost int           `mapstructure:"max_idle_conns_per_host" json:"maxIdleConnsPerHost" env:"BOULDER_SERVER_MAX_IDLE_CONNS_PER_HOST" default:"2048"`
+	Memlimit            string        `mapstructure:"memlimit" json:"memlimit" env:"BOULDER_SERVER_MEMLIMIT" default:"8589934592"`
+	SendBufSize         int           `mapstructure:"send_buf_size" json:"sendBufSize" env:"BOULDER_SERVER_SEND_BUF_SIZE" default:"8388608"`
+	RecvBufSize         int           `mapstructure:"recv_buf_size" json:"recvBufSize" env:"BOULDER_SERVER_RECV_BUF_SIZE" default:"8388608"`
+	Domains             []string      `mapstructure:"domains" json:"domains" env:"BOULDER_DOMAINS" `
 }
 
 // LogConfig represents log configuration
 type LogConfig struct {
-	Dir        string `yaml:"dir" json:"dir" env:"BOULDER_LOG_DIR" default:"./logs"`
-	Size       int    `yaml:"size" json:"size" env:"BOULDER_LOG_SIZE" default:"10485760"`
-	MaxAge     int    `yaml:"max_age" json:"maxAge" env:"BOULDER_LOG_MAX_AGE" default:"30"`
-	MaxBackups int    `yaml:"max_backups" json:"maxBackups" env:"BOULDER_LOG_MAX_BACKUPS" default:"7"`
-	Compress   bool   `yaml:"compress" json:"compress" env:"BOULDER_LOG_COMPRESS" default:"true"`
+	Dir        string `mapstructure:"dir" json:"dir" env:"BOULDER_LOG_DIR" default:"./logs"`
+	Size       int    `mapstructure:"size" json:"size" env:"BOULDER_LOG_SIZE" default:"10485760"`
+	MaxAge     int    `mapstructure:"max_age" json:"maxAge" env:"BOULDER_LOG_MAX_AGE" default:"30"`
+	MaxBackups int    `mapstructure:"max_backups" json:"maxBackups" env:"BOULDER_LOG_MAX_BACKUPS" default:"7"`
+	Compress   bool   `mapstructure:"compress" json:"compress" env:"BOULDER_LOG_COMPRESS" default:"true"`
+}
+
+type BlockConfig struct {
+	UploadBufDir      string `mapstructure:"upload_buf_dir" json:"uploadBufDir" env:"BOULDER_UPLOAD_BUF_DIR" default:"./data/buffer"`
+	UploadParallelNum int    `mapstructure:"upload_parallel_num" json:"uploadParallelNum" env:"BOULDER_UPLOAD_PARALLEL_NUM" default:"1"`
+	ShardNum          int    `mapstructure:"shard_num" json:"shardNum" env:"BOULDER_UPLOAD_SHARD_NUM" default:"20"`
+	MaxSize           int    `mapstructure:"max_size" json:"maxSize" env:"BOULDER_UPLOAD_MAX_SIZE" default:"67108864"`
+	MaxHeadSize       int    `mapstructure:"max_head_size" json:"maxHeadSize" env:"BOULDER_UPLOAD_MAX_HEAD_SIZE" default:"204800"`
 }
 
 type Config struct {
-	Server ServerConfig `yaml:"server" json:"server"`
-	Log    LogConfig    `yaml:"log" json:"log"`
-	KV     KVConfig     `yaml:"kv" json:"kv"`
-	Cache  CacheConfig  `yaml:"cache" json:"cache"`
-	Iam    IAMConfig    `yaml:"iam" json:"iam"`
+	Server ServerConfig `mapstructure:"server" json:"server"`
+	Log    LogConfig    `mapstructure:"log" json:"log"`
+	KV     KVConfig     `mapstructure:"kv" json:"kv"`
+	Cache  CacheConfig  `mapstructure:"cache" json:"cache"`
+	Iam    IAMConfig    `mapstructure:"iam" json:"iam"`
+	Block  BlockConfig  `mapstructure:"block" json:"block"`
 }
 
 // DefaultConfig 创建带默认值的配置实例
@@ -142,11 +152,8 @@ func DefaultConfig() *Config {
 func load(path string) *Config {
 	_cfg := DefaultConfig()
 
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+	if !utils.FileExists(path) {
 		logger.GetLogger("").Warnf("config file not found: %s, using default config", path)
-		return _cfg
-	} else if err != nil {
-		logger.GetLogger("").Errorf("failed to stat config file %s: %v", path, err)
 		return _cfg
 	}
 
@@ -169,16 +176,16 @@ func load(path string) *Config {
 		logger.GetLogger("").Errorf("failed to read config file: %v", err)
 		return _cfg
 	}
-	// 解码到结构体
-	var cfg Config
-	if err := v.Unmarshal(&cfg); err != nil {
-		logger.GetLogger("").Errorf("failed to unmarshal config file %s: %s", path, err.Error())
-		return _cfg
-	}
 
+	var cfg Config
 	// 设置 default 标签的值
 	if err := defaults.Set(&cfg); err != nil {
 		logger.GetLogger("").Errorf("failed to set defaults for config file %s: %s", path, err.Error())
+		return _cfg
+	}
+	// 解码到结构体
+	if err := v.Unmarshal(&cfg); err != nil {
+		logger.GetLogger("").Errorf("failed to unmarshal config file %s: %s", path, err.Error())
 		return _cfg
 	}
 
@@ -193,7 +200,7 @@ func Load(configPath string) error {
 		return nil // 明确表示“成功加载了默认配置”
 	}
 
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+	if !utils.FileExists(configPath) {
 		defaultCfg := DefaultConfig()
 		globalConfig.Store(defaultCfg)
 		logger.GetLogger("").Warnf("config file %s not found, using default config", configPath)

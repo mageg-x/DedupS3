@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/mageg-x/boulder/internal/logger"
 	"io"
+	"os"
 	"path"
 	"strings"
 	"sync"
@@ -285,4 +286,9 @@ func Decrypt(data []byte, key string) ([]byte, error) {
 	}
 
 	return plaintext, nil
+}
+
+func FileExists(filename string) bool {
+	_, err := os.Stat(filename)
+	return !os.IsNotExist(err)
 }

@@ -84,7 +84,7 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IAMAccount,
 	txn, err := s.iam.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
-		return nil, fmt.Errorf("failed to initialize kvstore txn: %v", err)
+		return nil, fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 
 	defer func() {
@@ -149,7 +149,7 @@ func (s *IamService) GetAccount(accountID string) (*meta.IAMAccount, error) {
 	exist, err := s.iam.Get(key, &account)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to get account %s: %v", accountID, err)
-		return nil, fmt.Errorf("failed to get account %s: %v", accountID, err)
+		return nil, fmt.Errorf("failed to get account %s: %w", accountID, err)
 	}
 	if !exist {
 		logger.GetLogger("boulder").Errorf("account %s does not exist", accountID)
@@ -173,7 +173,7 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IAMAc
 	txn, err := s.iam.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
-		return false, fmt.Errorf("failed to initialize kvstore txn: %v", err)
+		return false, fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -258,7 +258,7 @@ func (s *IamService) DeleteAccount(accountID string) error {
 	txn, err := s.iam.BeginTxn(context.Background(), nil)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
-		return fmt.Errorf("failed to initialize kvstore txn: %v", err)
+		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
 		if txn != nil {
@@ -282,7 +282,7 @@ func (s *IamService) DeleteAccount(accountID string) error {
 			err = txn.Delete(k)
 			if err != nil {
 				logger.GetLogger("boulder").Errorf("failed to delete account %s access key: %v", accountID, err)
-				return fmt.Errorf("failed to delete account %s access key: %v", accountID, err)
+				return fmt.Errorf("failed to delete account %s access key: %w", accountID, err)
 			}
 			allDel = append(allDel, k)
 		}
@@ -425,7 +425,7 @@ func (s *IamService) GetAccessKey(accessKeyID string) (*meta.AccessKey, error) {
 			obj, yes := ak.(*meta.AccessKey)
 			if !yes {
 				logger.GetLogger("boulder").Errorf("invalid type in cache for access key %s ak %T", accessKeyID, ak)
-				return nil, fmt.Errorf("invalid access key type in cache")
+				return nil, errors.New("invalid access key type in cache")
 			}
 			return obj, nil
 		}

@@ -188,7 +188,7 @@ func NewMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 // AbortMultipartUploadHandler AbortMultipartUpload  中止分段上传
 func AbortMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: AbortMultipartUploadHandler")
+	logger.GetLogger("boulder").Debugf("API called: AbortMultipartUploadHandler")
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 	uploadID := r.URL.Query().Get("uploadId")
 
