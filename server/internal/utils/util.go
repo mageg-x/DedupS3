@@ -359,6 +359,9 @@ func ReadFilesRecursive(root string) ([]string, error) {
 
 	err = filepath.Walk(absRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
+			if os.IsNotExist(err) {
+				return nil // 跳过这个路径，继续遍历其他文件
+			}
 			logger.GetLogger("boulder").Errorf("failed to walk path %s: %v", path, err)
 			return err
 		}

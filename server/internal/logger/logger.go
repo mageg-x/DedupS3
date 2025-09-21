@@ -18,6 +18,7 @@ package logger
 
 import (
 	"fmt"
+	"github.com/aws/smithy-go/logging"
 	"io"
 	"os"
 	"path/filepath"
@@ -48,6 +49,15 @@ var (
 		Compress:   true,
 	}
 )
+
+// 首先，定义一个空记录器类型
+// 定义符合 AWS SDK 接口的空日志记录器
+type AWSNullLogger struct{}
+
+// 实现 AWS SDK 所需的 Logf 方法
+func (AWSNullLogger) Logf(classification logging.Classification, format string, v ...interface{}) {
+	// 什么都不做，完全忽略所有日志
+}
 
 // getLoggerKey 标准化 logger 名称（避免路径问题）
 func getLoggerKey(name string) string {

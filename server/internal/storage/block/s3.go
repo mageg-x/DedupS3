@@ -55,7 +55,9 @@ func NewS3Store(c *xconf.S3Config) (*S3Store, error) {
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithRegion(c.Region),
 		config.WithCredentialsProvider(credentialProvider),
-		config.WithHTTPClient(httpcli), // 使用带日志的 client
+		config.WithHTTPClient(httpcli),
+		// 关闭所有 SDK 日志
+		config.WithLogger(logger.AWSNullLogger{}),
 	)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("Failed to load SDK configuration: %v", err)
@@ -155,15 +157,15 @@ func (s *S3Store) ReadS3Block(blockID string, offset, length int64) ([]byte, err
 
 	resp, err := s.client.GetObject(ctx, input)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to read block %s from S3: %v", blockID, err)
-		var notFound *types.NotFound
-		var noSuchKey *types.NoSuchKey
-
-		if errors.As(err, &notFound) || errors.As(err, &noSuchKey) {
-			//  对象不存在
-			logger.GetLogger("boulder").Debugf("Block %s does not exist in S3", blockID)
-			return nil, ErrBlockNotFound
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) {
+			if apiErr.ErrorCode() == "NoSuchKey" || apiErr.ErrorCode() == "NotFound" {
+				// 确定是对象不存在的错误
+				logger.GetLogger("boulder").Debugf("Block %s does not exist in S3", blockID)
+				return nil, ErrBlockNotFound
+			}
 		}
+		logger.GetLogger("boulder").Errorf("Failed to read block %s from S3: %v", blockID, err)
 		return nil, fmt.Errorf("failed to read block %s from S3: %w", blockID, err)
 	}
 	defer resp.Body.Close()

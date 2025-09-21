@@ -85,7 +85,6 @@ func GetBlockService() *BlockService {
 func (s *BlockService) doSyncBlock(ctx context.Context) {
 	go func() {
 		cfg := xconf.Get()
-		blockPath := filepath.Join(cfg.Node.LocalDir, "block")
 
 		for {
 			select {
@@ -95,10 +94,17 @@ func (s *BlockService) doSyncBlock(ctx context.Context) {
 			default:
 				// 正常的处理逻辑
 			}
+
+			blockPath := filepath.Join(cfg.Node.LocalDir, "block")
+			if err := os.MkdirAll(blockPath, 0755); err != nil {
+				logger.GetLogger("boulder").Errorf("failed to create disk store directory: %v", err)
+				continue
+			}
+
 			// 递归 列出 blockPath下所有文件，并且按照字母顺序排序
 			blockFiles, err := utils.ReadFilesRecursive(blockPath)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("failed to read block files: %v", err)
+				logger.GetLogger("boulder").Debugf("failed to read block files: %v", err)
 				time.Sleep(1 * time.Second)
 				continue
 			}
@@ -119,7 +125,7 @@ func (s *BlockService) doSyncBlock(ctx context.Context) {
 				// 获取文件信息
 				fileInfo, err := os.Stat(tmpfile)
 				if err != nil {
-					logger.GetLogger("boulder").Errorf("failed to stat tmp file: %v", err)
+					logger.GetLogger("boulder").Debugf("failed to stat tmp file: %v", err)
 					continue
 				}
 
@@ -146,9 +152,15 @@ func (s *BlockService) doSyncBlock(ctx context.Context) {
 					continue
 				}
 
-				sem <- struct{}{} // 先获取令牌
-				wg.Add(1)         // 再增加计数
-				go func(upfile string) {
+				// 在获取信号量之前检查上下文取消
+				select {
+				case sem <- struct{}{}:
+					wg.Add(1) // 增加计数
+				case <-ctx.Done():
+					logger.GetLogger("boulder").Info("sync block stopping due to context cancellation")
+					return
+				}
+				go func(upfile string, filever int32) {
 					defer func() {
 						<-sem     // 释放令牌
 						wg.Done() // 减少计数
@@ -166,8 +178,8 @@ func (s *BlockService) doSyncBlock(ctx context.Context) {
 						return
 					}
 					data = data[4:]
-					var block meta.Block
-					if err := msgpack.Unmarshal(data, &block); err != nil {
+					var _block meta.BlockData
+					if err := msgpack.Unmarshal(data, &_block); err != nil {
 						os.Remove(upfile)
 						return
 					}
@@ -175,11 +187,11 @@ func (s *BlockService) doSyncBlock(ctx context.Context) {
 					_ctx, cancel := context.WithCancel(ctx)
 					defer cancel() // 确保无论如何都会取消
 					utils.WithLock(&s.cancelLocker, func() {
-						oldCancel := s.cancelMap[block.ID]
+						oldCancel := s.cancelMap[_block.ID]
 						if oldCancel != nil {
 							oldCancel()
 						}
-						s.cancelMap[block.ID] = cancel
+						s.cancelMap[_block.ID] = cancel
 					})
 
 					ss := storage.GetStorageService()
@@ -188,24 +200,29 @@ func (s *BlockService) doSyncBlock(ctx context.Context) {
 						return
 					}
 
-					st, err := ss.GetStorage(block.StorageID)
+					st, err := ss.GetStorage(_block.StorageID)
 					if err != nil {
-						logger.GetLogger("boulder").Errorf("get storage %s failed: %v", block.StorageID, err)
+						logger.GetLogger("boulder").Errorf("get storage %#v failed: %v", _block, err)
 						return
 					}
 
 					defer func() {
 						utils.WithLock(&s.cancelLocker, func() {
-							delete(s.cancelMap, block.ID)
+							delete(s.cancelMap, _block.ID)
 						})
 					}()
 
-					if err := st.Instance.WriteBlock(_ctx, block.ID, data, block.Ver); err == nil {
-						os.Remove(upfile)
+					if err := st.Instance.WriteBlock(_ctx, _block.ID, data, _block.Ver); err == nil {
+						curver, err := utils.ReadBlockVerFromFile(upfile)
+						if err == nil && filever != curver {
+							// 文件已经更新 ，不能删除
+						} else {
+							os.Remove(upfile)
+						}
 					} else {
-						logger.GetLogger("boulder").Errorf("write block %s failed: %v", block.ID, err)
+						logger.GetLogger("boulder").Errorf("write block %s failed: %v", _block.ID, err)
 					}
-				}(tmpfile)
+				}(tmpfile, ver)
 			}
 			wg.Wait() // 等待本批次所有上传完成
 			time.Sleep(1 * time.Second)
@@ -300,6 +317,9 @@ func (s *BlockService) doFlushBlock(ctx context.Context, block *meta.Block) erro
 			Finally:   block.Finally,
 			Location:  cfg.Node.LocalNode,
 			ChunkList: make([]meta.BlockChunk, 0, len(block.ChunkList)),
+			StorageID: block.StorageID,
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
 		},
 
 		Data: make([]byte, 0, cfg.Block.MaxSize),

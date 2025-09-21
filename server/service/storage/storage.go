@@ -169,7 +169,7 @@ func (s *StorageService) GetStorage(id string) (*meta.Storage, error) {
 	var storage meta.Storage
 	found, err := s.kvStore.Get(key, &storage)
 	if err != nil || !found {
-		logger.GetLogger("boulder").Warnf("storage with id %s does not exist", id)
+		logger.GetLogger("boulder").Debugf("storage with id %s does not exist", id)
 		return nil, errors.New("storage with this id does not exist")
 	}
 

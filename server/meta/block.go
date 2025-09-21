@@ -32,6 +32,9 @@ type BlockHeader struct {
 	Location   string       `json:"location" xml:"Location"`                   // 所在的的Address
 	ChunkList  []BlockChunk `json:"chunk_list" msgpack:"chunk_list"`           // 块列表
 	Finally    bool         `json:"finally" msgpack:"finally" default:"false"` // 是否结束不再增加内容
+	StorageID  string       `json:"storage_id" msgpack:"storage_id"`           // 存储后端ID
+	CreatedAt  time.Time    `json:"created_at" msgpack:"created_at"`           // 创建时间
+	UpdatedAt  time.Time    `json:"updated_at" msgpack:"updated_at"`           // 更新时间
 }
 
 // BlockData BlockData: 完整结构（包含 Data）
@@ -43,9 +46,6 @@ type BlockData struct {
 // Block 表示存储块元数据, 存在元数据中
 type Block struct {
 	BlockHeader
-	StorageID string    `json:"storage_id" msgpack:"storage_id"` // 存储后端ID
-	CreatedAt time.Time `json:"created_at" msgpack:"created_at"` // 创建时间
-	UpdatedAt time.Time `json:"updated_at" msgpack:"updated_at"` // 更新时间
 }
 
 // NewBlock 创建新块
@@ -53,12 +53,12 @@ func NewBlock(storageID string) *Block {
 	cfg := config.Get()
 	return &Block{
 		BlockHeader: BlockHeader{
-			ID:       GenBlockID(),
-			Location: cfg.Node.LocalNode,
+			ID:        GenBlockID(),
+			Location:  cfg.Node.LocalNode,
+			StorageID: storageID,
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
 		},
-		StorageID: storageID,
-		CreatedAt: time.Now().UTC(),
-		UpdatedAt: time.Now().UTC(),
 	}
 }
 
