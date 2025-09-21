@@ -51,6 +51,14 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 			r.Header.Set("Host", r.Host)
 		}
 
+		// 跳过节点间通信的认证验证
+		// 当请求路径以/boulder/node/开头且包含x-amz-boulder-node-api头部时，跳过认证
+		if strings.HasPrefix(r.URL.Path, "/boulder/node/") && r.Header.Get("x-amz-boulder-node-api") != "" {
+			logger.GetLogger("boulder").Debugf("Skipping authentication for node communication: %s", r.URL.Path)
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		// 1. 从请求头中提取签名信息
 		authHeader := r.Header.Get(xhttp.Authorization)
 		if authHeader == "" {

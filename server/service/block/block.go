@@ -19,14 +19,11 @@ package block
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
-	xconf "github.com/mageg-x/boulder/internal/config"
-	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -34,6 +31,7 @@ import (
 	"github.com/twmb/murmur3"
 	"github.com/vmihailenco/msgpack/v5"
 
+	xconf "github.com/mageg-x/boulder/internal/config"
 	"github.com/mageg-x/boulder/internal/logger"
 	sb "github.com/mageg-x/boulder/internal/storage/block"
 	xcache "github.com/mageg-x/boulder/internal/storage/cache"
@@ -43,17 +41,19 @@ import (
 	"github.com/mageg-x/boulder/service/storage"
 )
 
+const (
+	BLOCK_FINALY_VER = 0x07FFFF
+)
+
 var (
 	instance *BlockService
 	mu       = sync.Mutex{}
 )
 
 type BlockService struct {
-	kvstore kv.KVStore
-
-	preBlocks []*meta.Block
-	lockers   []sync.Mutex // 为每个块单独设置锁
-
+	kvstore      kv.KVStore
+	preBlocks    []*meta.Block
+	lockers      []sync.Mutex // 为每个块单独设置锁
 	cancelMap    map[string]context.CancelFunc
 	cancelLocker sync.Mutex
 }
@@ -78,53 +78,54 @@ func GetBlockService() *BlockService {
 		cancelMap:    make(map[string]context.CancelFunc),
 		cancelLocker: sync.Mutex{},
 	}
-	instance.doSyncWorker()
+	instance.doSyncBlock(context.TODO())
 	return instance
 }
 
-func readVersionFromFile(filename string) (int32, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return -1, err
-	}
-	defer file.Close()
-
-	var buf [4]byte
-	n, err := file.Read(buf[:])
-	if err != nil && err != io.EOF {
-		return -1, err
-	}
-	if n < 4 {
-		return -1, fmt.Errorf("文件太小，不足4字节")
-	}
-
-	bufferVer := int32(binary.BigEndian.Uint32(buf[:]))
-	return bufferVer, nil
-}
-
-func (s *BlockService) doSyncWorker() {
+func (s *BlockService) doSyncBlock(ctx context.Context) {
 	go func() {
 		cfg := xconf.Get()
+		blockPath := filepath.Join(cfg.Node.LocalDir, "block")
+
 		for {
-			files, _ := os.ReadDir(cfg.Block.UploadBufDir)
+			select {
+			case <-ctx.Done(): // 可以响应取消信号
+				logger.GetLogger("boulder").Info("sync block stopping due to context cancellation")
+				return
+			default:
+				// 正常的处理逻辑
+			}
+			// 递归 列出 blockPath下所有文件，并且按照字母顺序排序
+			blockFiles, err := utils.ReadFilesRecursive(blockPath)
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("failed to read block files: %v", err)
+				time.Sleep(1 * time.Second)
+				continue
+			}
+
 			var wg sync.WaitGroup
 			sem := make(chan struct{}, cfg.Block.UploadParallelNum) // 信号量，控制并发
-			for _, f := range files {
-				if f.IsDir() {
-					continue
+			for _, blockFile := range blockFiles {
+				select {
+				case <-ctx.Done(): // 可以响应取消信号
+					logger.GetLogger("boulder").Info("sync block stopping due to context cancellation")
+					return
+				default:
+					// 正常的处理逻辑
 				}
-				// 获取文件信息（包含修改时间）
-				info, err := f.Info()
+
+				// 清理 长时间未处理的 tmpfile
+				tmpfile := filepath.Join(blockPath, blockFile)
+				// 获取文件信息
+				fileInfo, err := os.Stat(tmpfile)
 				if err != nil {
+					logger.GetLogger("boulder").Errorf("failed to stat tmp file: %v", err)
 					continue
 				}
 
-				if strings.HasSuffix(f.Name(), ".tmp") {
-					// 清理 长时间未处理的 tmpfile
-					tmpfile := fmt.Sprintf("%s/%s", cfg.Block.UploadBufDir, f.Name())
-
+				if strings.HasSuffix(tmpfile, ".tmp") {
 					// 判断修改时间是否早于 1 小时前
-					if time.Since(info.ModTime()) > 1*time.Hour {
+					if time.Since(fileInfo.ModTime()) > 1*time.Hour {
 						// 超时了，可以安全删除
 						if err := os.Remove(tmpfile); err != nil {
 							logger.GetLogger("boulder").Warnf("remove stale tmp file %s failed: %v", tmpfile, err)
@@ -133,83 +134,81 @@ func (s *BlockService) doSyncWorker() {
 						}
 					}
 					continue
-				} else if strings.HasSuffix(f.Name(), ".uploading") {
-					// 正在上传中
-					if time.Since(info.ModTime()) < 1*time.Minute {
-						continue
-					}
 				}
 
-				if time.Since(info.ModTime()) < 3*time.Second {
-					// 3秒内才更新的，延迟上层
+				// 跳过 非 finaly 版本
+				ver, err := utils.ReadBlockVerFromFile(tmpfile)
+				if err != nil {
+					logger.GetLogger("boulder").Errorf("failed to read block version: %v", err)
+					continue
+				}
+				if ver != BLOCK_FINALY_VER && time.Since(fileInfo.ModTime()) < 30*time.Second {
 					continue
 				}
 
-				var blockID string
-				if strings.HasSuffix(f.Name(), ".uploading") {
-					blockID = f.Name()[:len(f.Name())-len(".uploading")]
-				} else {
-					blockID = f.Name()
-				}
+				sem <- struct{}{} // 先获取令牌
+				wg.Add(1)         // 再增加计数
+				go func(upfile string) {
+					defer func() {
+						<-sem     // 释放令牌
+						wg.Done() // 减少计数
+					}()
 
-				wg.Add(1) // 启动本批次上传任务
-				go func(blockid string) {
-					defer wg.Done()
-					sem <- struct{}{}        // 获取令牌
-					defer func() { <-sem }() // 释放令牌
-
-					blockfile := fmt.Sprintf("%s/%s", cfg.Block.UploadBufDir, blockid)
-					uploadfile := fmt.Sprintf("%s/%s.uploading", cfg.Block.UploadBufDir, blockid)
-					if utils.FileExists(uploadfile) && utils.FileExists(blockfile) {
-						if upVer, err := readVersionFromFile(uploadfile); err == nil {
-							if curVer, err := readVersionFromFile(blockfile); err == nil {
-								if upVer > curVer {
-									os.Remove(blockfile)
-								}
-							}
-						}
-					}
-
-					if utils.FileExists(blockfile) {
-						os.Rename(blockfile, uploadfile)
-					}
-
-					data, err := os.ReadFile(uploadfile)
+					data, err := os.ReadFile(upfile)
 					if err != nil {
-						logger.GetLogger("boulder").Infof("read file %s failed %v", uploadfile, err)
+						logger.GetLogger("boulder").Infof("read file %s failed %v", upfile, err)
 						return
 					}
 
 					if len(data) < 4 {
-						os.Remove(uploadfile)
+						logger.GetLogger("boulder").Errorf("file %s is too short", upfile)
+						os.Remove(upfile)
 						return
 					}
-
+					data = data[4:]
 					var block meta.Block
-					if err := msgpack.Unmarshal(data[4:], &block); err != nil {
-						os.Remove(uploadfile)
+					if err := msgpack.Unmarshal(data, &block); err != nil {
+						os.Remove(upfile)
 						return
 					}
 
-					utils.WithLockKey(block.ID, func() {
-						// 再次判断文件是否存在
-						if utils.FileExists(uploadfile) {
-							ctx, cancel := context.WithCancel(context.Background())
-							utils.WithLock(&s.cancelLocker, func() {
-								s.cancelMap[block.ID] = cancel
-							})
-
-							if err := s.doFlushBlock(ctx, &block); err == nil {
-								utils.WithLock(&s.cancelLocker, func() {
-									delete(s.cancelMap, block.ID)
-								})
-								os.Remove(uploadfile)
-							}
+					_ctx, cancel := context.WithCancel(ctx)
+					defer cancel() // 确保无论如何都会取消
+					utils.WithLock(&s.cancelLocker, func() {
+						oldCancel := s.cancelMap[block.ID]
+						if oldCancel != nil {
+							oldCancel()
 						}
+						s.cancelMap[block.ID] = cancel
 					})
-				}(blockID)
+
+					ss := storage.GetStorageService()
+					if ss == nil {
+						logger.GetLogger("boulder").Errorf("get nil storage service")
+						return
+					}
+
+					st, err := ss.GetStorage(block.StorageID)
+					if err != nil {
+						logger.GetLogger("boulder").Errorf("get storage %s failed: %v", block.StorageID, err)
+						return
+					}
+
+					defer func() {
+						utils.WithLock(&s.cancelLocker, func() {
+							delete(s.cancelMap, block.ID)
+						})
+					}()
+
+					if err := st.Instance.WriteBlock(_ctx, block.ID, data, block.Ver); err == nil {
+						os.Remove(upfile)
+					} else {
+						logger.GetLogger("boulder").Errorf("write block %s failed: %v", block.ID, err)
+					}
+				}(tmpfile)
 			}
 			wg.Wait() // 等待本批次所有上传完成
+			time.Sleep(1 * time.Second)
 		}
 	}()
 }
@@ -274,13 +273,13 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 
 	if flushBlock != nil {
 		if flushBlock.Finally {
-			flushBlock.Ver = 0x7FFF
+			flushBlock.Ver = BLOCK_FINALY_VER
 		} else {
 			flushBlock.Ver += 1
 		}
 
 		logger.GetLogger("boulder").Infof("ready to flush one block %s,  %d chunks", flushBlock.ID, len(flushBlock.ChunkList))
-		err := s.FlushBlock(context.Background(), flushBlock)
+		err := s.doFlushBlock(context.Background(), flushBlock)
 		if err != nil {
 			logger.GetLogger("boulder").Warnf("failed to flush block %s: %v", flushBlock.ID, err)
 			return nil, fmt.Errorf("failed to flush block %s: %w", flushBlock.ID, err)
@@ -288,77 +287,6 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 	}
 
 	return clone, nil
-}
-
-// FlushBlock
-func (s *BlockService) FlushBlock(ctx context.Context, block *meta.Block) error {
-	cfg := xconf.Get()
-	if block.Finally {
-		utils.WithLock(&s.cancelLocker, func() {
-			if cancel, ok := s.cancelMap[block.ID]; ok && cancel != nil {
-				// 取消正在上传的 block uploader
-				cancel()
-				delete(s.cancelMap, block.ID)
-			}
-		})
-	}
-	// 确保 buffer 目录存在
-	if err := os.MkdirAll(cfg.Block.UploadBufDir, 0755); err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to create buffer directory %s: %v", cfg.Block.UploadBufDir, err)
-		return fmt.Errorf("Failed to create buffer directory %s: %w", cfg.Block.UploadBufDir, err)
-	}
-
-	filename := fmt.Sprintf("%s/%s", cfg.Block.UploadBufDir, block.ID)
-
-	var bufferVer int32 = -1 // -1 表示文件不存在或读取失败
-
-	// 1. 检查文件是否存在，读取当前版本号
-	if ver, err := readVersionFromFile(filename); err != nil {
-		bufferVer = ver
-	}
-
-	// 如果文件不存在或读取失败，bufferVer 保持 -1
-	// 2. 版本比较：如果内存中的 block.Ver <= 缓冲区版本，说明是陈旧数据，丢弃
-	if block.Ver <= bufferVer {
-		// 陈旧数据，不写入，直接返回成功
-		return nil
-	}
-
-	// 3. 准备写入新版本数据
-	// 先序列化 block
-	encodedBlock, err := msgpack.Marshal(block)
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("msgpack marshal failed for block %s: %v", block.ID, err)
-		return fmt.Errorf("msgpack marshal failed for block %s: %w", block.ID, err)
-	}
-
-	// 创建新数据：4字节版本号 + 序列化数据
-	newData := make([]byte, 4+len(encodedBlock))
-	binary.BigEndian.PutUint32(newData[0:4], uint32(block.Ver))
-	copy(newData[4:], encodedBlock)
-
-	// 4. 写入磁盘（原子性：先写临时文件，再 rename）
-	tempFile := filename + ".tmp"
-	if err := os.WriteFile(tempFile, newData, 0644); err != nil {
-		logger.GetLogger("boulder").Errorf("write block %s temp file failed: %v", block.ID, err)
-		return fmt.Errorf("write block %s temp file failed: %w", block.ID, err)
-	}
-
-	// 确保数据落盘
-	if f, err := os.Open(tempFile); err == nil {
-		//f.Sync()
-		f.Close()
-	}
-
-	// 原子替换
-	os.Remove(filename)
-	if err := os.Rename(tempFile, filename); err != nil {
-		logger.GetLogger("boulder").Errorf("write block %s temp file failed: %v", block.ID, err)
-		return fmt.Errorf("write block %s temp file failed: %w", block.ID, err)
-	}
-
-	return nil
-
 }
 
 // doFlushBlock 本函数提供同步写数据能力
@@ -370,6 +298,7 @@ func (s *BlockService) doFlushBlock(ctx context.Context, block *meta.Block) erro
 			TotalSize: block.TotalSize,
 			Ver:       block.Ver,
 			Finally:   block.Finally,
+			Location:  cfg.Node.LocalNode,
 			ChunkList: make([]meta.BlockChunk, 0, len(block.ChunkList)),
 		},
 
@@ -399,8 +328,12 @@ func (s *BlockService) doFlushBlock(ctx context.Context, block *meta.Block) erro
 		logger.GetLogger("boulder").Errorf("flush block %s size mot match %d:%d:%d:%d", block.ID, size1, size2, blockData.RealSize, blockData.RealSize)
 		return fmt.Errorf("flush block %s size mot match %d:%d:%d:%d", block.ID, size1, size2, blockData.RealSize, blockData.RealSize)
 	}
-	logger.GetLogger("boulder").Infof("flush block data %s total size %d real size %d data size %d etag %+v",
-		blockData.ID, blockData.TotalSize, blockData.RealSize, len(blockData.Data), md5.Sum(blockData.Data))
+	logger.GetLogger("boulder").Infof("flush block data %s total size %d real size %d data size %d",
+		blockData.ID, blockData.TotalSize, blockData.RealSize, len(blockData.Data))
+
+	// 计算md5，数据校验
+	blockData.CalcChunkHash()
+	block.Etag = blockData.Etag
 
 	err := s.WriteBlock(ctx, block.StorageID, &blockData)
 	if err != nil {
@@ -414,14 +347,13 @@ func (s *BlockService) doFlushBlock(ctx context.Context, block *meta.Block) erro
 	block.Compressed = blockData.Compressed
 	block.Encrypted = blockData.Encrypted
 	block.RealSize = blockData.RealSize
-	block.Etag = blockData.Etag
 
 	return nil
 }
 
 func (s *BlockService) WriteBlock(ctx context.Context, storageID string, blockData *meta.BlockData) error {
 	// 压缩Data
-	if len(blockData.Data) > 1024 {
+	if len(blockData.Data) > 1024 && utils.IsCompressible(blockData.Data, 4*1024, 0.9) {
 		compress, err := utils.Compress(blockData.Data)
 		if err == nil && compress != nil && float64(len(compress))/float64(len(blockData.Data)) < 0.9 {
 			blockData.Data = compress
@@ -439,9 +371,6 @@ func (s *BlockService) WriteBlock(ctx context.Context, storageID string, blockDa
 			blockData.RealSize = int64(len(encrypt))
 		}
 	}
-
-	// 计算hash, 用来做数据完整性校验
-	blockData.CalcChunkHash()
 
 	logger.GetLogger("boulder").Infof("flush block data size %d:%d, compress rate %.2f%%",
 		blockData.TotalSize, blockData.RealSize, float64(100.0*blockData.RealSize)/float64(blockData.TotalSize))
@@ -463,8 +392,22 @@ func (s *BlockService) WriteBlock(ctx context.Context, storageID string, blockDa
 		logger.GetLogger("boulder").Errorf("get nil storage instance")
 		return fmt.Errorf("get nil storage instance: %w", err)
 	}
+	if st.Type == meta.DISK_TYPE_STORAGE && st.Class == meta.STANDARD_CLASS_STORAGE {
+		// 如果是磁盘存储，直接写
+		err = st.Instance.WriteBlock(ctx, blockData.ID, data, blockData.Ver)
+	} else {
+		// 其他存储，先缓存磁盘
+		cfg := xconf.Get()
+		inst, err := sb.NewDiskStore(&xconf.DiskConfig{
+			Path: filepath.Join(cfg.Node.LocalDir, "block"),
+		})
+		if err != nil {
+			logger.GetLogger("boulder").Warnf("failed to get local disk storage: %v", err)
+			return fmt.Errorf("new disk store: %w", err)
+		}
+		err = inst.WriteBlock(ctx, blockData.ID, data, blockData.Ver)
+	}
 
-	err = st.Instance.WriteBlock(ctx, blockData.ID, data)
 	if err != nil {
 		logger.GetLogger("boulder").Debugf("write block %s failed: %v", blockData.ID, err)
 		return fmt.Errorf("write block %s failed: %w", blockData.ID, err)
@@ -488,8 +431,18 @@ func (s *BlockService) ReadBlock(storageID, blockID string) (*meta.BlockData, er
 		return nil, fmt.Errorf("get nil storage instance: %w", err)
 	}
 
-	data, err := st.Instance.ReadBlock(blockID, 0, 0)
-	if err != nil {
+	// 读取 block meta信息
+	blockKey := meta.GenBlockKey(storageID, blockID)
+	var blockMeta meta.Block
+	exists, err := s.kvstore.Get(blockKey, &blockMeta)
+	if err != nil && !exists {
+		logger.GetLogger("boulder").Debugf("read block meta %s failed: %v", blockID, err)
+		return nil, fmt.Errorf("read block meta %s failed: %w", blockID, err)
+	}
+
+	// 读取block 数据
+	data, err := st.Instance.ReadBlock(blockMeta.Location, blockID, 0, 0)
+	if err != nil || len(data) == 0 {
 		logger.GetLogger("boulder").Errorf("read block %s failed: %v", blockID, err)
 		return nil, fmt.Errorf("read block %s failed: %w", blockID, err)
 	}
@@ -540,7 +493,17 @@ func (s *BlockService) ReadBlockHead(storageID, blockID string) (*meta.BlockHead
 		return nil, fmt.Errorf("get nil storage instance: %w", err)
 	}
 	cfg := xconf.Get()
-	data, err := st.Instance.ReadBlock(blockID, 0, int64(cfg.Block.MaxHeadSize))
+
+	// 读取 block meta信息
+	blockKey := meta.GenBlockKey(storageID, blockID)
+	var blockMeta meta.Block
+	exists, err := s.kvstore.Get(blockKey, &blockMeta)
+	if err != nil && !exists {
+		logger.GetLogger("boulder").Debugf("read block meta %s failed: %v", blockID, err)
+		return nil, fmt.Errorf("read block meta %s failed: %w", blockID, err)
+	}
+
+	data, err := st.Instance.ReadBlock(blockMeta.Location, blockID, 0, int64(cfg.Block.MaxHeadSize))
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("read block header %s failed: %v", blockID, err)
 		return nil, fmt.Errorf("read block header %s failed: %w", blockID, err)

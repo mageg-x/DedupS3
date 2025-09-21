@@ -27,6 +27,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mageg-x/boulder/meta"
 	"github.com/mageg-x/boulder/service/iam"
 
 	"github.com/sirupsen/logrus"
@@ -110,21 +111,21 @@ func main() {
 
 	// 初始化 缺省block存储
 	bs := storage.GetStorageService()
-	//store, _ := bs.AddStorage("disk", "STANDARD", config.StorageConfig{
-	//	Disk: &config.DiskConfig{
-	//		Path: "./data/blocks",
-	//	},
-	//})
-	store, _ := bs.AddStorage("s3", "STANDARD", config.StorageConfig{
-		S3: &config.S3Config{
-			Endpoint:     "http://192.168.8.76:9898",
-			AccessKey:    "steven-ak01",
-			SecretKey:    "steven-sk01",
-			Region:       "us-east-1",
-			Bucket:       "b0001",
-			UsePathStyle: true,
+	store, _ := bs.AddStorage("disk", meta.STANDARD_CLASS_STORAGE, config.StorageConfig{
+		Disk: &config.DiskConfig{
+			Path: "./data/block",
 		},
 	})
+	//store, _ := bs.AddStorage("s3", meta.STANDARD_CLASS_STORAGE, config.StorageConfig{
+	//	S3: &config.S3Config{
+	//		Endpoint:     "http://192.168.8.76:9898",
+	//		AccessKey:    "steven-ak01",
+	//		SecretKey:    "steven-sk01",
+	//		Region:       "us-east-1",
+	//		Bucket:       "b0001",
+	//		UsePathStyle: true,
+	//	},
+	//})
 	stores := bs.ListStorages()
 
 	logger.GetLogger("boulder").Infof("list store %v strores %#v", store, stores)

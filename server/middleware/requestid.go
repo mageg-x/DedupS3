@@ -19,8 +19,9 @@ package middleware
 
 import (
 	"context"
-	"github.com/mageg-x/boulder/internal/logger"
 	"net/http"
+
+	"github.com/mageg-x/boulder/internal/logger"
 
 	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/mageg-x/boulder/internal/utils"
@@ -34,13 +35,18 @@ func RequestIDMiddleware(next http.Handler) http.Handler {
 		// 可以使用UUID或时间戳+随机数的组合
 		requestID := utils.GenUUID()
 
-		// 将Request ID添加到响应头
-		w.Header().Set("x-amz-request-id", requestID)
-
 		// 将Request ID添加到请求上下文
 		ctx := context.WithValue(r.Context(), xhttp.AWSRequestID{}, requestID)
 
-		// 继续处理请求
+		// 直接设置请求头，避免克隆整个请求对象
+		if r.Header == nil {
+			r.Header = make(http.Header)
+		}
+		r.Header.Set("x-amz-request-id", requestID)
+
+		// 将Request ID添加到响应头
+		w.Header().Set("x-amz-request-id", requestID)
+		// 继续处理请求，使用带有新上下文的原始请求
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

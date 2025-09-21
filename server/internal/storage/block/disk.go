@@ -3,17 +3,21 @@ package block
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	xconf "github.com/mageg-x/boulder/internal/config"
 	"github.com/mageg-x/boulder/internal/logger"
+	"github.com/mageg-x/boulder/internal/utils"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
 // DiskStore 实现基于磁盘的存储后端
 type DiskStore struct {
+	BaseBlockStore
 	conf *xconf.DiskConfig
 	mu   sync.RWMutex
 }
@@ -24,14 +28,6 @@ func NewDiskStore(c *xconf.DiskConfig) (*DiskStore, error) {
 		logger.GetLogger("boulder").Errorf("failed to create disk store directory: %v", err)
 		return nil, err
 	}
-	// 尝试创建测试文件
-	testFile := filepath.Join(c.Path, ".write_test")
-	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to write test file: %v", err)
-		return nil, err
-	}
-	// 清理测试文件
-	os.Remove(testFile)
 
 	ds := &DiskStore{
 		conf: c,
@@ -48,7 +44,7 @@ func (d *DiskStore) Type() string {
 }
 
 // WriteBlock 写入块到磁盘
-func (d *DiskStore) WriteBlock(ctx context.Context, blockID string, data []byte) error {
+func (d *DiskStore) WriteBlock(ctx context.Context, blockID string, data []byte, ver int32) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -60,9 +56,24 @@ func (d *DiskStore) WriteBlock(ctx context.Context, blockID string, data []byte)
 		return fmt.Errorf("failed to create directory for block %s: %w", blockID, err)
 	}
 
+	oldVer := int32(-1)
+	if utils.FileExists(path) {
+		if v, err := utils.ReadBlockVerFromFile(path); err == nil {
+			oldVer = int32(v)
+		}
+	}
+	if ver <= oldVer {
+		return nil
+	}
+
+	// 创建新数据：4字节版本号 + 序列化数据
+	newData := make([]byte, 4+len(data))
+	binary.BigEndian.PutUint32(newData[0:4], uint32(ver))
+	copy(newData[4:], data)
+
 	// 使用临时文件写入，然后重命名，确保原子性
 	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+	if err := os.WriteFile(tmpPath, newData, 0644); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to write block %s: %v", blockID, err)
 		return fmt.Errorf("failed to write block %s: %w", blockID, err)
 	}
@@ -79,8 +90,23 @@ func (d *DiskStore) WriteBlock(ctx context.Context, blockID string, data []byte)
 	return nil
 }
 
+func (d *DiskStore) ReadBlock(location, blockID string, offset, length int64) ([]byte, error) {
+	cfg := xconf.Get()
+	rLocation := strings.TrimSpace(location)
+	lLocation := strings.TrimSpace(cfg.Node.LocalNode)
+
+	var err error
+	var data []byte
+	if rLocation != "" && rLocation != lLocation {
+		data, err = d.ReadRemoteBlock(location, blockID, offset, length)
+	} else {
+		data, err = d.ReadLocalBlock(blockID, offset, length)
+	}
+	return data, err
+}
+
 // ReadBlock 从磁盘读取块
-func (d *DiskStore) ReadBlock(blockID string, offset, length int64) ([]byte, error) {
+func (d *DiskStore) ReadLocalBlock(blockID string, offset, length int64) ([]byte, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
@@ -109,17 +135,17 @@ func (d *DiskStore) ReadBlock(blockID string, offset, length int64) ([]byte, err
 	}
 
 	// 检查偏移和长度是否有效
-	if offset < 0 || offset >= fileInfo.Size() {
+	if offset < 0 || offset+4 >= fileInfo.Size() {
 		logger.GetLogger("boulder").Errorf("Invalid offset %d for block %s of size %d", offset, blockID, fileInfo.Size())
 		return nil, fmt.Errorf("invalid offset %d for block %s of size %d", offset, blockID, fileInfo.Size())
 	}
 
-	if offset+length > fileInfo.Size() {
-		length = fileInfo.Size() - offset
+	if offset+length+4 > fileInfo.Size() {
+		length = fileInfo.Size() - offset - 4
 	}
 
-	if offset > 0 {
-		_, err = file.Seek(offset, io.SeekStart)
+	if offset >= int64(0) {
+		_, err = file.Seek(offset+4, io.SeekStart)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to seek in block %s: %v", blockID, err)
 			return nil, fmt.Errorf("failed to seek in block %s: %w", blockID, err)

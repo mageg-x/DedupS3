@@ -25,6 +25,7 @@ import (
 
 // S3Store 实现基于S3的存储后端
 type S3Store struct {
+	BaseBlockStore
 	client   *s3.Client
 	uploader *manager.Uploader
 	conf     *xconf.S3Config
@@ -89,7 +90,7 @@ func (s *S3Store) Type() string {
 }
 
 // WriteBlock 写入块到S3
-func (s *S3Store) WriteBlock(ctx context.Context, blockID string, data []byte) error {
+func (s *S3Store) WriteBlock(ctx context.Context, blockID string, data []byte, ver int32) error {
 	key := s.blockKey(blockID)
 
 	//_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
@@ -113,8 +114,24 @@ func (s *S3Store) WriteBlock(ctx context.Context, blockID string, data []byte) e
 	return nil
 }
 
+func (s *S3Store) ReadBlock(location, blockID string, offset, length int64) ([]byte, error) {
+	data, err := s.ReadS3Block(blockID, offset, length)
+	if err != nil {
+		if errors.Is(err, ErrBlockNotFound) {
+			// S3 上没有， 还在节点缓存中未提交
+			data, err = s.ReadRemoteBlock(location, blockID, offset, length)
+			if err != nil {
+				// 再从S3 试一次
+				data, err = s.ReadS3Block(blockID, offset, length)
+			}
+		}
+	}
+
+	return data, err
+}
+
 // ReadBlock 从S3读取块
-func (s *S3Store) ReadBlock(blockID string, offset, length int64) ([]byte, error) {
+func (s *S3Store) ReadS3Block(blockID string, offset, length int64) ([]byte, error) {
 	ctx, cancel := context.WithCancel(s.ctx)
 	defer cancel()
 
@@ -139,6 +156,14 @@ func (s *S3Store) ReadBlock(blockID string, offset, length int64) ([]byte, error
 	resp, err := s.client.GetObject(ctx, input)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("Failed to read block %s from S3: %v", blockID, err)
+		var notFound *types.NotFound
+		var noSuchKey *types.NoSuchKey
+
+		if errors.As(err, &notFound) || errors.As(err, &noSuchKey) {
+			//  对象不存在
+			logger.GetLogger("boulder").Debugf("Block %s does not exist in S3", blockID)
+			return nil, ErrBlockNotFound
+		}
 		return nil, fmt.Errorf("failed to read block %s from S3: %w", blockID, err)
 	}
 	defer resp.Body.Close()

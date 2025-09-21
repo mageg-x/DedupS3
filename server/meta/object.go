@@ -116,7 +116,7 @@ func NewObject(bucket, key string) *Object {
 			ObjType:      NORMAL_OBJECT,
 		},
 		ContentType:  "application/octet-stream",
-		StorageClass: "STANDARD",
+		StorageClass: STANDARD_CLASS_STORAGE,
 		UserMetadata: make(map[string]string),
 		Tags:         make(map[string]string),
 	}
@@ -145,13 +145,15 @@ func (e *Etag) UnmarshalXML(dec *xml.Decoder, start xml.StartElement) error {
 // SetStorageClass 设置存储类别
 func (o *Object) SetStorageClass(storageClass string) error {
 	validClasses := map[string]bool{
-		"STANDARD":            true,
-		"STANDARD_IA":         true,
-		"ONEZONE_IA":          true,
-		"GLACIER":             true,
-		"DEEP_ARCHIVE":        true,
-		"INTELLIGENT_TIERING": true,
-		"OUTPOSTS":            true,
+		"STANDARD":                 true,
+		"STANDARD_IA":              true,
+		"ONEZONE_IA":               true,
+		"GLACIER":                  true,
+		"GLACIER_IR":               true,
+		"DEEP_ARCHIVE":             true,
+		"INTELLIGENT_TIERING":      true,
+		"OUTPOSTS":                 true,
+		"GLACIER_DIRECT_RETRIEVAL": true,
 	}
 
 	if _, valid := validClasses[storageClass]; !valid {

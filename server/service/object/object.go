@@ -359,7 +359,7 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 	// 寻找合适的后端存储点
 	storageClass := params.StorageClass
 	if storageClass == "" {
-		storageClass = "STANDARD"
+		storageClass = meta.STANDARD_CLASS_STORAGE
 	}
 
 	bs := storage.GetStorageService()
@@ -550,7 +550,7 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 		start = s
 		end = s + l - 1
 	}
-	logger.GetLogger("boulder").Infof("read object %s meta %#v", objkey, object.ETag)
+	logger.GetLogger("boulder").Debugf("read object %s meta %#v", objkey, object.ETag)
 	// 数据内联
 	if object.ChunksInline != nil && object.ChunksInline.Data != nil {
 		logger.GetLogger("boulder").Infof("read object %s data from inline", objkey)
@@ -622,7 +622,7 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 	// 寻找合适的后端存储点
 	storageClass := params.StorageClass
 	if storageClass == "" {
-		storageClass = "STANDARD"
+		storageClass = meta.STANDARD_CLASS_STORAGE
 	}
 
 	ss := storage.GetStorageService()
@@ -640,6 +640,7 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 
 	// 按顺序读出object 的chunk 数据
 	pr, pw := io.Pipe()
+	blockLoaded := make([]string, 0)
 	go func() {
 		defer pw.Close() // 确保无论成功失败都要关闭写端
 
@@ -659,15 +660,25 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 				continue // 还没到起始位置
 			}
 
+			// 为了防止内存爆炸，释放一些 已经用过的block data
+			if len(blockDatas) > 2 {
+				delBlockID := blockLoaded[0]
+				delete(blockDatas, delBlockID)
+				blockLoaded = blockLoaded[1:]
+			}
+
 			_blockdata := blockDatas[_chunk.BlockID]
 			if _blockdata == nil {
+				logger.GetLogger("boulder").Debugf("read obj %s block %s", object.Key, _chunk.BlockID)
 				_bd, err := bs.ReadBlock(sc.ID, _chunk.BlockID)
+
 				if err != nil || _bd == nil || len(_bd.Data) == 0 {
 					logger.GetLogger("boulder").Errorf("failed to get the block data")
 					return
 				}
 				_blockdata = _bd
 				blockDatas[_chunk.BlockID] = _blockdata
+				blockLoaded = append(blockLoaded, _chunk.BlockID)
 			}
 
 			// 从_data 中 读取 chunk 内容
@@ -1139,7 +1150,7 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 	// 检查目标 存储点是否存在
 	storageClass := params.StorageClass
 	if storageClass == "" {
-		storageClass = "STANDARD"
+		storageClass = meta.STANDARD_CLASS_STORAGE
 	}
 
 	bs := storage.GetStorageService()

@@ -40,6 +40,10 @@ type StorageService struct {
 	stores  map[string]*meta.Storage
 }
 
+const (
+	LOCAL_DISK_STORAGE_ID = "111111111111111111111111"
+)
+
 var (
 	// 全局存储管理器实例
 	instance *StorageService
@@ -83,14 +87,19 @@ func (s *StorageService) AddStorage(strType, strClass string, conf config.Storag
 	// 检查 ID 是否已存在
 	id := ""
 	switch strings.ToLower(strType) {
-	case "s3":
+	case meta.S3_TYPE_STORAGE:
 		//根据 Endpoint, bucket, region 生成uuid
 		id = hex.EncodeToString(utils.HmacSHA256([]byte(conf.S3.Region+conf.S3.Endpoint+conf.S3.Bucket), "aws:storage"))
 		id = id[0:24]
 		logger.GetLogger("boulder").Debugf("generated s3 storage id: %s", id)
-	case "disk":
-		id = hex.EncodeToString(utils.HmacSHA256([]byte(conf.Disk.Path), "aws:storage"))
-		id = id[0:24]
+	case meta.DISK_TYPE_STORAGE:
+		if strClass == meta.STANDARD_CLASS_STORAGE {
+			id = LOCAL_DISK_STORAGE_ID
+		} else {
+			id = hex.EncodeToString(utils.HmacSHA256([]byte(conf.Disk.Path), "aws:storage"))
+			id = id[0:24]
+		}
+
 		logger.GetLogger("boulder").Debugf("generated disk storage id: %s", id)
 	default:
 		logger.GetLogger("boulder").Errorf("unknown storage type: %s", strType)
@@ -168,14 +177,14 @@ func (s *StorageService) GetStorage(id string) (*meta.Storage, error) {
 	var inst block.BlockStore
 
 	switch storage.Type {
-	case "s3":
+	case meta.S3_TYPE_STORAGE:
 		if storage.Conf.S3 == nil {
 			logger.GetLogger("boulder").Error("s3 storage not configured")
 			return nil, errors.New("s3 storage not configured")
 		}
 		logger.GetLogger("boulder").Debugf("creating s3 block store for bucket: %s", storage.Conf.S3.Bucket)
 		inst, err = block.NewS3Store(storage.Conf.S3)
-	case "disk":
+	case meta.DISK_TYPE_STORAGE:
 		if storage.Conf.Disk == nil {
 			logger.GetLogger("boulder").Error("disk storage not configured")
 			return nil, errors.New("disk storage not configured")

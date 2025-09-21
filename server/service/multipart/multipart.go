@@ -358,7 +358,7 @@ func (m *MultiPartService) CreateMultipartUpload(headers http.Header, params *ob
 	}
 
 	if storageClass == "" {
-		storageClass = "STANDARD"
+		storageClass = meta.STANDARD_CLASS_STORAGE
 	}
 
 	bs := storage.GetStorageService()
@@ -526,6 +526,7 @@ func (m *MultiPartService) UploadPart(r io.Reader, params *object.BaseObjectPara
 		logger.GetLogger("boulder").Errorf("no such upload meta %s", uploadKey)
 		return nil, xhttp.ToError(xhttp.ErrNoSuchUpload)
 	}
+
 	// 创建分段对象
 	part := &meta.PartObject{
 		BaseObject: meta.BaseObject{

@@ -2,9 +2,9 @@
 package meta
 
 import (
+	"crypto/md5"
+	"github.com/mageg-x/boulder/internal/config"
 	"time"
-
-	"lukechampine.com/blake3"
 
 	"github.com/mageg-x/boulder/internal/utils"
 )
@@ -24,11 +24,12 @@ type BlockChunk struct {
 type BlockHeader struct {
 	ID         string       `json:"id" msgpack:"id"`
 	Ver        int32        `json:"ver" msgpack:"ver" default:"0"`
-	Etag       [32]byte     `json:"etag" msgpack:"etag"`
+	Etag       [16]byte     `json:"etag" msgpack:"etag"`
 	TotalSize  int64        `json:"total_size" msgpack:"total_size"`
 	RealSize   int64        `json:"real_size" msgpack:"real_size"`             // 实际占用大小
 	Compressed bool         `json:"compressed" msgpack:"compressed"`           // 是否压缩
 	Encrypted  bool         `json:"encrypted" msgpack:"encrypted"`             // 是否加密
+	Location   string       `json:"location" xml:"Location"`                   // 所在的的Address
 	ChunkList  []BlockChunk `json:"chunk_list" msgpack:"chunk_list"`           // 块列表
 	Finally    bool         `json:"finally" msgpack:"finally" default:"false"` // 是否结束不再增加内容
 }
@@ -49,9 +50,11 @@ type Block struct {
 
 // NewBlock 创建新块
 func NewBlock(storageID string) *Block {
+	cfg := config.Get()
 	return &Block{
 		BlockHeader: BlockHeader{
-			ID: GenBlockID(),
+			ID:       GenBlockID(),
+			Location: cfg.Node.LocalNode,
 		},
 		StorageID: storageID,
 		CreatedAt: time.Now().UTC(),
@@ -62,6 +65,7 @@ func NewBlock(storageID string) *Block {
 func GenBlockID() string {
 	return utils.GenUUID()
 }
+
 func GenBlockKey(storageID, blockID string) string {
 	return "aws:block:" + storageID + ":" + blockID
 }
@@ -89,5 +93,5 @@ func (b *Block) Clone(cloneData bool) *Block {
 
 // CalcChunkHash 计算数据的哈希
 func (b *BlockData) CalcChunkHash() {
-	b.Etag = blake3.Sum256(b.Data)
+	b.Etag = md5.Sum(b.Data)
 }

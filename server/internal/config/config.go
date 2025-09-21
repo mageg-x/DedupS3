@@ -48,14 +48,14 @@ type IAMConfig struct {
 type TiKVConfig struct {
 	PDAddrs []string `mapstructure:"pd_addrs" json:"pdAddrs" env:"BOULDER_KV_TIKV_PD_ADDRS"`
 }
+
 type BadgerConfig struct {
 	Path string `mapstructure:"path" json:"path" env:"BOULDER_KV_BADGER_PATH" default:"./data/kv"`
 }
 
 // KVConfig 存储KV相关配置
 type KVConfig struct {
-	TiKV   *TiKVConfig  `mapstructure:"tikv" json:"tikv"`
-	Badger BadgerConfig `mapstructure:"badger" json:"badger"`
+	TiKV *TiKVConfig `mapstructure:"tikv" json:"tikv"`
 }
 
 // S3Config S3存储配置
@@ -120,11 +120,15 @@ type LogConfig struct {
 }
 
 type BlockConfig struct {
-	UploadBufDir      string `mapstructure:"upload_buf_dir" json:"uploadBufDir" env:"BOULDER_UPLOAD_BUF_DIR" default:"./data/buffer"`
-	UploadParallelNum int    `mapstructure:"upload_parallel_num" json:"uploadParallelNum" env:"BOULDER_UPLOAD_PARALLEL_NUM" default:"1"`
-	ShardNum          int    `mapstructure:"shard_num" json:"shardNum" env:"BOULDER_UPLOAD_SHARD_NUM" default:"20"`
-	MaxSize           int    `mapstructure:"max_size" json:"maxSize" env:"BOULDER_UPLOAD_MAX_SIZE" default:"67108864"`
-	MaxHeadSize       int    `mapstructure:"max_head_size" json:"maxHeadSize" env:"BOULDER_UPLOAD_MAX_HEAD_SIZE" default:"204800"`
+	UploadParallelNum int `mapstructure:"upload_parallel_num" json:"uploadParallelNum" env:"BOULDER_UPLOAD_PARALLEL_NUM" default:"1"`
+	ShardNum          int `mapstructure:"shard_num" json:"shardNum" env:"BOULDER_UPLOAD_SHARD_NUM" default:"10"`
+	MaxSize           int `mapstructure:"max_size" json:"maxSize" env:"BOULDER_UPLOAD_MAX_SIZE" default:"67108864"`
+	MaxHeadSize       int `mapstructure:"max_head_size" json:"maxHeadSize" env:"BOULDER_UPLOAD_MAX_HEAD_SIZE" default:"204800"`
+}
+
+type NodeConfig struct {
+	LocalNode string `mapstructure:"local_node" json:"localNode" env:"BOULDER_LOCAL_NODE" default:"http://127.0.0.1:3000"`
+	LocalDir  string `mapstructure:"local_dir" json:"localDir" env:"BOULDER_LOCAL_DIR" default:"./data"`
 }
 
 type Config struct {
@@ -134,6 +138,7 @@ type Config struct {
 	Cache  CacheConfig  `mapstructure:"cache" json:"cache"`
 	Iam    IAMConfig    `mapstructure:"iam" json:"iam"`
 	Block  BlockConfig  `mapstructure:"block" json:"block"`
+	Node   NodeConfig   `mapstructure:"node" json:"node"`
 }
 
 // DefaultConfig 创建带默认值的配置实例
@@ -213,6 +218,7 @@ func Load(configPath string) error {
 		return fmt.Errorf("failed to load config from %s", configPath)
 	}
 	globalConfig.Store(cfg)
+
 	return nil
 }
 

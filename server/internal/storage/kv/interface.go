@@ -19,6 +19,7 @@ package kv
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"sync"
 
 	"github.com/mageg-x/boulder/internal/config"
@@ -42,7 +43,9 @@ func GetKvStore() (KVStore, error) {
 	cfg := config.Get()
 	var err error
 	if cfg.KV.TiKV == nil {
-		kvInstance, err = InitBadgerStore(cfg.KV.Badger)
+		kvPath := filepath.Join(cfg.Node.LocalDir, "meta")
+		badgerCfg := config.BadgerConfig{Path: kvPath}
+		kvInstance, err = InitBadgerStore(badgerCfg)
 	} else {
 		kvInstance, err = InitTiKVStore(cfg.KV.TiKV)
 	}

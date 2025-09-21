@@ -6,14 +6,18 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/mageg-x/boulder/internal/logger"
 	"io"
+	"net"
 	"os"
 	"path"
+	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -130,6 +134,38 @@ func GenUUID() string {
 	// 添加较短的随机部分确保唯一性
 	randomPart := UUID[:16] // 只取UUID的前16位
 	return timePart + randomPart
+}
+
+func IsValidUUID(UUID string) bool {
+	// Check if the UUID string is empty
+	if UUID == "" {
+		return false
+	}
+
+	// Check if the length is correct (32 hex characters without hyphens)
+	if len(UUID) != 32 {
+		return false
+	}
+
+	// Check if all characters are valid hexadecimal digits
+	for _, c := range UUID {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", c) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func IsValidIp(ip string) bool {
+	// Check if the IP string is empty
+	if ip == "" {
+		return false
+	}
+
+	// Use net.ParseIP to validate the IP address
+	parsedIP := net.ParseIP(ip)
+	return parsedIP != nil
 }
 
 func GenKey(password string, keyLen int) []byte {
@@ -291,4 +327,60 @@ func Decrypt(data []byte, key string) ([]byte, error) {
 func FileExists(filename string) bool {
 	_, err := os.Stat(filename)
 	return !os.IsNotExist(err)
+}
+
+func ReadBlockVerFromFile(filename string) (int32, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return -1, err
+	}
+	defer file.Close()
+
+	var buf [4]byte
+	n, err := file.Read(buf[:])
+	if err != nil && err != io.EOF {
+		return -1, err
+	}
+	if n < 4 {
+		return -1, fmt.Errorf("file size less than 4 bytes")
+	}
+
+	bufferVer := int32(binary.BigEndian.Uint32(buf[:]))
+	return bufferVer, nil
+}
+
+func ReadFilesRecursive(root string) ([]string, error) {
+	files := make([]string, 0, 100)
+	// 获取 root 的绝对路径，以便正确处理相对路径
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get absolute path of %s: %w", root, err)
+	}
+
+	err = filepath.Walk(absRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("failed to walk path %s: %v", path, err)
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		// 转换为相对于 root 的相对路径
+		relPath, err := filepath.Rel(absRoot, path)
+		if err != nil {
+			return fmt.Errorf("failed to get relative path for %s: %w", path, err)
+		}
+		files = append(files, relPath)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error walking the path %s: %w", root, err)
+	}
+
+	// 按文件名排序
+	sort.Slice(files, func(i, j int) bool {
+		// 提取文件名进行比较
+		return filepath.Base(files[i]) < filepath.Base(files[j])
+	})
+	return files, nil
 }

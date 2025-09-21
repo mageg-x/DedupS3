@@ -21,10 +21,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	xcache "github.com/mageg-x/boulder/internal/storage/cache"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	xcache "github.com/mageg-x/boulder/internal/storage/cache"
 
 	"github.com/mageg-x/boulder/internal/utils"
 
@@ -615,7 +616,7 @@ func (g *GCService) checkBlock() {
 		return
 	}
 
-	stores := ss.GetStoragesByClass("STANDARD")
+	stores := ss.GetStoragesByClass(meta.STANDARD_CLASS_STORAGE)
 	if len(stores) == 0 {
 		logger.GetLogger("boulder").Errorf("failed to find stores")
 		return
