@@ -46,7 +46,7 @@ type ListAllMyBucketsResult struct {
 
 // GetReqVar 获取请求中一些通用的变量
 func GetReqVar(r *http.Request) (string, string, string, string) {
-	vars := mux.Vars(r)
+	vars := utils.DecodeVars(mux.Vars(r))
 	bucket := vars["bucket"]
 	object := vars["object"]
 	object = utils.TrimLeadingSlash(object)

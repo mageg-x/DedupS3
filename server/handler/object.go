@@ -758,16 +758,20 @@ func CopyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取源桶 和对象
 	cpSrcPath := r.Header.Get(xhttp.AmzCopySource)
 	if u, err := url.Parse(cpSrcPath); err == nil {
-		cpSrcPath = u.Path
+		cpSrcPath = u.EscapedPath()
 	}
 	cpSrcPath = strings.TrimPrefix(cpSrcPath, "/")
-	m := strings.Index(cpSrcPath, "/")
-	var srcBucket, srcObject string
-	if m > 2 {
-		srcBucket, srcObject = cpSrcPath[:m], cpSrcPath[m+len("/"):]
+	parts := strings.SplitN(cpSrcPath, "/", 2) // 只分割一次
+
+	if len(parts) != 2 {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidCopySource)
+		return
 	}
-	srcObject = utils.TrimLeadingSlash(srcObject)
-	if srcObject == "" || srcBucket == "" {
+
+	srcBucket, srcObject := parts[0], parts[1]
+	srcObject = utils.TrimLeadingSlash(srcObject) // 确保 object 不以 / 开头
+
+	if srcBucket == "" || srcObject == "" {
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidCopySource)
 		return
 	}
@@ -1081,7 +1085,7 @@ func RestoreObjectHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func ListObjectsV1Handler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("boulder").Infof("API called: ListObjectsV1Handler")
+	logger.GetLogger("boulder").Infof("API called: ListObjectsV1Handler header is %#v", r.Header)
 
 	bucket, _, _, accessKeyID := GetReqVar(r)
 	if err := utils.CheckValidBucketName(bucket); err != nil {
@@ -1089,7 +1093,7 @@ func ListObjectsV1Handler(w http.ResponseWriter, r *http.Request) {
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketName)
 		return
 	}
-	query := r.URL.Query()
+	query := utils.DecodeQuerys(r.URL.Query())
 	maxkeys := 1000
 	if query.Get("max-keys") != "" {
 		var err error
@@ -1230,7 +1234,7 @@ func ListObjectsV2Handler(w http.ResponseWriter, r *http.Request) {
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketName)
 		return
 	}
-	query := r.URL.Query()
+	query := utils.DecodeQuerys(r.URL.Query())
 	maxkeys := 1000
 	if query.Get("max-keys") != "" {
 		var err error

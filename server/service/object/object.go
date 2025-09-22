@@ -270,7 +270,7 @@ func (o *ObjectService) HeadObject(params *BaseObjectParams) (*meta.Object, erro
 			return nil, err
 		}
 		if !exist {
-			logger.GetLogger("boulder").Errorf("object %s does not exist", objkey)
+			logger.GetLogger("boulder").Infof("object %s does not exist", objkey)
 			return nil, xhttp.ToError(xhttp.ErrNoSuchKey)
 		}
 		object = &_object

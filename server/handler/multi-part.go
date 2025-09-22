@@ -43,7 +43,8 @@ func CompleteMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: CompleteMultipartUploadHandler")
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
-	uploadID := r.URL.Query().Get("uploadId")
+	query := utils.DecodeQuerys(r.URL.Query())
+	uploadID := query.Get("uploadId")
 	ifMatch := r.Header.Get(xhttp.IfMatch)
 	ifMatch = strings.Trim(ifMatch, "\"")
 	ifnoneMatch := r.Header.Get(xhttp.IfNoneMatch)
@@ -190,7 +191,9 @@ func AbortMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Debugf("API called: AbortMultipartUploadHandler")
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
-	uploadID := r.URL.Query().Get("uploadId")
+	// 对所有查询参数进行URL解码
+	query := utils.DecodeQuerys(r.URL.Query())
+	uploadID := query.Get("uploadId")
 
 	_mps := multipart.GetMultiPartService()
 	if _mps == nil {
@@ -229,7 +232,7 @@ func ListMultipartUploadsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 解析查询参数
-	query := r.URL.Query()
+	query := utils.DecodeQuerys(r.URL.Query())
 	prefix := query.Get("prefix")
 	delimiter := query.Get("delimiter")
 	keyMarker := query.Get("key-marker")
@@ -375,8 +378,9 @@ func CopyObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 解析查询参数
-	uploadID := r.URL.Query().Get("uploadId")
-	partNumberStr := r.URL.Query().Get("partNumber")
+	query := utils.DecodeQuerys(r.URL.Query())
+	uploadID := query.Get("uploadId")
+	partNumberStr := query.Get("partNumber")
 	partNumber, err := strconv.Atoi(partNumberStr)
 	if err != nil || partNumber < 1 || partNumber > 10000 {
 		logger.GetLogger("boulder").Errorf("Invalid part number: %s", partNumberStr)
@@ -454,8 +458,10 @@ func PutObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
 	logger.GetLogger("boulder").Infof("API called: PutObjectPartHandler")
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
-	uploadID := r.URL.Query().Get("uploadId")
-	partNumberStr := r.URL.Query().Get("partNumber")
+
+	query := utils.DecodeQuerys(r.URL.Query())
+	uploadID := query.Get("uploadId")
+	partNumberStr := query.Get("partNumber")
 	partNumber, err := strconv.Atoi(partNumberStr)
 	if err != nil || partNumber < 1 || partNumber > 10000 {
 		logger.GetLogger("boulder").Errorf("Invalid part number: %s", partNumberStr)
@@ -548,7 +554,7 @@ func ListObjectPartsHandler(w http.ResponseWriter, r *http.Request) {
 	logger.GetLogger("boulder").Infof("API called: ListObjectPartsHandler")
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 	// 解析查询参数
-	query := r.URL.Query()
+	query := utils.DecodeQuerys(r.URL.Query())
 	uploadID := query.Get("uploadId")
 	maxPartsStr := query.Get("max-parts")
 	partNumberMarkerStr := query.Get("part-number-marker")

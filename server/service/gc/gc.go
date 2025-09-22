@@ -132,15 +132,6 @@ func (g *GCService) loop() {
 }
 
 func (g *GCService) doClean() {
-	//dedup
-	dedupCount, err := g.clean(GCDedupPrefix)
-	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to clean up dedup: %v", err)
-		return
-	} else {
-		logger.GetLogger("boulder").Tracef("cleaned up %d dedup", dedupCount)
-	}
-
 	// chunks
 	chunkCount, err := g.clean(GCChunkPrefix)
 	if err != nil {
@@ -148,6 +139,15 @@ func (g *GCService) doClean() {
 		return
 	} else {
 		logger.GetLogger("boulder").Tracef("cleaned up %d chunks", chunkCount)
+	}
+
+	//dedup
+	dedupCount, err := g.clean(GCDedupPrefix)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to clean up dedup: %v", err)
+		return
+	} else {
+		logger.GetLogger("boulder").Tracef("cleaned up %d dedup", dedupCount)
 	}
 
 	// 清理 blocks
@@ -267,7 +267,7 @@ func (g *GCService) cleanOne4Chunk(prefix string) (finished bool, count int, err
 				logger.GetLogger("boulder").Errorf("failed to set chunk %s: %v", chunkID, err)
 				return false, 0, fmt.Errorf("failed to update refCount for chunk %s: %w", chunkKey, err)
 			} else {
-				logger.GetLogger("boulder").Errorf("updated refCount for chunk %s", chunkID)
+				logger.GetLogger("boulder").Infof("updated refCount for chunk %s", chunkID)
 			}
 		} else {
 			if err = txn.Delete(chunkKey); err != nil {

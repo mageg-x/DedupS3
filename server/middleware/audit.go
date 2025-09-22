@@ -23,6 +23,7 @@ import (
 
 	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/mageg-x/boulder/internal/logger"
+	"github.com/mageg-x/boulder/internal/utils"
 
 	"github.com/gorilla/mux"
 )
@@ -56,7 +57,7 @@ func AuditMiddleware(next http.Handler) http.Handler {
 		}
 
 		// 获取路径变量（bucket 和 key）
-		vars := mux.Vars(r)
+		vars := utils.DecodeVars(mux.Vars(r))
 		bucket := vars["bucket"]
 		key := vars["key"]
 

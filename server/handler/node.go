@@ -17,7 +17,7 @@ import (
 
 func ReadBlockHandler(w http.ResponseWriter, r *http.Request) {
 	// 从路径中提取blockID
-	vars := mux.Vars(r)
+	vars := utils.DecodeVars(mux.Vars(r))
 	blockID := vars["blockID"]
 	logger.GetLogger("boulder").Debugf("API called: ReadBlockDataHandler blockID %s head %#v", blockID, r.Header)
 	if !utils.IsValidUUID(blockID) {
@@ -27,7 +27,7 @@ func ReadBlockHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 从查询参数中提取offset和size
-	query := r.URL.Query()
+	query := utils.DecodeQuerys(r.URL.Query())
 
 	offset := int64(0)
 	if offsetStr := query.Get("offset"); offsetStr != "" {

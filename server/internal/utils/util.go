@@ -14,6 +14,7 @@ import (
 	"github.com/mageg-x/boulder/internal/logger"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -166,6 +167,33 @@ func IsValidIp(ip string) bool {
 	// Use net.ParseIP to validate the IP address
 	parsedIP := net.ParseIP(ip)
 	return parsedIP != nil
+}
+
+// DecodeVars 对mux.Vars(r)返回的所有变量进行URL解码
+func DecodeVars(vars map[string]string) map[string]string {
+	newVars := map[string]string{}
+	for key, value := range vars {
+		if decoded, err := url.QueryUnescape(value); err == nil {
+			newVars[key] = decoded
+		}
+	}
+	return newVars
+}
+
+// DecodeQuerys 对  r.URL.Query() 返回的所有变量进行URL解码
+func DecodeQuerys(query url.Values) url.Values {
+	newQuerys := url.Values{}
+	for key, values := range query {
+		for _, value := range values {
+			if decoded, err := url.QueryUnescape(value); err == nil {
+				newQuerys.Add(key, decoded)
+			} else {
+				// 可选：解码失败时保留原始值，或记录日志
+				newQuerys.Add(key, value)
+			}
+		}
+	}
+	return newQuerys
 }
 
 func GenKey(password string, keyLen int) []byte {
