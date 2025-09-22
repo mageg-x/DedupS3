@@ -19,6 +19,7 @@ package kv
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -98,6 +99,52 @@ func (b *BadgerStore) Set(key string, value interface{}) error {
 		}
 	}
 	return err
+}
+
+func (b *BadgerStore) Incr(k string) (uint64, error) {
+	logger.GetLogger("boulder").Debugf("generating next ID for key: %s", k)
+
+	txn, err := b.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
+		return 0, err
+	}
+	defer txn.Rollback()
+
+	// 尝试获取当前值
+	rawData, exists, err := txn.GetRaw(k)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to get key %s: %v", k, err)
+		return 0, err
+	}
+
+	var id uint64
+	// 计算新ID
+	if !exists {
+		id = 1
+		logger.GetLogger("boulder").Debugf("key %s not found, initializing to 1", k)
+	} else {
+		id = binary.LittleEndian.Uint64(rawData) + 1
+	}
+
+	// 保存新ID
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], id)
+	err = txn.Set(k, buf[:])
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to set key %s: %v", k, err)
+		return 0, err
+	}
+
+	// 提交事务
+	err = txn.Commit()
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		return 0, err
+	}
+
+	logger.GetLogger("boulder").Debugf("setting new ID %d for key: %s", id, k)
+	return id, nil
 }
 
 // BeginTxn 开始一个新事务

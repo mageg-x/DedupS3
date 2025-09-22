@@ -94,7 +94,7 @@ func (d *DiskStore) WriteBlock(ctx context.Context, blockID string, data []byte,
 func (d *DiskStore) ReadBlock(location, blockID string, offset, length int64) ([]byte, error) {
 	cfg := xconf.Get()
 	rLocation := strings.TrimSpace(location)
-	lLocation := strings.TrimSpace(cfg.Node.LocalNode)
+	lLocation := cfg.Node.LocalNode
 
 	var err error
 	var data []byte

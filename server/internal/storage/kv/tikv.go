@@ -18,11 +18,12 @@ package kv
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
-
 	"github.com/tikv/client-go/v2/txnkv/txnsnapshot"
+	"time"
 
 	tikverr "github.com/tikv/client-go/v2/error"
 	"github.com/tikv/client-go/v2/tikv"
@@ -152,6 +153,62 @@ func (t *TiKVStore) Set(key string, value interface{}) error {
 		}
 	}
 	return err
+}
+
+// Incr 原子性地获取并递增ID值
+func (t *TiKVStore) Incr(k string) (uint64, error) {
+	var id uint64
+
+	logger.GetLogger("boulder").Debugf("generating next ID for key: %s", k)
+
+	// 重试逻辑，处理TiKV可能的冲突
+	maxRetries := 5
+	for retry := 0; retry < maxRetries; retry++ {
+		txn, err := t.BeginTxn(context.Background(), nil)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
+			return 0, err
+		}
+		defer txn.Rollback()
+
+		// 尝试获取当前值
+		rawData, exists, err := txn.GetRaw(k)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("failed to get key %s: %v", k, err)
+			continue // 出错时重试
+		}
+
+		// 计算新ID
+		if !exists {
+			id = 1
+			logger.GetLogger("boulder").Debugf("key %s not found, initializing to 1", k)
+		} else {
+			id = binary.LittleEndian.Uint64(rawData) + 1
+		}
+
+		// 保存新ID
+		var buf [8]byte
+		binary.LittleEndian.PutUint64(buf[:], id)
+		err = txn.Set(k, buf[:])
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("failed to set key %s: %v", k, err)
+			continue // 出错时重试
+		}
+
+		// 提交事务
+		err = txn.Commit()
+		if err != nil {
+			logger.GetLogger("boulder").Warningf("transaction conflict, retrying (%d/%d)", retry+1, maxRetries)
+			time.Sleep(time.Duration(retry*10) * time.Millisecond) // 指数退避
+			continue
+		}
+
+		// 成功获取新ID
+		logger.GetLogger("boulder").Debugf("setting new ID %d for key: %s", id, k)
+		return id, nil
+	}
+
+	return 0, fmt.Errorf("failed to generate next ID after %d retries", maxRetries)
 }
 
 // BeginTxn 开始一个新事务

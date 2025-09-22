@@ -387,3 +387,26 @@ func ReadFilesRecursive(root string) ([]string, error) {
 	})
 	return files, nil
 }
+
+func CleanEmptyDirsRecursive(path string) error {
+	// 逆序遍历目录（从深到浅）
+	err := filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // 继续遍历其他路径
+		}
+
+		if !info.IsDir() {
+			return nil
+		}
+
+		// 直接尝试删除 —— 系统会判断是否为空
+		if p != path {
+			os.Remove(p)
+		}
+
+		// 如果删除失败（比如非空、权限不足），直接忽略，继续
+		return nil
+	})
+
+	return err
+}

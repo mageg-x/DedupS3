@@ -217,6 +217,10 @@ func Load(configPath string) error {
 	if cfg == nil {
 		return fmt.Errorf("failed to load config from %s", configPath)
 	}
+	// 对一些 调用频繁的数据进行 规范
+	cfg.Node.LocalDir = filepath.Clean(cfg.Node.LocalDir)
+	cfg.Node.LocalNode = strings.TrimSpace(cfg.Node.LocalNode)
+
 	globalConfig.Store(cfg)
 
 	return nil

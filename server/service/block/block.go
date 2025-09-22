@@ -225,6 +225,9 @@ func (s *BlockService) doSyncBlock(ctx context.Context) {
 				}(tmpfile, ver)
 			}
 			wg.Wait() // 等待本批次所有上传完成
+
+			utils.CleanEmptyDirsRecursive(blockPath)
+
 			time.Sleep(1 * time.Second)
 		}
 	}()
