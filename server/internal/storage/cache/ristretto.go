@@ -106,8 +106,8 @@ func (r *Ristretto) Del(ctx context.Context, key string) error {
 	return nil
 }
 
-// BatchSet 批量设置键值对
-func (r *Ristretto) BatchSet(ctx context.Context, items map[string]Item) error {
+// MSet 批量设置键值对
+func (r *Ristretto) MSet(ctx context.Context, items map[string]Item) error {
 	if ctx.Err() != nil {
 		logger.GetLogger("boulder").Errorf("context error when batch setting cache items: %v", ctx.Err())
 		return ctx.Err()
@@ -123,8 +123,8 @@ func (r *Ristretto) BatchSet(ctx context.Context, items map[string]Item) error {
 	return nil
 }
 
-// BatchGet 批量获取缓存值
-func (r *Ristretto) BatchGet(ctx context.Context, keys []string) (map[string]interface{}, error) {
+// MGet 批量获取缓存值
+func (r *Ristretto) MGet(ctx context.Context, keys []string) (map[string]interface{}, error) {
 	if ctx.Err() != nil {
 		logger.GetLogger("boulder").Errorf("context error when batch getting cache items: %v", ctx.Err())
 		return nil, ctx.Err()
@@ -145,8 +145,8 @@ func (r *Ristretto) BatchGet(ctx context.Context, keys []string) (map[string]int
 	return result, nil
 }
 
-// BatchDel 批量删除缓存
-func (r *Ristretto) BatchDel(ctx context.Context, keys []string) error {
+// MDel 批量删除缓存
+func (r *Ristretto) MDel(ctx context.Context, keys []string) error {
 	if len(keys) == 0 {
 		return nil
 	}

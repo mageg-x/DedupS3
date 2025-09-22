@@ -40,8 +40,8 @@ import (
 	"github.com/mageg-x/boulder/internal/storage/cache"
 	"github.com/mageg-x/boulder/internal/storage/kv"
 	"github.com/mageg-x/boulder/router"
+	gc2 "github.com/mageg-x/boulder/service/gc"
 	"github.com/mageg-x/boulder/service/storage"
-	gc2 "github.com/mageg-x/boulder/service/task"
 	"github.com/mageg-x/boulder/web"
 )
 
@@ -133,12 +133,12 @@ func main() {
 	// 初始化 垃圾回收后台服务
 	gc := gc2.GetGCService()
 	if gc == nil {
-		logger.GetLogger("boulder").Error("failed to init task service")
+		logger.GetLogger("boulder").Error("failed to init gc service")
 		panic(err)
 	}
 	err = gc.Start()
 	if err != nil {
-		logger.GetLogger("boulder").Error("failed to start task service", zap.Error(err))
+		logger.GetLogger("boulder").Error("failed to start gc service", zap.Error(err))
 		panic(err)
 	}
 

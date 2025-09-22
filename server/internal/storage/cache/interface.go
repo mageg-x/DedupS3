@@ -39,9 +39,9 @@ type Cache interface {
 	Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error
 	Get(ctx context.Context, key string) (interface{}, bool, error)
 	Del(ctx context.Context, key string) error
-	BatchSet(ctx context.Context, items map[string]Item) error
-	BatchGet(ctx context.Context, keys []string) (map[string]interface{}, error)
-	BatchDel(ctx context.Context, keys []string) error
+	MSet(ctx context.Context, items map[string]Item) error
+	MGet(ctx context.Context, keys []string) (map[string]interface{}, error)
+	MDel(ctx context.Context, keys []string) error
 	Exists(ctx context.Context, key string) (bool, error)
 	Clear(ctx context.Context) error
 	Close() error

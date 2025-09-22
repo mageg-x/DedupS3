@@ -36,7 +36,7 @@ import (
 	"github.com/mageg-x/boulder/internal/utils"
 	"github.com/mageg-x/boulder/service/block"
 	"github.com/mageg-x/boulder/service/chunk"
-	"github.com/mageg-x/boulder/service/task"
+	"github.com/mageg-x/boulder/service/gc"
 
 	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/mageg-x/boulder/internal/logger"
@@ -1044,15 +1044,15 @@ func (o *ObjectService) DeleteObject(params *BaseObjectParams) error {
 	}
 	// 删除obj 关联的chunk
 	if exists && len(_object.Chunks) > 0 {
-		gckey := task.GCChunkPrefix + utils.GenUUID()
-		gcChunks := task.GCChunk{
+		gckey := gc.GCChunkPrefix + utils.GenUUID()
+		gcChunks := gc.GCChunk{
 			StorageID: _object.DataLocation,
 			ChunkIDs:  append([]string(nil), _object.Chunks...),
 		}
 		err = txn.Set(gckey, &gcChunks)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("%s/%s set task chunk failed: %v", _object.Bucket, _object.Key, err)
-			return fmt.Errorf("%s/%s set task chunk failed: %w", _object.Bucket, _object.Key, err)
+			logger.GetLogger("boulder").Errorf("%s/%s set gc chunk failed: %v", _object.Bucket, _object.Key, err)
+			return fmt.Errorf("%s/%s set gc chunk failed: %w", _object.Bucket, _object.Key, err)
 		} else {
 			logger.GetLogger("boulder").Infof("%s/%s set gc chunk %s delay to proccess", _object.Bucket, _object.Key, gckey)
 		}
@@ -1081,7 +1081,7 @@ func (o *ObjectService) DeleteObject(params *BaseObjectParams) error {
 			chunkKey := meta.GenChunkKey(_object.DataLocation, hash)
 			chunkKeys = append(chunkKeys, chunkKey)
 		}
-		_ = cache.BatchDel(context.Background(), chunkKeys)
+		_ = cache.MDel(context.Background(), chunkKeys)
 	}
 	return nil
 }
@@ -1209,15 +1209,15 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 			return nil, fmt.Errorf("%s/%s get object failed: %w", _dstobj.Bucket, _dstobj.Key, err)
 		}
 		if exists && len(_dstobj.Chunks) > 0 {
-			gckey := task.GCChunkPrefix + utils.GenUUID()
-			gcChunks := task.GCChunk{
+			gckey := gc.GCChunkPrefix + utils.GenUUID()
+			gcChunks := gc.GCChunk{
 				StorageID: _dstobj.DataLocation,
 				ChunkIDs:  append([]string(nil), _dstobj.Chunks...),
 			}
 			err = txn.Set(gckey, &gcChunks)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("%s/%s set task chunk failed: %v", _dstobj.Bucket, _dstobj.Key, err)
-				return nil, fmt.Errorf("%s/%s set task chunk failed: %w", _dstobj.Bucket, _dstobj.Key, err)
+				logger.GetLogger("boulder").Errorf("%s/%s set gc chunk failed: %v", _dstobj.Bucket, _dstobj.Key, err)
+				return nil, fmt.Errorf("%s/%s set gc chunk failed: %w", _dstobj.Bucket, _dstobj.Key, err)
 			} else {
 				logger.GetLogger("boulder").Infof("%s/%s set gc chunk %s delay to proccess", _dstobj.Bucket, _dstobj.Key, gckey)
 			}
@@ -1643,15 +1643,15 @@ func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, er
 
 	// 如果目标 object name已经存在 ，需要先删除旧的索引
 	if dstObjOK && len(dstObj.Chunks) > 0 {
-		gckey := task.GCChunkPrefix + utils.GenUUID()
-		gcChunks := task.GCChunk{
+		gckey := gc.GCChunkPrefix + utils.GenUUID()
+		gcChunks := gc.GCChunk{
 			StorageID: dstObj.DataLocation,
 			ChunkIDs:  append([]string(nil), dstObj.Chunks...),
 		}
 		err = txn.Set(gckey, &gcChunks)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("%s/%s set task chunk failed: %v", dstObj.Bucket, dstObj.Key, err)
-			return nil, fmt.Errorf("%s/%s set task chunk failed: %w", dstObj.Bucket, dstObj.Key, err)
+			logger.GetLogger("boulder").Errorf("%s/%s set gc chunk failed: %v", dstObj.Bucket, dstObj.Key, err)
+			return nil, fmt.Errorf("%s/%s set gc chunk failed: %w", dstObj.Bucket, dstObj.Key, err)
 		} else {
 			logger.GetLogger("boulder").Infof("%s/%s set gc chunk %s delay to proccess", dstObj.Bucket, dstObj.Key, gckey)
 		}

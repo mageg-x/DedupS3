@@ -14,7 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package task
+package gc
 
 import (
 	"context"
@@ -86,7 +86,7 @@ func GetGCService() *GCService {
 	logger.GetLogger("boulder").Infof("initializing garbage collection service")
 	kvStore, err := kv.GetKvStore()
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to get kv store for task: %v", err)
+		logger.GetLogger("boulder").Errorf("failed to get kv store for gc: %v", err)
 		return nil
 	}
 	gcInst = &GCService{
@@ -218,7 +218,7 @@ func (g *GCService) cleanOne4Chunk(prefix string) (finished bool, count int, err
 
 	// 没有更多键了
 	if len(keys) == 0 {
-		//logger.GetLogger("boulder").Infof("no keys found, finish to task %s", prefix)
+		//logger.GetLogger("boulder").Infof("no keys found, finish to gc %s", prefix)
 		return true, 0, nil
 	} else {
 		logger.GetLogger("boulder").Infof("found chunk %s to clean ", keys[0])
@@ -284,7 +284,7 @@ func (g *GCService) cleanOne4Chunk(prefix string) (finished bool, count int, err
 	// 删除 GC 记录本身
 	if err = txn.Delete(keys[0]); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to delete chunk %s: %v", keys[0], err)
-		return false, 0, fmt.Errorf("failed to delete task key %s: %w", keys[0], err)
+		return false, 0, fmt.Errorf("failed to delete gc key %s: %w", keys[0], err)
 	}
 
 	// 提交事务
@@ -331,7 +331,7 @@ func (g *GCService) cleanOne4Block(prefix string) (finished bool, count int, err
 
 	// 没有更多键了
 	if len(keys) == 0 {
-		//logger.GetLogger("boulder").Infof("no keys found, finish to task %s", prefix)
+		//logger.GetLogger("boulder").Infof("no keys found, finish to gc %s", prefix)
 		return true, 0, nil
 	} else {
 		logger.GetLogger("boulder").Infof("found gcblock %s to clean ", keys[0])
@@ -447,7 +447,7 @@ func (g *GCService) cleanOne4Block(prefix string) (finished bool, count int, err
 	// 删除 GC 记录本身
 	if err := txn.Delete(keys[0]); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to delete block %s: %v", keys[0], err)
-		return false, 0, fmt.Errorf("failed to delete task key %s: %w", keys[0], err)
+		return false, 0, fmt.Errorf("failed to delete gc key %s: %w", keys[0], err)
 	}
 
 	// 提交事务
@@ -492,7 +492,7 @@ func (g *GCService) dedupOne4Block(prefix string) (finished bool, count int, err
 
 	// 没有更多键了
 	if len(keys) == 0 {
-		//logger.GetLogger("boulder").Infof("no keys found, finish to task %s", prefix)
+		//logger.GetLogger("boulder").Infof("no keys found, finish to gc %s", prefix)
 		return true, 0, nil
 	} else {
 		logger.GetLogger("boulder").Infof("found chunk %s to clean ", keys[0])

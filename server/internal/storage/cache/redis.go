@@ -111,7 +111,7 @@ func (r *Redis) Del(ctx context.Context, key string) error {
 	return nil
 }
 
-func (r *Redis) BatchSet(ctx context.Context, items map[string]Item) error {
+func (r *Redis) MSet(ctx context.Context, items map[string]Item) error {
 	pipe := r.client.Pipeline()
 
 	for key, item := range items {
@@ -138,8 +138,8 @@ func (r *Redis) BatchSet(ctx context.Context, items map[string]Item) error {
 	return nil
 }
 
-// BatchGet 批量获取
-func (r *Redis) BatchGet(ctx context.Context, keys []string) (map[string]interface{}, error) {
+// MGet 批量获取
+func (r *Redis) MGet(ctx context.Context, keys []string) (map[string]interface{}, error) {
 	if len(keys) == 0 {
 		logger.GetLogger("boulder").Debugf("No keys provided for batch get")
 		return map[string]interface{}{}, nil
@@ -170,8 +170,8 @@ func (r *Redis) BatchGet(ctx context.Context, keys []string) (map[string]interfa
 	return values, nil
 }
 
-// BatchDel 批量删除
-func (r *Redis) BatchDel(ctx context.Context, keys []string) error {
+// MDel 批量删除
+func (r *Redis) MDel(ctx context.Context, keys []string) error {
 	if len(keys) == 0 {
 		return nil
 	}

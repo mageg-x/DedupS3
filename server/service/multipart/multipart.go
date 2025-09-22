@@ -34,7 +34,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/mageg-x/boulder/service/task"
+	"github.com/mageg-x/boulder/service/gc"
 
 	"github.com/mageg-x/boulder/service/chunk"
 	"github.com/mageg-x/boulder/service/storage"
@@ -214,8 +214,8 @@ func (m *MultiPartService) AbortMultipartUpload(params *object.BaseObjectParams)
 	}()
 
 	// 上传过程中产生的 chunk 元素据 都要清理
-	gckey := task.GCChunkPrefix + utils.GenUUID()
-	gcChunks := task.GCChunk{
+	gckey := gc.GCChunkPrefix + utils.GenUUID()
+	gcChunks := gc.GCChunk{
 		StorageID: upload.DataLocation,
 		ChunkIDs:  make([]string, 0),
 	}
@@ -261,8 +261,8 @@ func (m *MultiPartService) AbortMultipartUpload(params *object.BaseObjectParams)
 	if len(gcChunks.ChunkIDs) > 0 {
 		err = txn.Set(gckey, &gcChunks)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("aborted multipart upload %s/%s/%s set task chunk failed: %v", params.BucketName, params.ObjKey, params.UploadID, err)
-			return fmt.Errorf("aborted multipart upload %s/%s/%s set task chunk failed: %w", params.BucketName, params.ObjKey, params.UploadID, err)
+			logger.GetLogger("boulder").Errorf("aborted multipart upload %s/%s/%s set gc chunk failed: %v", params.BucketName, params.ObjKey, params.UploadID, err)
+			return fmt.Errorf("aborted multipart upload %s/%s/%s set gc chunk failed: %w", params.BucketName, params.ObjKey, params.UploadID, err)
 		} else {
 			logger.GetLogger("boulder").Infof("aborted multipart upload %s/%s/%s set gc chunk %s delay to proccess", params.BucketName, params.ObjKey, params.UploadID, gckey)
 		}
@@ -881,15 +881,15 @@ func (m *MultiPartService) CompleteMultipartUpload(cliParts []meta.PartETag, par
 
 		//如果是覆盖已有的对象，要先删除旧的对象
 		if existsOldObj {
-			gckey := task.GCChunkPrefix + utils.GenUUID()
-			gcChunks := task.GCChunk{
+			gckey := gc.GCChunkPrefix + utils.GenUUID()
+			gcChunks := gc.GCChunk{
 				StorageID: oldObj.DataLocation,
 				ChunkIDs:  append([]string(nil), oldObj.Chunks...),
 			}
 			err = txn.Set(gckey, gcChunks)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("%s/%s set task chunk failed: %v", obj.Bucket, obj.Key, err)
-				return nil, fmt.Errorf("%s/%s set task chunk failed: %w", obj.Bucket, obj.Key, err)
+				logger.GetLogger("boulder").Errorf("%s/%s set gc chunk failed: %v", obj.Bucket, obj.Key, err)
+				return nil, fmt.Errorf("%s/%s set gc chunk failed: %w", obj.Bucket, obj.Key, err)
 			}
 		}
 

@@ -241,7 +241,7 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IAMAc
 
 	if cache, err := xcache.GetCache(); err == nil && cache != nil {
 		cache.Del(context.Background(), key)
-		cache.BatchDel(context.Background(), changeKeys)
+		cache.MDel(context.Background(), changeKeys)
 	}
 
 	return true, nil
@@ -289,7 +289,7 @@ func (s *IamService) DeleteAccount(accountID string) error {
 	}
 
 	if cache, err := xcache.GetCache(); err == nil && cache != nil {
-		cache.BatchDel(context.Background(), allDel)
+		cache.MDel(context.Background(), allDel)
 	}
 
 	err = txn.Delete(key)

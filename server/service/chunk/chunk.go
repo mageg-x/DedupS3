@@ -12,7 +12,7 @@ import (
 	"time"
 
 	xcache "github.com/mageg-x/boulder/internal/storage/cache"
-	"github.com/mageg-x/boulder/service/task"
+	"github.com/mageg-x/boulder/service/gc"
 
 	fastcdc "github.com/PlakarKorp/go-cdc-chunkers"
 	_ "github.com/PlakarKorp/go-cdc-chunkers/chunkers/fastcdc"
@@ -135,10 +135,10 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.BaseObject, cb WriteObjCB)
 	// 回滚处理，删除之前写入的block
 	if rollback {
 		if len(blocks) > 0 {
-			gcKey := task.GCBlockPrefix + utils.GenUUID()
-			var gcBlocks []*task.GCBlock
+			gcKey := gc.GCBlockPrefix + utils.GenUUID()
+			var gcBlocks []*gc.GCBlock
 			for _, _block := range blocks {
-				gcBlocks = append(gcBlocks, &task.GCBlock{BlockID: _block.ID, StorageID: obj.DataLocation})
+				gcBlocks = append(gcBlocks, &gc.GCBlock{BlockID: _block.ID, StorageID: obj.DataLocation})
 			}
 			logger.GetLogger("boulder").Warnf("rollback for %s/%s delete blocks %#v ", obj.Bucket, obj.Key, gcBlocks)
 			err := c.kvstore.Set(gcKey, &gcBlocks)
@@ -410,8 +410,8 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 
 	defer func() {
 		if cache, err := xcache.GetCache(); err == nil && cache != nil {
-			_ = cache.BatchDel(ctx, oldChunkKeys)
-			_ = cache.BatchDel(ctx, oldBlockKeys)
+			_ = cache.MDel(ctx, oldChunkKeys)
+			_ = cache.MDel(ctx, oldBlockKeys)
 		}
 	}()
 	// 根据类型做不同处理
@@ -568,16 +568,16 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 	}
 
 	if len(gcChunks) > 0 {
-		gckey := task.GCChunkPrefix + utils.GenUUID()
-		gcChunks := task.GCChunk{
+		gckey := gc.GCChunkPrefix + utils.GenUUID()
+		gcChunks := gc.GCChunk{
 			StorageID: obj.DataLocation,
 			ChunkIDs:  append([]string(nil), gcChunks...),
 		}
 
 		err = txn.Set(gckey, &gcChunks)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("%s/%s set task chunk failed: %v", obj.Bucket, obj.Key, err)
-			return fmt.Errorf("%s/%s set task chunk failed: %w", obj.Bucket, obj.Key, err)
+			logger.GetLogger("boulder").Errorf("%s/%s set gc chunk failed: %v", obj.Bucket, obj.Key, err)
+			return fmt.Errorf("%s/%s set gc chunk failed: %w", obj.Bucket, obj.Key, err)
 		} else {
 			logger.GetLogger("boulder").Infof("%s/%s set gc chunk %s delay to proccess", obj.Bucket, obj.Key, gckey)
 		}
@@ -586,8 +586,8 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 	if len(blocks) > 0 {
 		// 后置重删检查
 		for _, _block := range blocks {
-			gcDedupKey := task.GCDedupPrefix + utils.GenUUID()
-			gcDedup := task.GCDedup{StorageID: _block.StorageID, BlockID: _block.ID}
+			gcDedupKey := gc.GCDedupPrefix + utils.GenUUID()
+			gcDedup := gc.GCDedup{StorageID: _block.StorageID, BlockID: _block.ID}
 			err = txn.Set(gcDedupKey, &gcDedup)
 			if err != nil {
 				logger.GetLogger("boulder").Errorf("%s/%s set post dedup block %s failed: %v", obj.Bucket, obj.Key, _block.ID, err)
@@ -639,7 +639,7 @@ func (c *ChunkService) BatchGet(storageID string, chunkIDs []string) ([]*meta.Ch
 
 		batchKeys := keys[i:end]
 		if cache, err := xcache.GetCache(); err == nil && cache != nil {
-			result, err := cache.BatchGet(context.Background(), batchKeys)
+			result, err := cache.MGet(context.Background(), batchKeys)
 			if err == nil {
 				for k, item := range result {
 					chunk := item.(*meta.Chunk)
