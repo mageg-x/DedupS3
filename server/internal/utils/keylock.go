@@ -1,8 +1,9 @@
 package utils
 
 import (
-	"github.com/cespare/xxhash/v2"
 	"sync"
+
+	"github.com/cespare/xxhash/v2"
 )
 
 const shardCount = 1024
@@ -26,9 +27,9 @@ func Unlock(key string) {
 	lock.Unlock()
 }
 
-func WithLockKey(key string, fn func()) {
+func WithLockKey(key string, fn func() error) error {
 	l := For(key)
 	l.Lock()
 	defer l.Unlock()
-	fn()
+	return fn()
 }

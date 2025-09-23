@@ -126,16 +126,18 @@ func XmlDecoder(body io.Reader, v interface{}, size int64) error {
 }
 
 // WithLock 是一个辅助函数，用于在特定代码块内自动锁定和解锁
-func WithLock(mu *sync.Mutex, fn func()) {
+func WithLock(mu *sync.Mutex, fn func() error) error {
 	mu.Lock()
 	defer mu.Unlock()
-	fn()
+	return fn()
 }
 
-func WithTryLock(mu *sync.Mutex, fn func()) {
+func WithTryLock(mu *sync.Mutex, fn func() error) error {
 	if mu.TryLock() {
 		defer mu.Unlock()
-		fn()
+		return fn()
+	} else {
+		return errors.New("try lock fail")
 	}
 }
 

@@ -231,7 +231,7 @@ func (t *BadgerTxn) Get(key string, value interface{}) (bool, error) {
 		logger.GetLogger("boulder").Errorf("json unmarshal error for key %s: %v", key, err)
 		return true, fmt.Errorf("json unmarshal error: %w", err)
 	}
-	logger.GetLogger("boulder").Debugf("successfully got value %#v for key: %s, data len %d", value, key, len(data))
+	//logger.GetLogger("boulder").Debugf("successfully got key: %s, data len %d", key, len(data))
 	return true, nil
 }
 
@@ -252,10 +252,11 @@ func (t *BadgerTxn) GetRaw(key string) ([]byte, bool, error) {
 		copy(data, val)
 		return nil
 	})
-	if err == nil {
-		logger.GetLogger("boulder").Debugf("successfully got raw data for key: %s", key)
+	if err != nil {
+		logger.GetLogger("boulder").Debugf("failed got raw data for key: %s", key)
+		return nil, false, err
 	}
-	logger.GetLogger("boulder").Debugf("successfully get key %s data %d", key, len(data))
+	//logger.GetLogger("boulder").Debugf("successfully get key %s data %d", key, len(data))
 	return data, true, err
 }
 

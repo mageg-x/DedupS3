@@ -390,7 +390,7 @@ func (g *GCService) cleanOne4Block(prefix, startKey string) (nextKey string, err
 	}
 
 	// block 清理要延迟，避免有些关联的 meta 数据还没有提交，因为block 是data 先提交， meta 后提交
-	if time.Since(gcBlock.CreateAt) < 3*time.Minute {
+	if time.Since(gcBlock.CreateAt) < 5*time.Minute {
 		// 没有超过 3 分钟
 		return nextKey, fmt.Errorf("gcblock %s is not old enought", curKey)
 	}
@@ -550,6 +550,10 @@ func (g *GCService) dedupOne4Block(prefix, startKey string) (nextKey string, err
 		return nextKey, fmt.Errorf("gcDedup %s does not exist", curKey)
 	}
 
+	if time.Since(gcDedup.CreateAt) < 5*time.Minute {
+		return nextKey, fmt.Errorf("gcDedup %s is not old enought", curKey)
+	}
+
 	newItems := make([]GCItem, 0)
 	for _, item := range gcDedup.Items {
 		blockKey := meta.GenBlockKey(item.StorageID, item.ID)
@@ -571,6 +575,11 @@ func (g *GCService) dedupOne4Block(prefix, startKey string) (nextKey string, err
 		} else {
 			newItems = append(newItems, item)
 		}
+	}
+
+	if len(newItems) > 0 && len(newItems) == len(gcDedup.Items) {
+		// 没有处理任何数据
+		return nextKey, fmt.Errorf("gcDedup %s proccess no data", nextKey)
 	}
 
 	err = utils.RetryCall(3, func() error {
