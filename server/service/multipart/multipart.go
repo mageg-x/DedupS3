@@ -25,7 +25,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	"sort"
 	"strings"
@@ -214,11 +213,13 @@ func (m *MultiPartService) AbortMultipartUpload(params *object.BaseObjectParams)
 	}()
 
 	// 上传过程中产生的 chunk 元素据 都要清理
-	gckey := gc.GCChunkPrefix + utils.GenUUID()
-	gcChunks := gc.GCChunk{
-		StorageID: upload.DataLocation,
-		ChunkIDs:  make([]string, 0),
+	gcData := gc.GCChunk{
+		GCData: gc.GCData{
+			CreateAt: time.Now().UTC(),
+			Items:    make([]gc.GCItem, 0),
+		},
 	}
+
 	// 扫描所有 Part 元数据
 	prefix := uploadKey + "/"
 	startKey := ""
@@ -244,7 +245,9 @@ func (m *MultiPartService) AbortMultipartUpload(params *object.BaseObjectParams)
 				logger.GetLogger("boulder").Errorf("failed to unmarshal part meta: %v", err)
 				return fmt.Errorf("failed to unmarshal part meta: %w", err)
 			}
-			gcChunks.ChunkIDs = append(gcChunks.ChunkIDs, part.Chunks...)
+			for _, id := range part.Chunks {
+				gcData.Items = append(gcData.Items, gc.GCItem{StorageID: upload.DataLocation, ID: id})
+			}
 		}
 
 		if len(keys) < 100 || nextKey == "" {
@@ -258,8 +261,9 @@ func (m *MultiPartService) AbortMultipartUpload(params *object.BaseObjectParams)
 		return fmt.Errorf("failed to delete upload info: %w", err)
 	}
 
-	if len(gcChunks.ChunkIDs) > 0 {
-		err = txn.Set(gckey, &gcChunks)
+	if len(gcData.Items) > 0 {
+		gckey := gc.GCChunkPrefix + utils.GenUUID()
+		err = txn.Set(gckey, &gcData)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("aborted multipart upload %s/%s/%s set gc chunk failed: %v", params.BucketName, params.ObjKey, params.UploadID, err)
 			return fmt.Errorf("aborted multipart upload %s/%s/%s set gc chunk failed: %w", params.BucketName, params.ObjKey, params.UploadID, err)
@@ -283,12 +287,8 @@ func (m *MultiPartService) AbortMultipartUpload(params *object.BaseObjectParams)
 }
 
 func (m *MultiPartService) WritePartMeta(cs *chunk.ChunkService, chunks []*meta.Chunk, blocks map[string]*meta.Block, object *meta.BaseObject) error {
-	var txErr error
-	maxRetry := 3
 	part := meta.BaseObjectToPart(object)
-
-	// 重试三次， 在文件相同时候，并发上传，会造成 事务冲突
-	for i := 0; i < maxRetry; i++ {
+	err := utils.RetryCall(3, func() error {
 		// 备份 allchunk, blocks, obj
 		bakAllChunks := make([]*meta.Chunk, 0, len(chunks))
 		for _, ck := range chunks {
@@ -305,22 +305,14 @@ func (m *MultiPartService) WritePartMeta(cs *chunk.ChunkService, chunks []*meta.
 		bakPart := part.Clone()
 		objPrefix := "aws:upload:"
 
-		txErr = cs.WriteMeta(context.Background(), part.Owner.ID, bakAllChunks, bakBlocks, bakPart, objPrefix)
-		if txErr == nil {
-			break
-		} else if errors.Is(txErr, kv.ErrTxnCommit) && i < maxRetry-1 {
-			// 事务提交冲突
-			logger.GetLogger("boulder").Debugf("transmission write object %s/%s commit failed: %v, and  retry %d times", part.Bucket, part.Key, txErr, i+1)
-			baseDelay := 3 * time.Second
-			jitter := time.Duration(rand.Int63n(3000)) * time.Millisecond
-			sleep := baseDelay<<uint(i) + jitter
-			time.Sleep(sleep)
-		} else {
-			logger.GetLogger("boulder").Errorf("transmission write object %s/%s  meta info failed: %v，retry times %d", part.Bucket, part.Key, txErr, i+1)
-			txErr = fmt.Errorf("transmission write object %s/%s  meta info failed: %w，retry times %d", part.Bucket, part.Key, txErr, i+1)
-		}
+		return cs.WriteMeta(context.Background(), part.Owner.ID, bakAllChunks, bakBlocks, bakPart, objPrefix)
+	})
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("transmission write object %s/%s  meta info failed: %v ", part.Bucket, part.Key, err)
+		return fmt.Errorf("transmission write object %s/%s  meta info failed: %w ", part.Bucket, part.Key, err)
+
 	}
-	return txErr
+	return nil
 }
 
 func (m *MultiPartService) CreateMultipartUpload(headers http.Header, params *object.BaseObjectParams) (*meta.MultipartUpload, error) {
@@ -851,12 +843,11 @@ func (m *MultiPartService) CompleteMultipartUpload(cliParts []meta.PartETag, par
 		Owner:              upload.Owner,
 	}
 
-	maxRetryTimes := 3
-	for i := 0; i < maxRetryTimes; i++ {
+	err = utils.RetryCall(3, func() error {
 		txn, err := m.kvstore.BeginTxn(context.Background(), nil)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
-			return nil, fmt.Errorf("failed to begin transaction: %w", err)
+			return fmt.Errorf("failed to begin transaction: %w", err)
 		}
 		defer func() {
 			if txn != nil {
@@ -868,7 +859,7 @@ func (m *MultiPartService) CompleteMultipartUpload(cliParts []meta.PartETag, par
 		objKey := "aws:object:" + ak.AccountID + ":" + obj.Bucket + "/" + obj.Key
 		if err := txn.Set(objKey, obj); err != nil {
 			logger.GetLogger("boulder").Errorf("failed to save object: %v", err)
-			return nil, fmt.Errorf("failed to save object: %w", err)
+			return fmt.Errorf("failed to save object: %w", err)
 		} else {
 			logger.GetLogger("boulder").Debugf("saved multi object: %s chunk %d", objKey, len(obj.Chunks))
 		}
@@ -876,38 +867,41 @@ func (m *MultiPartService) CompleteMultipartUpload(cliParts []meta.PartETag, par
 		// 循环删除 upload 及其所有 part（避免 DeletePrefix 限制）
 		if err := txn.DeletePrefix(uploadKey, 0); err != nil { // 传 0 表示无限制或循环删除
 			logger.GetLogger("boulder").Errorf("failed to delete upload info: %v", err)
-			return nil, fmt.Errorf("failed to delete upload info: %w", err)
+			return fmt.Errorf("failed to delete upload info: %w", err)
 		}
 
 		//如果是覆盖已有的对象，要先删除旧的对象
 		if existsOldObj {
 			gckey := gc.GCChunkPrefix + utils.GenUUID()
-			gcChunks := gc.GCChunk{
-				StorageID: oldObj.DataLocation,
-				ChunkIDs:  append([]string(nil), oldObj.Chunks...),
+			gcData := gc.GCChunk{
+				GCData: gc.GCData{
+					CreateAt: time.Now().UTC(),
+					Items:    make([]gc.GCItem, 0),
+				},
 			}
-			err = txn.Set(gckey, gcChunks)
+			for _, id := range oldObj.Chunks {
+				gcData.Items = append(gcData.Items, gc.GCItem{StorageID: oldObj.DataLocation, ID: id})
+			}
+
+			err = txn.Set(gckey, &gcData)
 			if err != nil {
 				logger.GetLogger("boulder").Errorf("%s/%s set gc chunk failed: %v", obj.Bucket, obj.Key, err)
-				return nil, fmt.Errorf("%s/%s set gc chunk failed: %w", obj.Bucket, obj.Key, err)
+				return fmt.Errorf("%s/%s set gc chunk failed: %w", obj.Bucket, obj.Key, err)
 			}
 		}
 
 		// 提交事务
-		if err := txn.Commit(); err != nil {
-			if i < maxRetryTimes-1 {
-				baseDelay := 500 * time.Millisecond
-				jitter := time.Duration(rand.Int63n(100)) * time.Millisecond
-				sleep := baseDelay<<uint(i) + jitter
-				time.Sleep(sleep)
-				continue
-			} else {
-				logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
-				return nil, fmt.Errorf("failed to commit transaction: %w", err)
-			}
+		err = txn.Commit()
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+			return fmt.Errorf("failed to commit transaction: %w", err)
 		}
-		txn = nil // 防止 defer rollback
-		break
+		txn = nil
+		return nil
+	})
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed completed multipart upload bucket=%s, key=%s, uploadID=%s : %v", obj.Bucket, obj.Key, params.UploadID, err)
+		return nil, fmt.Errorf("failed completed multipart upload bucket=%s, key=%s, uploadID=%s : %w", obj.Bucket, obj.Key, params.UploadID, err)
 	}
 
 	logger.GetLogger("boulder").Infof("completed multipart upload: bucket=%s, key=%s, uploadID=%s, parts=%d, size=%d",

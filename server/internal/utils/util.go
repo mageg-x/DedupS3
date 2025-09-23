@@ -11,23 +11,36 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/klauspost/compress/zstd"
 	"github.com/mageg-x/boulder/internal/logger"
+	"golang.org/x/crypto/pbkdf2"
 	"io"
+	mrand "math/rand"
 	"net"
 	"net/url"
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/klauspost/compress/zstd"
-	"golang.org/x/crypto/pbkdf2"
 )
 
-func IncrementKey(s string) string {
+// DumpCaller 打印多层调用栈
+func DumpCaller(depth int) {
+	fmt.Printf("[CALLER STACK]\n")
+	for i := 1; i <= depth; i++ {
+		if pc, file, line, ok := runtime.Caller(i); ok {
+			_, filename := filepath.Split(file)
+			fn := runtime.FuncForPC(pc)
+			fmt.Printf("  [%d] %s:%d %s\n", i, filename, line, fn.Name())
+		}
+	}
+}
+
+func NextKey(s string) string {
 	bytes := []byte(s)
 	for i := len(bytes) - 1; i >= 0; i-- {
 		if bytes[i] < 0xFF {
@@ -437,4 +450,22 @@ func CleanEmptyDirsRecursive(path string) error {
 	})
 
 	return err
+}
+
+func RetryCall(maxRetries int, fn func() error) error {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		lastErr = fn()
+		if lastErr == nil {
+			return nil
+		}
+
+		if i < maxRetries-1 {
+			baseDelay := 500 * time.Millisecond
+			jitter := time.Duration(mrand.Int63n(100)) * time.Millisecond
+			sleep := baseDelay<<uint(i) + jitter // 指数退避：500ms, 1s, 2s...
+			time.Sleep(sleep)
+		}
+	}
+	return fmt.Errorf("retry failed after %d attempts: %w", maxRetries, lastErr)
 }

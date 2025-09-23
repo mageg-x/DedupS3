@@ -1,8 +1,9 @@
 package router
 
 import (
-	"github.com/gorilla/mux"
 	"net/http"
+
+	"github.com/gorilla/mux"
 
 	"github.com/mageg-x/boulder/handler"
 	"github.com/mageg-x/boulder/internal/config"
@@ -11,7 +12,7 @@ import (
 
 func registerAPIRouter(mr *mux.Router) {
 	// init api router
-	ar := mr.PathPrefix("/").Subrouter()
+	ar := mr.PathPrefix("/").HeadersRegexp(xhttp.Authorization, "AWS4-HMAC-SHA256 Credential=.+").Subrouter()
 	var routers []*mux.Router
 	cfg := config.Get()
 	for _, domain := range cfg.Server.Domains {

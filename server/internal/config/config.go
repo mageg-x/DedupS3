@@ -120,10 +120,11 @@ type LogConfig struct {
 }
 
 type BlockConfig struct {
-	UploadParallelNum int `mapstructure:"upload_parallel_num" json:"uploadParallelNum" env:"BOULDER_UPLOAD_PARALLEL_NUM" default:"1"`
-	ShardNum          int `mapstructure:"shard_num" json:"shardNum" env:"BOULDER_UPLOAD_SHARD_NUM" default:"10"`
-	MaxSize           int `mapstructure:"max_size" json:"maxSize" env:"BOULDER_UPLOAD_MAX_SIZE" default:"67108864"`
-	MaxHeadSize       int `mapstructure:"max_head_size" json:"maxHeadSize" env:"BOULDER_UPLOAD_MAX_HEAD_SIZE" default:"204800"`
+	MaxRetentionTime  time.Duration `mapstructure:"max_retention_time" json:"maxRetentionTime" json:"maxRetentionTime" env:"BOULDER_MAX_RETENTION_TIME" default:"1h"`
+	UploadParallelNum int           `mapstructure:"upload_parallel_num" json:"uploadParallelNum" env:"BOULDER_UPLOAD_PARALLEL_NUM" default:"1"`
+	ShardNum          int           `mapstructure:"shard_num" json:"shardNum" env:"BOULDER_UPLOAD_SHARD_NUM" default:"10"`
+	MaxSize           int           `mapstructure:"max_size" json:"maxSize" env:"BOULDER_UPLOAD_MAX_SIZE" default:"67108864"`
+	MaxHeadSize       int           `mapstructure:"max_head_size" json:"maxHeadSize" env:"BOULDER_UPLOAD_MAX_HEAD_SIZE" default:"204800"`
 }
 
 type NodeConfig struct {

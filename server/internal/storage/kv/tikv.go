@@ -22,11 +22,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/tikv/client-go/v2/txnkv/txnsnapshot"
-	"time"
 
 	tikverr "github.com/tikv/client-go/v2/error"
 	"github.com/tikv/client-go/v2/tikv"
+	"github.com/tikv/client-go/v2/txnkv/txnsnapshot"
 	pd "github.com/tikv/pd/client"
 
 	xconf "github.com/mageg-x/boulder/internal/config"
@@ -143,7 +142,12 @@ func (t *TiKVStore) Set(key string, value interface{}) error {
 		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
 		return err
 	}
-	defer txn.Rollback()
+	defer func() {
+		if txn != nil {
+			txn.Rollback()
+		}
+	}()
+
 	err = txn.Set(key, value)
 	if err == nil {
 		logger.GetLogger("boulder").Infof("Successfully set value for key: %s", key)
@@ -151,6 +155,7 @@ func (t *TiKVStore) Set(key string, value interface{}) error {
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
 		}
+		txn = nil
 	}
 	return err
 }
@@ -161,54 +166,75 @@ func (t *TiKVStore) Incr(k string) (uint64, error) {
 
 	logger.GetLogger("boulder").Debugf("generating next ID for key: %s", k)
 
-	// 重试逻辑，处理TiKV可能的冲突
-	maxRetries := 5
-	for retry := 0; retry < maxRetries; retry++ {
-		txn, err := t.BeginTxn(context.Background(), nil)
-		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
-			return 0, err
+	txn, err := t.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to begin transaction for key %s : %v", k, err)
+		return id, fmt.Errorf("failed to begin transaction for key %s: %w", k, err)
+	}
+	defer func() {
+		if txn != nil {
+			txn.Rollback()
 		}
-		defer txn.Rollback()
+	}()
 
-		// 尝试获取当前值
-		rawData, exists, err := txn.GetRaw(k)
-		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to get key %s: %v", k, err)
-			continue // 出错时重试
-		}
-
-		// 计算新ID
-		if !exists {
-			id = 1
-			logger.GetLogger("boulder").Debugf("key %s not found, initializing to 1", k)
-		} else {
-			id = binary.LittleEndian.Uint64(rawData) + 1
-		}
-
-		// 保存新ID
-		var buf [8]byte
-		binary.LittleEndian.PutUint64(buf[:], id)
-		err = txn.Set(k, buf[:])
-		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to set key %s: %v", k, err)
-			continue // 出错时重试
-		}
-
-		// 提交事务
-		err = txn.Commit()
-		if err != nil {
-			logger.GetLogger("boulder").Warningf("transaction conflict, retrying (%d/%d)", retry+1, maxRetries)
-			time.Sleep(time.Duration(retry*10) * time.Millisecond) // 指数退避
-			continue
-		}
-
-		// 成功获取新ID
-		logger.GetLogger("boulder").Debugf("setting new ID %d for key: %s", id, k)
-		return id, nil
+	// 尝试获取当前值
+	rawData, exists, err := txn.GetRaw(k)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to get key %s: %v", k, err)
+		return id, fmt.Errorf("failed to get key %s: %w", k, err)
 	}
 
-	return 0, fmt.Errorf("failed to generate next ID after %d retries", maxRetries)
+	// 计算新ID
+	if !exists {
+		id = 1
+		logger.GetLogger("boulder").Debugf("key %s not found, initializing to 1", k)
+	} else {
+		id = binary.LittleEndian.Uint64(rawData) + 1
+	}
+
+	// 保存新ID
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], id)
+	err = txn.Set(k, buf[:])
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to set key %s: %v", k, err)
+		return id, fmt.Errorf("failed to set key %s: %w", k, err)
+	}
+
+	// 提交事务
+	err = txn.Commit()
+	if err != nil {
+		logger.GetLogger("boulder").Warnf("transaction conflict for key %s , %w", k, err)
+		return id, fmt.Errorf("transaction conflict for key %s , %w", k, err)
+	}
+	txn = nil
+
+	// 成功获取新ID
+	logger.GetLogger("boulder").Debugf("setting new ID %d for key: %s", id, k)
+	return id, nil
+}
+
+func (t *TiKVStore) Delete(key string) error {
+	txn, err := t.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
+		return err
+	}
+	defer func() {
+		if txn != nil {
+			txn.Rollback()
+		}
+	}()
+	err = txn.Delete(key)
+	if err == nil {
+		logger.GetLogger("boulder").Infof("Successfully delete key: %s", key)
+		err = txn.Commit()
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		}
+		txn = nil
+	}
+	return err
 }
 
 // BeginTxn 开始一个新事务

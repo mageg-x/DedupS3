@@ -19,7 +19,7 @@ func ReadBlockHandler(w http.ResponseWriter, r *http.Request) {
 	// 从路径中提取blockID
 	vars := utils.DecodeVars(mux.Vars(r))
 	blockID := vars["blockID"]
-	logger.GetLogger("boulder").Debugf("API called: ReadBlockDataHandler blockID %s head %#v", blockID, r.Header)
+	logger.GetLogger("boulder").Errorf("API called: ReadBlockDataHandler blockID %s head %#v", blockID, r.Header)
 	if !utils.IsValidUUID(blockID) {
 		logger.GetLogger("boulder").Errorf("Missing or invalid block_id in read request: %s", blockID)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
@@ -56,7 +56,7 @@ func ReadBlockHandler(w http.ResponseWriter, r *http.Request) {
 	localStore := node.NodeService{}
 	data, err := localStore.ReadLocalBlock(blockID, offset, size)
 	if err != nil || len(data) == 0 {
-		logger.GetLogger("boulder").Errorf("ReadLocalBlock %s failed: %v", blockID, err)
+		logger.GetLogger("boulder").Infof("ReadLocalBlock %s failed: %v", blockID, err)
 		if errors.Is(err, block.ErrBlockNotFound) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchKey)
 			return

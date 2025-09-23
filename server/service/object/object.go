@@ -27,7 +27,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	"strings"
 	"sync"
@@ -459,12 +458,8 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 }
 
 func (o *ObjectService) WriteObjectMeta(cs *chunk.ChunkService, chunks []*meta.Chunk, blocks map[string]*meta.Block, object *meta.BaseObject) error {
-	var txErr error
-	maxRetry := 3
 	obj := meta.BaseObjectToObject(object)
-
-	// 重试三次， 在文件相同时候，并发上传，会造成 事务冲突
-	for i := 0; i < maxRetry; i++ {
+	err := utils.RetryCall(3, func() error {
 		// 备份 allchunk, blocks, obj
 		bakAllChunks := make([]*meta.Chunk, 0, len(chunks))
 		for _, ck := range chunks {
@@ -480,21 +475,18 @@ func (o *ObjectService) WriteObjectMeta(cs *chunk.ChunkService, chunks []*meta.C
 
 		bakObj := obj.Clone()
 		objPrefix := "aws:object:"
-		txErr = cs.WriteMeta(context.Background(), obj.Owner.ID, bakAllChunks, bakBlocks, bakObj, objPrefix)
-		if txErr == nil {
-			break
-		} else if errors.Is(txErr, kv.ErrTxnCommit) && i < maxRetry-1 {
-			// 事务提交冲突
-			logger.GetLogger("boulder").Warnf("transmission write object %s/%s commit failed: %v, and  retry %d times", obj.Bucket, obj.Key, txErr, i+1)
-			baseDelay := 500 * time.Millisecond
-			jitter := time.Duration(rand.Int63n(100)) * time.Millisecond
-			sleep := baseDelay<<uint(i) + jitter
-			time.Sleep(sleep)
-		} else {
-			logger.GetLogger("boulder").Errorf("transmission write object %s/%s  meta info failed: %v，retry times %d", obj.Bucket, obj.Key, txErr, i+1)
+		err := cs.WriteMeta(context.Background(), obj.Owner.ID, bakAllChunks, bakBlocks, bakObj, objPrefix)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("transmission write object %s/%s  meta info failed: %v，retry times %d", obj.Bucket, obj.Key, err)
+			return fmt.Errorf("transmission write object %s/%s  meta info failed: %w", obj.Bucket, obj.Key, err)
 		}
+		return nil
+	})
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to write object %s/%s  meta info: %v", obj.Bucket, obj.Key, err)
+		return fmt.Errorf("failed to write object %s/%s  meta info: %w", obj.Bucket, obj.Key, err)
 	}
-	return txErr
+	return nil
 }
 
 func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *BaseObjectParams) (*meta.Object, io.ReadCloser, error) {
@@ -673,7 +665,7 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 				_bd, err := bs.ReadBlock(sc.ID, _chunk.BlockID)
 
 				if err != nil || _bd == nil || len(_bd.Data) == 0 {
-					logger.GetLogger("boulder").Errorf("failed to get the block data")
+					logger.GetLogger("boulder").Errorf("failed to get the block %s data", _chunk.BlockID)
 					return
 				}
 				_blockdata = _bd
@@ -873,7 +865,7 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 					}
 
 					// 使用 IncrementKey 确保跳过，兼容 UTF-8
-					next = utils.IncrementKey(accountPrefix + commonPrefix)
+					next = utils.NextKey(accountPrefix + commonPrefix)
 					logger.GetLogger("boulder").Debugf("%s get next %s", accountPrefix+commonPrefix, next)
 					break
 				} else {
@@ -1045,11 +1037,17 @@ func (o *ObjectService) DeleteObject(params *BaseObjectParams) error {
 	// 删除obj 关联的chunk
 	if exists && len(_object.Chunks) > 0 {
 		gckey := gc.GCChunkPrefix + utils.GenUUID()
-		gcChunks := gc.GCChunk{
-			StorageID: _object.DataLocation,
-			ChunkIDs:  append([]string(nil), _object.Chunks...),
+		gcData := gc.GCChunk{
+			GCData: gc.GCData{
+				CreateAt: time.Now().UTC(),
+				Items:    make([]gc.GCItem, 0),
+			},
 		}
-		err = txn.Set(gckey, &gcChunks)
+		for _, id := range _object.Chunks {
+			gcData.Items = append(gcData.Items, gc.GCItem{StorageID: _object.DataLocation, ID: id})
+		}
+
+		err = txn.Set(gckey, &gcData)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("%s/%s set gc chunk failed: %v", _object.Bucket, _object.Key, err)
 			return fmt.Errorf("%s/%s set gc chunk failed: %w", _object.Bucket, _object.Key, err)
@@ -1210,11 +1208,17 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 		}
 		if exists && len(_dstobj.Chunks) > 0 {
 			gckey := gc.GCChunkPrefix + utils.GenUUID()
-			gcChunks := gc.GCChunk{
-				StorageID: _dstobj.DataLocation,
-				ChunkIDs:  append([]string(nil), _dstobj.Chunks...),
+			gcData := gc.GCChunk{
+				GCData: gc.GCData{
+					CreateAt: time.Now().UTC(),
+					Items:    make([]gc.GCItem, 0),
+				},
 			}
-			err = txn.Set(gckey, &gcChunks)
+			for _, id := range _dstobj.Chunks {
+				gcData.Items = append(gcData.Items, gc.GCItem{StorageID: _dstobj.DataLocation, ID: id})
+			}
+
+			err = txn.Set(gckey, &gcData)
 			if err != nil {
 				logger.GetLogger("boulder").Errorf("%s/%s set gc chunk failed: %v", _dstobj.Bucket, _dstobj.Key, err)
 				return nil, fmt.Errorf("%s/%s set gc chunk failed: %w", _dstobj.Bucket, _dstobj.Key, err)
@@ -1644,11 +1648,17 @@ func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, er
 	// 如果目标 object name已经存在 ，需要先删除旧的索引
 	if dstObjOK && len(dstObj.Chunks) > 0 {
 		gckey := gc.GCChunkPrefix + utils.GenUUID()
-		gcChunks := gc.GCChunk{
-			StorageID: dstObj.DataLocation,
-			ChunkIDs:  append([]string(nil), dstObj.Chunks...),
+		gcData := gc.GCChunk{
+			GCData: gc.GCData{
+				CreateAt: time.Now().UTC(),
+				Items:    make([]gc.GCItem, 0),
+			},
 		}
-		err = txn.Set(gckey, &gcChunks)
+		for _, id := range dstObj.Chunks {
+			gcData.Items = append(gcData.Items, gc.GCItem{StorageID: dstObj.DataLocation, ID: id})
+		}
+
+		err = txn.Set(gckey, &gcData)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("%s/%s set gc chunk failed: %v", dstObj.Bucket, dstObj.Key, err)
 			return nil, fmt.Errorf("%s/%s set gc chunk failed: %w", dstObj.Bucket, dstObj.Key, err)

@@ -89,16 +89,24 @@ func (b *BadgerStore) Set(key string, value interface{}) error {
 		logger.GetLogger("boulder").Errorf("failed to initialize tikv txn: %v", err)
 		return err
 	}
-	defer txn.Rollback()
-	err = txn.Set(key, value)
-	if err == nil {
-		logger.GetLogger("boulder").Debugf("setting key %s with value %v", key, value)
-		err = txn.Commit()
-		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+	defer func() {
+		if txn != nil {
+			txn.Rollback()
 		}
+	}()
+	err = txn.Set(key, value)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed set key %s, %v", key, err)
+		return fmt.Errorf("failed set key %s, %w", key, err)
 	}
-	return err
+	err = txn.Commit()
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to commit transaction %s: %v", key, err)
+		return fmt.Errorf("failed to commit transaction %s: %w", key, err)
+	}
+	txn = nil
+	logger.GetLogger("boulder").Debugf("success setting key %s with value %#v", key, value)
+	return nil
 }
 
 func (b *BadgerStore) Incr(k string) (uint64, error) {
@@ -109,7 +117,11 @@ func (b *BadgerStore) Incr(k string) (uint64, error) {
 		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
 		return 0, err
 	}
-	defer txn.Rollback()
+	defer func() {
+		if txn != nil {
+			txn.Rollback()
+		}
+	}()
 
 	// 尝试获取当前值
 	rawData, exists, err := txn.GetRaw(k)
@@ -142,9 +154,36 @@ func (b *BadgerStore) Incr(k string) (uint64, error) {
 		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
 		return 0, err
 	}
+	txn = nil
 
 	logger.GetLogger("boulder").Debugf("setting new ID %d for key: %s", id, k)
 	return id, nil
+}
+
+func (b *BadgerStore) Delete(key string) error {
+	txn, err := b.BeginTxn(context.Background(), nil)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to initialize tikv txn: %v", err)
+		return err
+	}
+	defer func() {
+		if txn != nil {
+			txn.Rollback()
+		}
+	}()
+	err = txn.Delete(key)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to delete key %s: %v", key, err)
+		return fmt.Errorf("failed to delete key %s: %w", key, err)
+	}
+	err = txn.Commit()
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to commit transaction for key %s : %v", key, err)
+		return fmt.Errorf("failed to commit transaction for key %s: %w", key, err)
+	}
+	txn = nil
+	logger.GetLogger("boulder").Debugf("success deleted key %s", key)
+	return nil
 }
 
 // BeginTxn 开始一个新事务
@@ -306,6 +345,9 @@ func (t *BadgerTxn) Delete(key string) error {
 	err := t.txn.Delete([]byte(key))
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to delete key %s: %v", key, err)
+	} else {
+		//utils.DumpCaller(10)
+		logger.GetLogger("boulder").Debugf("success delete key %s", key)
 	}
 	return err
 }

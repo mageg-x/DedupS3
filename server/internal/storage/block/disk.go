@@ -115,11 +115,11 @@ func (d *DiskStore) ReadLocalBlock(blockID string, offset, length int64) ([]byte
 	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			logger.GetLogger("boulder").Debugf("Block %s does not exist", blockID)
+			logger.GetLogger("boulder").Errorf("Block %s does not exist in %s", blockID, path)
 			return nil, ErrBlockNotFound
 		}
-		logger.GetLogger("boulder").Errorf("failed to open block %s: %v", blockID, err)
-		return nil, fmt.Errorf("failed to open block %s: %w", blockID, err)
+		logger.GetLogger("boulder").Errorf("failed to open block %s in %s : %v", blockID, path, err)
+		return nil, fmt.Errorf("failed to open block %s in %s : %w", blockID, path, err)
 	}
 	defer file.Close()
 

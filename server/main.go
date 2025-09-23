@@ -116,7 +116,7 @@ func main() {
 	//		Path: "./data/block",
 	//	},
 	//})
-	store, _ := bs.AddStorage("s3", meta.STANDARD_CLASS_STORAGE, config.StorageConfig{
+	bs.AddStorage("s3", meta.STANDARD_CLASS_STORAGE, config.StorageConfig{
 		S3: &config.S3Config{
 			Endpoint:     "http://192.168.8.76:9898",
 			AccessKey:    "steven-ak01",
@@ -126,9 +126,7 @@ func main() {
 			UsePathStyle: true,
 		},
 	})
-	stores := bs.ListStorages()
-
-	logger.GetLogger("boulder").Errorf("list store %v strores %#v", store, stores)
+	bs.ListStorages()
 
 	// 初始化 垃圾回收后台服务
 	gc := gc2.GetGCService()
@@ -151,7 +149,7 @@ func main() {
 		}
 	}
 	ak, err := iamService.CreateAccessKey(account.AccountID, account.Name, time.Now().Add(time.Hour*24*365), cfg.Iam.AK, cfg.Iam.SK)
-	logger.GetLogger("boulder").Errorf("create account %v ak %v ", account, ak)
+	logger.GetLogger("boulder").Warnf("create account %v ak %v ", account, ak)
 
 	// 3. 创建路由处理器
 	mux := router.SetupRouter()

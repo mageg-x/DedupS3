@@ -97,7 +97,7 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IAMAccount,
 	var ac meta.IAMAccount
 	exists, err := txn.Get(key, &ac)
 	if exists {
-		logger.GetLogger("boulder").Errorf("username %s already exists", username)
+		logger.GetLogger("boulder").Infof("username %s already exists", username)
 		return &ac, ERR_ACCOUNT_EXISTS
 	}
 

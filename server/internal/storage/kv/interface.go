@@ -59,8 +59,8 @@ type KVStore interface {
 	GetRaw(key string) ([]byte, bool, error)
 	BatchGet(keys []string) (map[string][]byte, error)
 	Set(key string, value interface{}) error
-	// Incr 原子性地获取并递增ID值
 	Incr(key string) (uint64, error)
+	Delete(key string) error
 	// BeginTxn 开始一个新事务
 	BeginTxn(ctx context.Context, opt *TxnOpt) (Txn, error)
 	Close() error

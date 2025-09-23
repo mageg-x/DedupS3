@@ -95,6 +95,28 @@ func (s *BlockService) doSyncBlock(ctx context.Context) {
 				// 正常的处理逻辑
 			}
 
+			// 处理滞留在内存中的block
+			for i := 0; i < cfg.Block.ShardNum; i++ {
+				s.lockers[i].Lock()
+				defer s.lockers[i].Unlock()
+				flushBlock := s.preBlocks[i]
+				// 一小时还没有 提交的快，当成终结块提交吧
+				if flushBlock != nil && !flushBlock.Finally && time.Since(flushBlock.UpdatedAt) > cfg.Block.MaxRetentionTime {
+					oldVer := flushBlock.Ver
+					flushBlock.Finally = true
+					flushBlock.Ver = BLOCK_FINALY_VER
+					err := s.doFlushBlock(context.Background(), flushBlock)
+					if err != nil {
+						logger.GetLogger("boulder").Warnf("failed to flush block %s: %v", flushBlock.ID, err)
+						// 恢复
+						flushBlock.Ver = oldVer
+						flushBlock.Finally = false
+					} else {
+						s.preBlocks[i] = nil
+					}
+				}
+			}
+
 			blockPath := filepath.Join(cfg.Node.LocalDir, "block")
 			if err := os.MkdirAll(blockPath, 0755); err != nil {
 				logger.GetLogger("boulder").Errorf("failed to create disk store directory: %v", err)
@@ -246,6 +268,10 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 		s.lockers[i].Lock()
 		defer s.lockers[i].Unlock()
 		flushBlock = s.preBlocks[i]
+		// 一小时还没有更新和提交的快，当成终结块提交吧
+		if flushBlock != nil && time.Since(flushBlock.UpdatedAt) > cfg.Block.MaxRetentionTime {
+			flushBlock.Finally = true
+		}
 	} else {
 		if chunk.Size != int32(len(chunk.Data)) {
 			logger.GetLogger("boulder").Errorf("chunk %s/%s/%s size %d:%d not match", obj.Bucket, obj.Key, chunk.Hash, chunk.Size, len(chunk.Data))
@@ -284,14 +310,14 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 		}
 
 		if curBlock.TotalSize > int64(cfg.Block.MaxSize) {
-			// 块超过大小，从缓存中摘出来，保存到存储
+			// 块超过大小，保存到存储
 			flushBlock = s.preBlocks[i]
 			flushBlock.Finally = true
-			s.preBlocks[i] = nil
 		}
 	}
 
 	if flushBlock != nil {
+		oldVer := flushBlock.Ver
 		if flushBlock.Finally {
 			flushBlock.Ver = BLOCK_FINALY_VER
 		} else {
@@ -301,8 +327,15 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 		logger.GetLogger("boulder").Infof("ready to flush one block %s,  %d chunks", flushBlock.ID, len(flushBlock.ChunkList))
 		err := s.doFlushBlock(context.Background(), flushBlock)
 		if err != nil {
+			// 恢复
+			flushBlock.Ver = oldVer + 1
+			flushBlock.Finally = false
+
 			logger.GetLogger("boulder").Warnf("failed to flush block %s: %v", flushBlock.ID, err)
 			return nil, fmt.Errorf("failed to flush block %s: %w", flushBlock.ID, err)
+		} else {
+			// 成功的话， 把 flushBlock 摘出来
+			s.preBlocks[i] = nil
 		}
 	}
 

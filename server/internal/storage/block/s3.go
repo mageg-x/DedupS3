@@ -125,6 +125,9 @@ func (s *S3Store) ReadBlock(location, blockID string, offset, length int64) ([]b
 			if err != nil {
 				// 再从S3 试一次
 				data, err = s.ReadS3Block(blockID, offset, length)
+				if err != nil {
+					logger.GetLogger("boulder").Errorf("read block %s failed: %v", blockID, err)
+				}
 			}
 		}
 	}

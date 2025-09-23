@@ -81,7 +81,7 @@ func (s *StorageService) AddStorage(strType, strClass string, conf config.Storag
 	// 每种class 只能有一个存储
 	sl := s.GetStoragesByClass(strClass)
 	if sl != nil && len(sl) > 0 {
-		logger.GetLogger("boulder").Warnf("storage already has a storage with class %s", strClass)
+		logger.GetLogger("boulder").Infof("storage already has a storage with class %s", strClass)
 		return nil, errors.New("storage already has a storage with class " + strClass)
 	}
 	// 检查 ID 是否已存在

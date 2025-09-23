@@ -136,12 +136,16 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.BaseObject, cb WriteObjCB)
 	if rollback {
 		if len(blocks) > 0 {
 			gcKey := gc.GCBlockPrefix + utils.GenUUID()
-			var gcBlocks []*gc.GCBlock
-			for _, _block := range blocks {
-				gcBlocks = append(gcBlocks, &gc.GCBlock{BlockID: _block.ID, StorageID: obj.DataLocation})
+			gcData := gc.GCBlock{
+				GCData: gc.GCData{
+					CreateAt: time.Now().UTC(),
+					Items:    make([]gc.GCItem, 0),
+				},
 			}
-			logger.GetLogger("boulder").Warnf("rollback for %s/%s delete blocks %#v ", obj.Bucket, obj.Key, gcBlocks)
-			err := c.kvstore.Set(gcKey, &gcBlocks)
+			for _, _block := range blocks {
+				gcData.Items = append(gcData.Items, gc.GCItem{StorageID: obj.DataLocation, ID: _block.ID})
+			}
+			err := c.kvstore.Set(gcKey, &gcData)
 			if err != nil {
 				logger.GetLogger("boulder").Errorf("%s/%s save blocks failed: %v", obj.Bucket, obj.Key, err)
 			}
@@ -569,12 +573,17 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 
 	if len(gcChunks) > 0 {
 		gckey := gc.GCChunkPrefix + utils.GenUUID()
-		gcChunks := gc.GCChunk{
-			StorageID: obj.DataLocation,
-			ChunkIDs:  append([]string(nil), gcChunks...),
+		gcData := gc.GCChunk{
+			GCData: gc.GCData{
+				CreateAt: time.Now().UTC(),
+				Items:    make([]gc.GCItem, 0),
+			},
+		}
+		for _, id := range gcChunks {
+			gcData.Items = append(gcData.Items, gc.GCItem{StorageID: obj.DataLocation, ID: id})
 		}
 
-		err = txn.Set(gckey, &gcChunks)
+		err = txn.Set(gckey, &gcData)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("%s/%s set gc chunk failed: %v", obj.Bucket, obj.Key, err)
 			return fmt.Errorf("%s/%s set gc chunk failed: %w", obj.Bucket, obj.Key, err)
@@ -585,15 +594,23 @@ func (c *ChunkService) WriteMeta(ctx context.Context, accountID string, allChunk
 
 	if len(blocks) > 0 {
 		// 后置重删检查
+		gcKey := gc.GCDedupPrefix + utils.GenUUID()
+		gcData := gc.GCDedup{
+			GCData: gc.GCData{
+				CreateAt: time.Now().UTC(),
+				Items:    make([]gc.GCItem, 0),
+			},
+		}
+
 		for _, _block := range blocks {
-			gcDedupKey := gc.GCDedupPrefix + utils.GenUUID()
-			gcDedup := gc.GCDedup{StorageID: _block.StorageID, BlockID: _block.ID}
-			err = txn.Set(gcDedupKey, &gcDedup)
-			if err != nil {
-				logger.GetLogger("boulder").Errorf("%s/%s set post dedup block %s failed: %v", obj.Bucket, obj.Key, _block.ID, err)
-			} else {
-				logger.GetLogger("boulder").Infof("%s/%s set gc dedup block %s delay to proccess", obj.Bucket, obj.Key, _block.ID)
-			}
+			gcData.Items = append(gcData.Items, gc.GCItem{StorageID: _block.StorageID, ID: _block.ID})
+		}
+
+		err = txn.Set(gcKey, &gcData)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("%s/%s set post dedup block failed: %v", obj.Bucket, obj.Key, err)
+		} else {
+			logger.GetLogger("boulder").Infof("%s/%s set gc dedup block delay to proccess", obj.Bucket, obj.Key)
 		}
 	}
 
