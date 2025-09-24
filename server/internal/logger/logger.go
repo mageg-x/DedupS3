@@ -95,77 +95,121 @@ func (l *Logger) getCaller() string {
 
 // Debug === Debug 级别 ===
 func (l *Logger) Debug(args ...any) {
+	if !l.Logger.IsLevelEnabled(logrus.DebugLevel) {
+		return
+	}
 	caller := l.getCaller()
 	l.Logger.Debug(fmt.Sprintf("%s %v", caller, fmt.Sprint(args...)))
 }
 
 func (l *Logger) Debugf(format string, args ...any) {
+	if !l.Logger.IsLevelEnabled(logrus.DebugLevel) {
+		return
+	}
 	caller := l.getCaller()
 	l.Logger.Debugf("%s "+format, append([]any{caller}, args...)...)
 }
 
 // Trace === Trace 级别 ===
 func (l *Logger) Trace(args ...any) {
+	if !l.Logger.IsLevelEnabled(logrus.TraceLevel) {
+		return
+	}
 	caller := l.getCaller()
 	l.Logger.Trace(fmt.Sprintf("%s %v", caller, fmt.Sprint(args...)))
 }
 
 func (l *Logger) Tracef(format string, args ...any) {
+	if !l.Logger.IsLevelEnabled(logrus.TraceLevel) {
+		return
+	}
 	caller := l.getCaller()
 	l.Logger.Tracef("%s "+format, append([]any{caller}, args...)...)
 }
 
 // Info === Info 级别 ===
 func (l *Logger) Info(args ...any) {
+	if !l.Logger.IsLevelEnabled(logrus.InfoLevel) {
+		return
+	}
 	caller := l.getCaller()
 	l.Logger.Info(fmt.Sprintf("%s %v", caller, fmt.Sprint(args...)))
 }
 
 func (l *Logger) Infof(format string, args ...any) {
+	if !l.Logger.IsLevelEnabled(logrus.InfoLevel) {
+		return
+	}
 	caller := l.getCaller()
 	l.Logger.Infof("%s "+format, append([]any{caller}, args...)...)
 }
 
 // Warn === Warn 级别 ===
 func (l *Logger) Warn(args ...any) {
+	if !l.Logger.IsLevelEnabled(logrus.WarnLevel) {
+		return
+	}
 	caller := l.getCaller()
 	l.Logger.Warn(fmt.Sprintf("%s %v", caller, fmt.Sprint(args...)))
 }
 
 func (l *Logger) Warnf(format string, args ...any) {
+	if !l.Logger.IsLevelEnabled(logrus.WarnLevel) {
+		return
+	}
 	caller := l.getCaller()
 	l.Logger.Warnf("%s "+format, append([]any{caller}, args...)...)
 }
 
 // === Error 级别 ===
 func (l *Logger) Error(args ...any) {
+	if !l.Logger.IsLevelEnabled(logrus.ErrorLevel) {
+		return
+	}
 	caller := l.getCaller()
 	l.Logger.Error(fmt.Sprintf("%s %v", caller, fmt.Sprint(args...)))
 }
 
 func (l *Logger) Errorf(format string, args ...any) {
+	if !l.Logger.IsLevelEnabled(logrus.ErrorLevel) {
+		return
+	}
 	caller := l.getCaller()
 	l.Logger.Errorf("%s "+format, append([]any{caller}, args...)...)
 }
 
 // Fatal === Fatal 级别（会 os.Exit(1)）===
 func (l *Logger) Fatal(args ...any) {
+	if !l.Logger.IsLevelEnabled(logrus.FatalLevel) {
+		return
+	}
+
 	caller := l.getCaller()
 	l.Logger.Fatal(fmt.Sprintf("%s %v", caller, fmt.Sprint(args...)))
 }
 
 func (l *Logger) Fatalf(format string, args ...any) {
+	if !l.Logger.IsLevelEnabled(logrus.FatalLevel) {
+		return
+	}
+
 	caller := l.getCaller()
 	l.Logger.Fatalf("%s "+format, append([]any{caller}, args...)...)
 }
 
 // Panic === Panic 级别（会 panic）===
 func (l *Logger) Panic(args ...any) {
+	if !l.Logger.IsLevelEnabled(logrus.PanicLevel) {
+		return
+	}
 	caller := l.getCaller()
 	l.Logger.Panic(fmt.Sprintf("%s %v", caller, fmt.Sprint(args...)))
 }
 
 func (l *Logger) Panicf(format string, args ...any) {
+	if !l.Logger.IsLevelEnabled(logrus.PanicLevel) {
+		return
+	}
 	caller := l.getCaller()
 	l.Logger.Panicf("%s "+format, append([]any{caller}, args...)...)
 }

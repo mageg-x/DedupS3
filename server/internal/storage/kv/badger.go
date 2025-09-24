@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	"github.com/dgraph-io/badger/v4"
 	xconf "github.com/mageg-x/boulder/internal/config"
 	"github.com/mageg-x/boulder/internal/logger"
@@ -105,7 +106,7 @@ func (b *BadgerStore) Set(key string, value interface{}) error {
 		return fmt.Errorf("failed to commit transaction %s: %w", key, err)
 	}
 	txn = nil
-	logger.GetLogger("boulder").Debugf("success setting key %s with value %#v", key, value)
+	logger.GetLogger("boulder").Debugf("success setting key %s", key)
 	return nil
 }
 

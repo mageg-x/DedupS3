@@ -187,7 +187,7 @@ func (b *BucketService) GetBucketInfo(params *BaseBucketParams) (*meta.BucketMet
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
 		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
-		return nil, fmt.Errorf("failed to get access key %s", params.AccessKeyID)
+		return nil, fmt.Errorf("failed to get access key %s, %w", params.AccessKeyID, err)
 	}
 
 	key := "aws:bucket:" + ak.AccountID + ":" + params.BucketName

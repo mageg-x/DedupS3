@@ -6,6 +6,11 @@ import (
 	"unsafe"
 )
 
+const (
+	MIN_PART_SIZE = 5 * 1024 * 1024
+	MAX_PART_ID   = 10000
+)
+
 // PartObject 表示分段上传中的一个分段
 type PartObject struct {
 	// 对象标识信息

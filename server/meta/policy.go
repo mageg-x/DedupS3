@@ -39,7 +39,7 @@ type BucketPolicy struct {
 type Statement struct {
 	Sid          string         `json:"Sid,omitempty"`          // 声明ID
 	Effect       string         `json:"Effect"`                 // 允许(Allow)或拒绝(Deny)
-	Principal    Principal      `json:"Principal"`              // 授权主体
+	Principal    Principal      `json:"Principal,omitempty"`    // 授权主体
 	NotPrincipal Principal      `json:"NotPrincipal,omitempty"` // 排除主体
 	Action       StringOrArray  `json:"Action"`                 // 操作类型
 	NotAction    StringOrArray  `json:"NotAction,omitempty"`    // 排除操作

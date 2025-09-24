@@ -48,8 +48,7 @@ import (
 )
 
 const (
-	UID_PREFIX    = "u0118"
-	MIN_PART_SIZE = 5 * 1024 * 1024
+	UID_PREFIX = "u0118"
 )
 
 var (
@@ -481,14 +480,26 @@ func (m *MultiPartService) CreateMultipartUpload(headers http.Header, params *ob
 
 func (m *MultiPartService) UploadPart(r io.Reader, params *object.BaseObjectParams) (*meta.PartObject, error) {
 	// 验证参数
-	if params == nil || params.UploadID == "" || params.PartNumber <= 0 || r == nil {
+	if params == nil || params.UploadID == "" || r == nil {
 		logger.GetLogger("boulder").Errorf("invalid parameters for UploadPart")
 		return nil, xhttp.ToError(xhttp.ErrInvalidQueryParams)
 	}
+
+	if params.PartNumber <= 0 {
+		logger.GetLogger("boulder").Errorf("invalid PartNumber for UploadPart")
+		return nil, xhttp.ToError(xhttp.ErrInvalidPart)
+	}
+
+	if params.PartNumber > meta.MAX_PART_ID {
+		logger.GetLogger("boulder").Errorf("PartNumber %d is too large", params.PartNumber)
+		return nil, xhttp.ToError(xhttp.ErrInvalidMaxParts)
+	}
+
 	if err := utils.CheckValidBucketName(params.BucketName); err != nil {
 		logger.GetLogger("boulder").Errorf("not such bucket %s", params.BucketName)
 		return nil, xhttp.ToError(xhttp.ErrNoSuchBucket)
 	}
+
 	if err := utils.CheckValidObjectName(params.ObjKey); err != nil {
 		logger.GetLogger("boulder").Errorf("no such object %s", params.ObjKey)
 		return nil, xhttp.ToError(xhttp.ErrNoSuchKey)
@@ -784,8 +795,8 @@ func (m *MultiPartService) CompleteMultipartUpload(cliParts []meta.PartETag, par
 			return nil, xhttp.ToError(xhttp.ErrInvalidPart)
 		}
 		//除了最后一个其他都要大于 5M
-		if i < len(allParts)-1 && p.Size < MIN_PART_SIZE {
-			logger.GetLogger("boulder").Errorf("the none last part size %d is smaller then %d", p.Size, MIN_PART_SIZE)
+		if i < len(allParts)-1 && p.Size < meta.MIN_PART_SIZE {
+			logger.GetLogger("boulder").Errorf("the none last part size %d is smaller then %d", p.Size, meta.MIN_PART_SIZE)
 			return nil, xhttp.ToError(xhttp.ErrInvalidPart)
 		}
 	}
@@ -814,6 +825,10 @@ func (m *MultiPartService) CompleteMultipartUpload(cliParts []meta.PartETag, par
 		hash.Write(binaryMD5)
 		Chunks = append(Chunks, p.Chunks...)
 		totalSize += p.Size
+	}
+	if totalSize > meta.MAX_OBJECT_SIZE {
+		logger.GetLogger("boulder").Errorf("too large object for %s/%s", params.ObjKey, params.UploadID)
+		return nil, xhttp.ToError(xhttp.ErrEntityTooLarge)
 	}
 
 	// 生成最终 ETag

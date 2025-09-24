@@ -728,8 +728,14 @@ func GetObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 流式输出：防止大文件 OOM
 	_, err = io.Copy(w, reader)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("write response body failed: %v", err)
-		// 注意：此时可能已写 header，不能写 error
+		// 判断是否是 broken pipe
+		errorMsg := strings.ToLower(err.Error())
+		if strings.Contains(errorMsg, "broken pipe") || strings.Contains(errorMsg, "epipe") || strings.Contains(errorMsg, "connection reset by peer") {
+			// 不算服务端错误，不用 error 级别
+			logger.GetLogger("boulder").Infof("client disconnected during download: %v", err)
+		} else {
+			logger.GetLogger("boulder").Errorf("write response body failed: %v", err)
+		}
 		return
 	}
 }

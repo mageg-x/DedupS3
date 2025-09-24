@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/mageg-x/boulder/internal/config"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -554,6 +555,7 @@ func (g *GCService) dedupOne4Block(prefix, startKey string) (nextKey string, err
 		return nextKey, fmt.Errorf("gcDedup %s is not old enought", curKey)
 	}
 
+	cfg := config.Get()
 	newItems := make([]GCItem, 0)
 	for _, item := range gcDedup.Items {
 		blockKey := meta.GenBlockKey(item.StorageID, item.ID)
@@ -568,7 +570,7 @@ func (g *GCService) dedupOne4Block(prefix, startKey string) (nextKey string, err
 			logger.GetLogger("boulder").Errorf("block %s not found ", blockKey)
 		}
 
-		if _block.Finally {
+		if _block.Finally || time.Since(_block.UpdatedAt) > cfg.Block.MaxRetentionTime {
 			if err := g.shrinkBlock(&_block); err != nil {
 				newItems = append(newItems, item)
 			}

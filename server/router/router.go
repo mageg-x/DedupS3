@@ -38,9 +38,6 @@ func SetupRouter() *mux.Router {
 		KeyFunc:           middleware.ByIP,
 	}))
 
-	// 应用AWS4签名验证中间件
-	mr.Use(middleware.AWS4SigningMiddleware)
-
 	registerNodeRouter(mr)
 
 	registerAPIRouter(mr)

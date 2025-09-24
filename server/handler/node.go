@@ -77,5 +77,5 @@ func ReadBlockHandler(w http.ResponseWriter, r *http.Request) {
 		logger.GetLogger("boulder").Errorf("Failed to write block %s data to response: %v", blockID, err)
 		return
 	}
-	logger.GetLogger("boulder").Warnf("Successfully preparing block %s for response, size: %d bytes", blockID, len(data))
+	logger.GetLogger("boulder").Debugf("Successfully preparing block %s for response, size: %d bytes", blockID, len(data))
 }

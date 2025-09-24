@@ -155,8 +155,8 @@ func (s *BlockService) doSyncBlock(ctx context.Context) {
 				}
 
 				if strings.HasSuffix(tmpfile, ".tmp") {
-					// 判断修改时间是否早于 1 小时前
-					if time.Since(fileInfo.ModTime()) > 1*time.Hour {
+					// 判断修改时间是否早于 24 小时前
+					if time.Since(fileInfo.ModTime()) > 24*time.Hour {
 						// 超时了，可以安全删除
 						if err := os.Remove(tmpfile); err != nil {
 							logger.GetLogger("boulder").Warnf("remove stale tmp file %s failed: %v", tmpfile, err)
@@ -174,6 +174,7 @@ func (s *BlockService) doSyncBlock(ctx context.Context) {
 					continue
 				}
 				if ver != BLOCK_FINALY_VER && time.Since(fileInfo.ModTime()) < 30*time.Second {
+					// 延迟30秒上传，可能存在 覆写，节省重复上传流量
 					continue
 				}
 

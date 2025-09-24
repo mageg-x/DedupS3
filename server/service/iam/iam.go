@@ -68,7 +68,7 @@ func GetIamService() *IamService {
 
 // CreateAccount 创建新的IAM账户
 // 根据AWS标准，账户ID由系统自动生成，用户提供用户名和密码
-func (s *IamService) CreateAccount(username, password string) (*meta.IAMAccount, error) {
+func (s *IamService) CreateAccount(username, password string) (*meta.IamAccount, error) {
 	if err := meta.ValidateUsername(username); err != nil {
 		logger.GetLogger("boulder").Errorf("username %s is invalid format", username)
 		return nil, errors.New("invalid username format")
@@ -94,7 +94,7 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IAMAccount,
 	}()
 
 	// 检查账户是否已存在
-	var ac meta.IAMAccount
+	var ac meta.IamAccount
 	exists, err := txn.Get(key, &ac)
 	if exists {
 		logger.GetLogger("boulder").Infof("username %s already exists", username)
@@ -132,12 +132,12 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IAMAccount,
 }
 
 // GetAccount 获取IAM账户
-func (s *IamService) GetAccount(accountID string) (*meta.IAMAccount, error) {
+func (s *IamService) GetAccount(accountID string) (*meta.IamAccount, error) {
 	key := "aws:iam:account:id:" + accountID
 	if cache, err := xcache.GetCache(); err == nil && cache != nil {
 		account, ok, e := cache.Get(context.Background(), key)
 		if e == nil && ok {
-			obj, yes := account.(*meta.IAMAccount)
+			obj, yes := account.(*meta.IamAccount)
 			if !yes {
 				logger.GetLogger("boulder").Errorf("cached account %s is not of type *meta.iamaccount", accountID)
 				cache.Del(context.Background(), key)
@@ -145,7 +145,7 @@ func (s *IamService) GetAccount(accountID string) (*meta.IAMAccount, error) {
 			return obj, nil
 		}
 	}
-	var account meta.IAMAccount
+	var account meta.IamAccount
 	exist, err := s.iam.Get(key, &account)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to get account %s: %v", accountID, err)
@@ -164,7 +164,7 @@ func (s *IamService) GetAccount(accountID string) (*meta.IAMAccount, error) {
 }
 
 // UpdateAccount 更新IAM账户
-func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IAMAccount) error) (bool, error) {
+func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IamAccount) error) (bool, error) {
 	if meta.ValidateAccountID(accountID) != nil {
 		logger.GetLogger("boulder").Errorf("invalid account id: %s", accountID)
 		return false, errors.New("invalid account id")
@@ -182,7 +182,7 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IAMAc
 	}()
 
 	key := "aws:iam:account:id:" + accountID
-	var account meta.IAMAccount
+	var account meta.IamAccount
 	exists, err := txn.Get(key, &account)
 	if err != nil || !exists {
 		logger.GetLogger("boulder").Errorf("failed to get account %s: %v", accountID, err)
@@ -267,7 +267,7 @@ func (s *IamService) DeleteAccount(accountID string) error {
 	}()
 
 	// 删除与之相关的所有 accesskey
-	var account meta.IAMAccount
+	var account meta.IamAccount
 	exists, err := txn.Get(key, &account)
 	if err != nil || !exists {
 		logger.GetLogger("boulder").Errorf("failed to get account %s: %v", accountID, err)
@@ -308,7 +308,7 @@ func (s *IamService) DeleteAccount(accountID string) error {
 }
 
 // CreateUser 为指定账户添加新用户
-func (s *IamService) CreateUser(accountID, username, password, path string) (*meta.IAMUser, error) {
+func (s *IamService) CreateUser(accountID, username, password string) (*meta.IamUser, error) {
 	// 验证用户名和密码
 	if err := meta.ValidateUsername(username); err != nil {
 		logger.GetLogger("boulder").Errorf("username %s is invalid format", username)
@@ -319,14 +319,8 @@ func (s *IamService) CreateUser(accountID, username, password, path string) (*me
 		return nil, fmt.Errorf("invalid password: %w", err)
 	}
 
-	// 验证路径格式
-	if !meta.ValidatePath(path) {
-		logger.GetLogger("boulder").Errorf("invalid path format: %s", path)
-		return nil, errors.New("invalid path format")
-	}
-
-	var user *meta.IAMUser
-	ok, err := s.UpdateAccount(accountID, func(a *meta.IAMAccount) error {
+	var user *meta.IamUser
+	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
 		if a == nil {
 			return fmt.Errorf("account %s not found", accountID)
 		}
@@ -339,7 +333,7 @@ func (s *IamService) CreateUser(accountID, username, password, path string) (*me
 
 		// 创建新用户
 		var err error
-		user, err = a.CreateUser(username, password, path)
+		user, err = a.CreateUser(username, password)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to create user %s in account %s: %v", username, accountID, err)
 			return err
@@ -356,7 +350,7 @@ func (s *IamService) CreateUser(accountID, username, password, path string) (*me
 }
 
 func (s *IamService) DeleteUser(accountID, username string) error {
-	ok, err := s.UpdateAccount(accountID, func(a *meta.IAMAccount) error {
+	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
 		if a == nil {
 			return fmt.Errorf("account %s not found", accountID)
 		}
@@ -371,7 +365,7 @@ func (s *IamService) DeleteUser(accountID, username string) error {
 
 func (s *IamService) CreateAccessKey(accountID, username string, expiredAt time.Time, ak, sk string) (*meta.AccessKey, error) {
 	var key *meta.AccessKey
-	ok, err := s.UpdateAccount(accountID, func(a *meta.IAMAccount) error {
+	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
 		if a == nil {
 			logger.GetLogger("boulder").Errorf("account %s not found", accountID)
 			return fmt.Errorf("account %s not found", accountID)
@@ -391,7 +385,7 @@ func (s *IamService) CreateAccessKey(accountID, username string, expiredAt time.
 }
 
 func (s *IamService) DeleteAccessKey(accountID, accessKeyID string) error {
-	ok, err := s.UpdateAccount(accountID, func(a *meta.IAMAccount) error {
+	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
 		if a == nil {
 			return fmt.Errorf("account %s not found", accountID)
 		}

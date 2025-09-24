@@ -30,6 +30,10 @@ import (
 )
 
 const (
+	MAX_OBJECT_SIZE = 5 * 1024 * 1024 * 1024 * 1024
+)
+
+const (
 	NORMAL_OBJECT = iota
 	PART_OBJECT
 )
@@ -114,12 +118,21 @@ func NewObject(bucket, key string) *Object {
 			CreatedAt:    now,
 			LastModified: now,
 			ObjType:      NORMAL_OBJECT,
+			Chunks:       make([]string, 0),
 		},
 		ContentType:  "application/octet-stream",
 		StorageClass: STANDARD_CLASS_STORAGE,
 		UserMetadata: make(map[string]string),
 		Tags:         make(map[string]string),
 	}
+}
+
+// 构建资源ARN
+func BuildResourceARN(bucketName, objectKey string) string {
+	if objectKey != "" {
+		return "arn:aws:s3:::" + bucketName + "/" + objectKey
+	}
+	return "arn:aws:s3:::" + bucketName
 }
 
 // MarshalXML 实现：输出 <ETag>"actual-etag"</ETag>
