@@ -287,7 +287,7 @@ func (m *MultiPartService) AbortMultipartUpload(params *object.BaseObjectParams)
 
 func (m *MultiPartService) WritePartMeta(cs *chunk.ChunkService, chunks []*meta.Chunk, blocks map[string]*meta.Block, object *meta.BaseObject) error {
 	part := meta.BaseObjectToPart(object)
-	err := utils.RetryCall(3, func() error {
+	err := utils.RetryCall(5, func() error {
 		// 备份 allchunk, blocks, obj
 		bakAllChunks := make([]*meta.Chunk, 0, len(chunks))
 		for _, ck := range chunks {
@@ -858,7 +858,7 @@ func (m *MultiPartService) CompleteMultipartUpload(cliParts []meta.PartETag, par
 		Owner:              upload.Owner,
 	}
 
-	err = utils.RetryCall(3, func() error {
+	err = utils.RetryCall(5, func() error {
 		txn, err := m.kvstore.BeginTxn(context.Background(), nil)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)

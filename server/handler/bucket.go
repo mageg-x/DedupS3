@@ -1292,10 +1292,10 @@ func PutBucketVersioningHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// PutBucketNotificationHandler 设置存储桶的通知配置
-func PutBucketNotificationHandler(w http.ResponseWriter, r *http.Request) {
+// PutBucketNotificationConfigurationHandler 设置存储桶的通知配置
+func PutBucketNotificationConfigurationHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: PutBucketNotificationHandler")
+	logger.GetLogger("boulder").Infof("API called: PutBucketNotificationConfigurationHandler")
 	bucket, _, region, accessKeyID := GetReqVar(r)
 
 	// 获取bucket服务

@@ -10,10 +10,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/klauspost/compress/zstd"
-	"github.com/mageg-x/boulder/internal/logger"
-	"golang.org/x/crypto/pbkdf2"
 	"io"
 	mrand "math/rand"
 	"net"
@@ -26,6 +22,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/klauspost/compress/zstd"
+	"github.com/mageg-x/boulder/internal/logger"
+	"golang.org/x/crypto/pbkdf2"
 )
 
 // DumpCaller 打印多层调用栈
@@ -463,9 +464,9 @@ func RetryCall(maxRetries int, fn func() error) error {
 		}
 
 		if i < maxRetries-1 {
-			baseDelay := 500 * time.Millisecond
-			jitter := time.Duration(mrand.Int63n(100)) * time.Millisecond
-			sleep := baseDelay<<uint(i) + jitter // 指数退避：500ms, 1s, 2s...
+			base := 500 * time.Millisecond
+			cap := base * time.Duration(1<<uint(i)) // 500ms, 1s, 2s, 4s...
+			sleep := time.Duration(mrand.Int63n(int64(cap)))
 			time.Sleep(sleep)
 		}
 	}

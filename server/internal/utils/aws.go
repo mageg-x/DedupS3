@@ -18,6 +18,7 @@ package utils
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -26,9 +27,11 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
+	"syscall"
 	"unicode"
 	"unicode/utf8"
 )
@@ -484,4 +487,81 @@ func IsValidMetaKey(key string) bool {
 		}
 	}
 	return len(key) > 0
+}
+
+// IsNetworkOrHostDown - if there was a network error or if the host is down.
+// expectTimeouts indicates that *context* timeouts are expected and does not
+// indicate a downed host. Other timeouts still returns down.
+func IsNetworkOrHostDown(err error, expectTimeouts bool) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+
+	if expectTimeouts && errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	if expectTimeouts && errors.Is(err, os.ErrDeadlineExceeded) {
+		return false
+	}
+
+	// We need to figure if the error either a timeout
+	// or a non-temporary error.
+	urlErr := &url.Error{}
+	if errors.As(err, &urlErr) {
+		switch urlErr.Err.(type) {
+		case *net.DNSError, *net.OpError, net.UnknownNetworkError:
+			return true
+		}
+	}
+
+	var e net.Error
+	if errors.As(err, &e) {
+		if e.Timeout() {
+			return true
+		}
+	}
+
+	// If write to an closed connection, It will make this error
+	opErr := &net.OpError{}
+	if errors.As(err, &opErr) {
+		if opErr.Op == "write" && opErr.Net == "tcp" {
+			if es, ok := opErr.Err.(*os.SyscallError); ok && es.Syscall == "wsasend" {
+				return true
+			}
+		}
+	}
+
+	// Fallback to other mechanisms.
+	return strings.Contains(err.Error(), "Connection closed by foreign host") ||
+		strings.Contains(err.Error(), "TLS handshake timeout") ||
+		strings.Contains(err.Error(), "i/o timeout") ||
+		strings.Contains(err.Error(), "connection timed out") ||
+		strings.Contains(err.Error(), "connection reset by peer") ||
+		strings.Contains(err.Error(), "broken pipe") ||
+		strings.Contains(strings.ToLower(err.Error()), "503 service unavailable") ||
+		strings.Contains(err.Error(), "use of closed network connection") ||
+		strings.Contains(err.Error(), "An existing connection was forcibly closed by the remote host")
+}
+
+// IsConnResetErr - Checks for "connection reset" errors.
+func IsConnResetErr(err error) bool {
+	if strings.Contains(err.Error(), "connection reset by peer") {
+		return true
+	}
+	// incase if error message is wrapped.
+	return errors.Is(err, syscall.ECONNRESET)
+}
+
+// IsConnRefusedErr - Checks for "connection refused" errors.
+func IsConnRefusedErr(err error) bool {
+	if strings.Contains(err.Error(), "connection refused") {
+		return true
+	}
+	// incase if error message is wrapped.
+	return errors.Is(err, syscall.ECONNREFUSED)
 }

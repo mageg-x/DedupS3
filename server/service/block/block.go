@@ -41,10 +41,6 @@ import (
 	"github.com/mageg-x/boulder/service/storage"
 )
 
-const (
-	BLOCK_FINALY_VER = 0x07FFFF
-)
-
 var (
 	instance *BlockService
 	mu       = sync.Mutex{}
@@ -78,7 +74,7 @@ func GetBlockService() *BlockService {
 		cancelMap:    make(map[string]context.CancelFunc),
 		cancelLocker: sync.Mutex{},
 	}
-	instance.doSyncBlock(context.TODO())
+	//instance.doSyncBlock(context.Background())
 	return instance
 }
 
@@ -103,7 +99,7 @@ func (s *BlockService) doSyncBlock(ctx context.Context) {
 					if flushBlock != nil && !flushBlock.Finally && time.Since(flushBlock.UpdatedAt) > cfg.Block.MaxRetentionTime {
 						oldVer := flushBlock.Ver
 						flushBlock.Finally = true
-						flushBlock.Ver = BLOCK_FINALY_VER
+						flushBlock.Ver = meta.BLOCK_FINALY_VER
 						err := s.doFlushBlock(context.Background(), flushBlock)
 						if err != nil {
 							// 恢复
@@ -173,7 +169,7 @@ func (s *BlockService) doSyncBlock(ctx context.Context) {
 					logger.GetLogger("boulder").Errorf("failed to read block version: %v", err)
 					continue
 				}
-				if ver != BLOCK_FINALY_VER && time.Since(fileInfo.ModTime()) < 30*time.Second {
+				if ver != meta.BLOCK_FINALY_VER && time.Since(fileInfo.ModTime()) < 30*time.Second {
 					// 延迟30秒上传，可能存在 覆写，节省重复上传流量
 					continue
 				}
@@ -271,15 +267,7 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 	var clone *meta.Block
 
 	err := utils.WithLock(&s.lockers[i], func() error {
-
-		if chunk == nil {
-			// 对象结束时候会发一个 nil chunk 表示 对象结束了，需要保存 blcok
-			flushBlock = s.preBlocks[i]
-			// 一小时还没有更新和提交的快，当成终结块提交吧
-			if flushBlock != nil && time.Since(flushBlock.UpdatedAt) > cfg.Block.MaxRetentionTime {
-				flushBlock.Finally = true
-			}
-		} else {
+		if chunk != nil {
 			if chunk.Size != int32(len(chunk.Data)) {
 				logger.GetLogger("boulder").Errorf("chunk %s/%s/%s size %d:%d not match", obj.Bucket, obj.Key, chunk.Hash, chunk.Size, len(chunk.Data))
 				return fmt.Errorf("chunk %s/%s/%s size %d:%d not match", obj.Bucket, obj.Key, chunk.Hash, chunk.Size, len(chunk.Data))
@@ -319,12 +307,20 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 				flushBlock = s.preBlocks[i]
 				flushBlock.Finally = true
 			}
+		} else {
+			// 对象结束时候会发一个 nil chunk 表示 对象结束了，需要保存 blcok
+			flushBlock = s.preBlocks[i]
+			// 一小时还没有更新和提交的快，当成终结块提交吧
+			if flushBlock != nil && time.Since(flushBlock.UpdatedAt) > cfg.Block.MaxRetentionTime {
+				logger.GetLogger("boulder").Errorf("pass time %v:%v", time.Since(flushBlock.UpdatedAt), cfg.Block.MaxRetentionTime)
+				flushBlock.Finally = true
+			}
 		}
 
 		if flushBlock != nil {
 			oldVer := flushBlock.Ver
 			if flushBlock.Finally {
-				flushBlock.Ver = BLOCK_FINALY_VER
+				flushBlock.Ver = meta.BLOCK_FINALY_VER
 			} else {
 				flushBlock.Ver += 1
 			}
@@ -338,7 +334,7 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 
 				logger.GetLogger("boulder").Warnf("failed to flush block %s: %v", flushBlock.ID, err)
 				return fmt.Errorf("failed to flush block %s: %w", flushBlock.ID, err)
-			} else {
+			} else if flushBlock.Finally {
 				// 成功的话， 把 flushBlock 摘出来
 				s.preBlocks[i] = nil
 			}
@@ -459,22 +455,8 @@ func (s *BlockService) WriteBlock(ctx context.Context, storageID string, blockDa
 		logger.GetLogger("boulder").Errorf("get nil storage instance")
 		return fmt.Errorf("get nil storage instance: %w", err)
 	}
-	if st.Type == meta.DISK_TYPE_STORAGE && st.Class == meta.STANDARD_CLASS_STORAGE {
-		// 如果是磁盘存储，直接写
-		err = st.Instance.WriteBlock(ctx, blockData.ID, data, blockData.Ver)
-	} else {
-		// 其他存储，先缓存磁盘
-		cfg := xconf.Get()
-		inst, err := sb.NewDiskStore(&xconf.DiskConfig{
-			Path: filepath.Join(cfg.Node.LocalDir, "block"),
-		})
-		if err != nil {
-			logger.GetLogger("boulder").Warnf("failed to get local disk storage: %v", err)
-			return fmt.Errorf("new disk store: %w", err)
-		}
-		err = inst.WriteBlock(ctx, blockData.ID, data, blockData.Ver)
-	}
 
+	err = st.Instance.WriteBlock(ctx, blockData.ID, data, blockData.Ver)
 	if err != nil {
 		logger.GetLogger("boulder").Debugf("write block %s failed: %v", blockData.ID, err)
 		return fmt.Errorf("write block %s failed: %w", blockData.ID, err)

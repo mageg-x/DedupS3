@@ -334,7 +334,6 @@ func (c *ChunkService) Assemble(ctx context.Context, dedupChan chan *meta.Chunk,
 			logger.GetLogger("boulder").Warnf(" assemble chunk be cancelled: %v", ctx.Err())
 			return blocks, fmt.Errorf("assemble chunk be cancelled for %s/%s: %w", obj.Bucket, obj.Key, ctx.Err())
 		case chunk, ok := <-dedupChan:
-			logger.GetLogger("boulder").Tracef("get chunk %#v , %#v  input from dedupChan", chunk, ok)
 			bs := block.GetBlockService()
 			if bs == nil {
 				logger.GetLogger("boulder").Errorf("%s/%s block service is nil", obj.Bucket, obj.Key)

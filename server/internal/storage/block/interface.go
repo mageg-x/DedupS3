@@ -32,6 +32,15 @@ var (
 	ErrBlockNotFound = errors.New("block not found")
 )
 
+type pendingWrite struct {
+	ctx       context.Context
+	cancel    context.CancelFunc
+	ver       int32
+	startTime time.Time // 开始时间，用于监控
+	blockID   string
+	status    string // 状态：pending, writing, done, canceled
+}
+
 // BlockStore  存储后端接口
 type BlockStore interface {
 	Type() string

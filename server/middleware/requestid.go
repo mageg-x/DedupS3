@@ -19,6 +19,7 @@ package middleware
 
 import (
 	"context"
+	"github.com/mageg-x/boulder/internal/config"
 	"net/http"
 
 	"github.com/mageg-x/boulder/internal/logger"
@@ -46,6 +47,9 @@ func RequestIDMiddleware(next http.Handler) http.Handler {
 
 		// 将Request ID添加到响应头
 		w.Header().Set("x-amz-request-id", requestID)
+
+		w.Header().Set("x-amz-id-2", config.GlobalNodeID)
+
 		// 继续处理请求，使用带有新上下文的原始请求
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

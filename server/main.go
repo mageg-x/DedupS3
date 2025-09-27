@@ -21,13 +21,13 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/mageg-x/boulder/meta"
 	"math/rand"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/mageg-x/boulder/meta"
 	"github.com/mageg-x/boulder/service/iam"
 
 	"github.com/sirupsen/logrus"
@@ -111,19 +111,19 @@ func main() {
 
 	// 初始化 缺省block存储
 	bs := storage.GetStorageService()
-	//store, _ := bs.AddStorage("disk", meta.STANDARD_CLASS_STORAGE, config.StorageConfig{
+	//bs.AddStorage("disk", meta.STANDARD_CLASS_STORAGE, config.StorageConfig{
 	//	Disk: &config.DiskConfig{
 	//		Path: "./data/block",
 	//	},
 	//})
 	bs.AddStorage("s3", meta.STANDARD_CLASS_STORAGE, config.StorageConfig{
 		S3: &config.S3Config{
-			Endpoint:     "http://192.168.8.76:9898",
-			AccessKey:    "steven-ak01",
-			SecretKey:    "steven-sk01",
-			Region:       "us-east-1",
-			Bucket:       "b0001",
-			UsePathStyle: true,
+			Endpoint:     "https://oss-cn-shenzhen-internal.aliyuncs.com",
+			AccessKey:    "LTAI5tPDQRzqpgyCwdHVN8hJ",
+			SecretKey:    "T7uVSYjjdM05IphUYdameHgnrpqEIm",
+			Region:       "cn-shenzhen",
+			Bucket:       "slimstor-internal-0905",
+			UsePathStyle: false,
 		},
 	})
 	bs.ListStorages()
@@ -145,7 +145,7 @@ func main() {
 	account, err := iamService.CreateAccount(cfg.Iam.Username, cfg.Iam.Password)
 	if err != nil {
 		if !errors.Is(err, iam.ERR_ACCOUNT_EXISTS) {
-			logger.GetLogger("boulder").Fatalf("failed to create account", zap.Error(err))
+			logger.GetLogger("boulder").Fatal("failed to create account", zap.Error(err))
 		}
 	}
 	ak, err := iamService.CreateAccessKey(account.AccountID, account.Name, time.Now().Add(time.Hour*24*365), cfg.Iam.AK, cfg.Iam.SK)

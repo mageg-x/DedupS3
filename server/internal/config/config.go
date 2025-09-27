@@ -18,6 +18,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"github.com/mageg-x/boulder/internal/utils"
 	"path/filepath"
@@ -218,11 +220,15 @@ func Load(configPath string) error {
 	if cfg == nil {
 		return fmt.Errorf("failed to load config from %s", configPath)
 	}
+
 	// 对一些 调用频繁的数据进行 规范
 	cfg.Node.LocalDir = filepath.Clean(cfg.Node.LocalDir)
 	cfg.Node.LocalNode = strings.TrimSpace(cfg.Node.LocalNode)
-
 	globalConfig.Store(cfg)
+
+	// 初始化一些全局变量
+	nodeId := sha256.Sum256([]byte(cfg.Node.LocalNode))
+	GlobalNodeID = hex.EncodeToString(nodeId[:])
 
 	return nil
 }

@@ -173,7 +173,7 @@ func registerAPIRouter(mr *mux.Router) {
 		// PutBucketVersioning
 		router.Methods(http.MethodPut).HandlerFunc(handler.PutBucketVersioningHandler).Queries("versioning", "").Name("s3:PutBucketVersioning")
 		// PutBucketNotification
-		router.Methods(http.MethodPut).HandlerFunc(handler.PutBucketNotificationHandler).Queries("notification", "").Name("s3:PutBucketNotificationConfiguration")
+		router.Methods(http.MethodPut).HandlerFunc(handler.PutBucketNotificationConfigurationHandler).Queries("notification", "").Name("s3:PutBucketNotificationConfiguration")
 
 		// PutBucket
 		router.Methods(http.MethodPut).HandlerFunc(handler.PutBucketHandler).Name("s3:CreateBucket")

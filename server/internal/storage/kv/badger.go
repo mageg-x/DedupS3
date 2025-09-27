@@ -23,8 +23,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-
 	"github.com/dgraph-io/badger/v4"
+	"github.com/dgraph-io/badger/v4/options"
 	xconf "github.com/mageg-x/boulder/internal/config"
 	"github.com/mageg-x/boulder/internal/logger"
 )
@@ -42,7 +42,34 @@ type BadgerTxn struct {
 // InitBadgerStore 初始化Badger存储
 func InitBadgerStore(cfg xconf.BadgerConfig) (*BadgerStore, error) {
 	opts := badger.DefaultOptions(cfg.Path)
-	opts.Logger = nil // 禁用日志
+	opts.Logger = nil       // 禁用日志
+	opts.SyncWrites = false // 已设置，保持异步写入
+
+	// 综合优化配置
+	// 🎯 内存驻留优化组合
+	opts.MemTableSize = 512 << 20     // 512MB - 大内存表
+	opts.NumMemtables = 10            // 10个内存表
+	opts.NumLevelZeroTables = 20      // 延迟L0压缩
+	opts.NumLevelZeroTablesStall = 40 // 提高停滞阈值
+
+	// 💾 缓存优化
+	opts.BlockCacheSize = 1024 << 20 // 1GB块缓存
+	opts.IndexCacheSize = 512 << 20  // 512MB索引缓存
+
+	// 📊 LSM优化
+	opts.BaseTableSize = 16 << 20  // 16MB基础表
+	opts.BaseLevelSize = 256 << 20 // 256MB基础层级
+	opts.LevelSizeMultiplier = 20  // 减少压缩频率
+
+	// 🚀 Value存储优化
+	opts.ValueThreshold = 1024 // 1KB阈值
+	opts.VLogPercentile = 0.99 // 99%动态阈值
+	opts.NumCompactors = 2     // 最小化后台压缩
+
+	// ⚡ 性能优化
+	opts.Compression = options.ZSTD
+	opts.ZSTDCompressionLevel = 1
+	opts.VerifyValueChecksum = false // 关闭校验提升性能
 
 	db, err := badger.Open(opts)
 	if err != nil {

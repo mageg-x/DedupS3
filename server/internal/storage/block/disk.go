@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	xconf "github.com/mageg-x/boulder/internal/config"
 	"github.com/mageg-x/boulder/internal/logger"
@@ -19,8 +21,13 @@ import (
 // DiskStore 实现基于磁盘的存储后端
 type DiskStore struct {
 	BaseBlockStore
-	conf *xconf.DiskConfig
-	mu   sync.RWMutex
+	conf          *xconf.DiskConfig
+	pendingWrites sync.Map
+	pwLocker      sync.Mutex
+	mu            sync.RWMutex
+	// 添加监控相关字段
+	monitorStopChan chan struct{}
+	monitorRunning  atomic.Bool
 }
 
 // NewDiskStore  创建新的磁盘存储
@@ -31,9 +38,16 @@ func NewDiskStore(c *xconf.DiskConfig) (*DiskStore, error) {
 	}
 
 	ds := &DiskStore{
-		conf: c,
-		mu:   sync.RWMutex{},
+		conf:            c,
+		mu:              sync.RWMutex{},
+		pendingWrites:   sync.Map{},
+		pwLocker:        sync.Mutex{},
+		monitorStopChan: make(chan struct{}),
+		monitorRunning:  atomic.Bool{},
 	}
+
+	// 启动监控，每秒检查一次
+	ds.StartMonitor(1 * time.Second)
 
 	logger.GetLogger("boulder").Infof("Disk store initialized successfully")
 	return ds, nil
@@ -44,11 +58,190 @@ func (d *DiskStore) Type() string {
 	return "disk"
 }
 
+// StartMonitor 添加监控方法
+func (d *DiskStore) StartMonitor(interval time.Duration) {
+	logger.GetLogger("boulder").Infof("DiskStore monitor started with interval %v", interval)
+	if d.monitorRunning.Swap(true) {
+		return // 已经在运行
+	}
+
+	d.monitorStopChan = make(chan struct{})
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		defer d.monitorRunning.Store(false)
+
+		for {
+			select {
+			case <-ticker.C:
+				// 使用 break 跳出 select，保持代码清晰
+				break
+			case <-d.monitorStopChan:
+				return
+			}
+
+			var total int
+			var zombies []*pendingWrite
+			currentTime := time.Now().UTC()
+			d.pendingWrites.Range(func(key, value interface{}) bool {
+				total++
+				pw := value.(*pendingWrite)
+				// 检测僵尸任务：运行时间超过30秒的非活跃任务
+				if currentTime.Sub(pw.startTime) > 30*time.Second {
+					// 检查任务是否真的僵死了（context是否已取消）
+					select {
+					case <-pw.ctx.Done():
+						// context已取消，确实是僵尸
+						zombies = append(zombies, pw)
+					default:
+						// 只有writing 状态才耗时
+						if pw.status != "writing" {
+							zombies = append(zombies, pw) // 疑似僵尸
+						} else {
+							logger.GetLogger("boulder").Errorf("long time pengding writing routine for block %s", pw.blockID)
+						}
+					}
+				}
+				return true
+			})
+
+			// 打印监控信息
+			logger.GetLogger("boulder").Errorf("[DiskStore pendingWrite] Total:%d, Zombies:%d", total, len(zombies))
+			for _, _pw := range zombies {
+				if _pw.cancel != nil {
+					_pw.cancel()
+				}
+				d.pendingWrites.CompareAndDelete(_pw.blockID, _pw)
+			}
+		}
+	}()
+}
+
+func (d *DiskStore) StopMonitor() {
+	if d.monitorRunning.Load() {
+		close(d.monitorStopChan)
+	}
+}
+
 // WriteBlock 写入块到磁盘
 func (d *DiskStore) WriteBlock(ctx context.Context, blockID string, data []byte, ver int32) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
+	return d.WriteBlockDelay(ctx, blockID, data, ver)
+}
 
+func (d *DiskStore) WriteBlockDelay(ctx context.Context, blockID string, data []byte, ver int32) error {
+	logger.GetLogger("boulder").Debugf("[WriteBlockDelay] blockID=%s, ver=%d, size=%d KB", blockID, ver, len(data)/1024)
+
+	var newPw *pendingWrite
+	err := utils.WithLock(&d.pwLocker, func() error {
+		// 尝试加载已存在的 pending 任务
+		if old, loaded := d.pendingWrites.Load(blockID); loaded {
+			pw := old.(*pendingWrite)
+			// 如果新版本 >= 旧版本，取消旧写入
+			if ver >= pw.ver {
+				// 更新状态为取消
+				pw.status = "canceled"
+				pw.cancel() // 取消旧的写入 goroutine
+			} else {
+				// 新版本更老，直接丢弃（防止降级）
+				logger.GetLogger("boulder").Debugf("[Disk WriteBlockDelay] discard older version, blockID=%s, newVer=%d, oldVer=%d", blockID, ver, pw.ver)
+				return fmt.Errorf("older version discarded") // 明确返回错误
+			}
+		}
+
+		// 创建新的可取消 context 用于控制延迟写入
+		writeCtx, cancel := context.WithCancel(ctx)
+		// 创建新的pendingWrite实例
+		newPw = &pendingWrite{
+			ctx:       writeCtx,
+			cancel:    cancel,
+			ver:       ver,
+			startTime: time.Now().UTC(),
+			blockID:   blockID,
+			status:    "pending",
+		}
+		// 保存到map中
+		d.pendingWrites.Store(blockID, newPw)
+		return nil
+	})
+
+	if err != nil || newPw == nil {
+		return err
+	}
+
+	// 启动延迟写入routine， 合并覆写情况
+	go func(_pw *pendingWrite, _data []byte) {
+		defer func() {
+			// 更新状态并清理
+			if r := recover(); r != nil {
+				_pw.status = "panic"
+				logger.GetLogger("boulder").Errorf("[Disk WriteBlockDelay] panic in goroutine, blockID=%s, error=%v", _pw.blockID, r)
+			}
+			if _pw.cancel != nil {
+				_pw.cancel()
+			}
+			// 安全删除：只有当当前记录仍然是我们的pendingWrite时才删除
+			d.pendingWrites.CompareAndDelete(_pw.blockID, _pw)
+		}()
+		// 更新状态为等待延迟
+		_pw.status = "waiting_delay"
+
+		// 非终结块，需延迟写
+		if _pw.ver != 0x07FFFF {
+			delayTime := 5000 * time.Millisecond
+			// 等待 delayTime
+			select {
+			case <-time.After(delayTime):
+				// 延迟结束，继续
+				_pw.status = "delay_completed"
+			case <-_pw.ctx.Done():
+				_pw.status = "context_canceled"
+				return // 被取消
+			}
+		}
+
+		utils.WithLockKey(_pw.blockID, func() error {
+			// 锁内立即二次检查 cancel
+			select {
+			case <-_pw.ctx.Done():
+				_pw.status = "context_canceled"
+				return nil
+			default:
+			}
+
+			// 获取锁后， 并二次检查
+			if old, loaded := d.pendingWrites.Load(_pw.blockID); loaded {
+				curPw := old.(*pendingWrite)
+				if curPw.ver > _pw.ver {
+					_pw.status = "overridden_newer"
+					return nil // 已被更高版本覆盖
+				}
+			} else {
+				_pw.status = "already_processed"
+				// 已经被其他goroutine处理了
+				return nil
+			}
+
+			// 此时才安全执行写入
+			_pw.status = "writing"
+			if err := d.WriteBlockDirect(_pw.ctx, _pw.blockID, _data, _pw.ver); err != nil {
+				_pw.status = "write_failed"
+				logger.GetLogger("boulder").Errorf("[Disk WriteBlockDelay] blockID=%s, ver=%d, error=%v", _pw.blockID, _pw.ver, err)
+				return err
+			}
+			_pw.status = "write_completed"
+			logger.GetLogger("boulder").Debugf("[Disk WriteBlockDelay] blockID=%s, ver=%d", _pw.blockID, _pw.ver)
+			return nil
+		})
+	}(newPw, data)
+
+	return nil
+}
+
+func (d *DiskStore) WriteBlockDirect(ctx context.Context, blockID string, data []byte, ver int32) error {
+	//d.mu.Lock()
+	//defer d.mu.Unlock()
+	logger.GetLogger("boulder").Debugf("[WriteBlockDirect] blockID=%s, ver=%d, size=%d KB", blockID, ver, len(data)/1024)
 	path := d.blockPath(blockID)
 
 	// 确保目录存在
@@ -60,7 +253,7 @@ func (d *DiskStore) WriteBlock(ctx context.Context, blockID string, data []byte,
 	oldVer := int32(-1)
 	if utils.FileExists(path) {
 		if v, err := utils.ReadBlockVerFromFile(path); err == nil {
-			oldVer = int32(v)
+			oldVer = v
 		}
 	}
 	if ver <= oldVer {
@@ -68,21 +261,18 @@ func (d *DiskStore) WriteBlock(ctx context.Context, blockID string, data []byte,
 	}
 
 	// 创建新数据：4字节版本号 + 序列化数据
-	newData := make([]byte, 4+len(data))
-	binary.BigEndian.PutUint32(newData[0:4], uint32(ver))
-	copy(newData[4:], data)
+	versionBuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(versionBuf, uint32(ver))
 
 	// 使用临时文件写入，然后重命名，确保原子性
 	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, newData, 0644); err != nil {
+	if err := utils.WriteFile(tmpPath, [][]byte{versionBuf, data}, 0644); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to write block %s: %v", blockID, err)
 		return fmt.Errorf("failed to write block %s: %w", blockID, err)
 	}
 
 	// 重命名临时文件为最终文件
 	if err := os.Rename(tmpPath, path); err != nil {
-		// 清理临时文件
-		os.Remove(tmpPath)
 		logger.GetLogger("boulder").Errorf("failed to commit block %s: %v", blockID, err)
 		return fmt.Errorf("failed to commit block %s: %w", blockID, err)
 	}
@@ -106,10 +296,10 @@ func (d *DiskStore) ReadBlock(location, blockID string, offset, length int64) ([
 	return data, err
 }
 
-// ReadBlock 从磁盘读取块
+// ReadLocalBlock 从磁盘读取块
 func (d *DiskStore) ReadLocalBlock(blockID string, offset, length int64) ([]byte, error) {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
+	//d.mu.RLock()
+	//defer d.mu.RUnlock()
 
 	path := d.blockPath(blockID)
 	file, err := os.Open(path)
@@ -166,8 +356,8 @@ func (d *DiskStore) ReadLocalBlock(blockID string, offset, length int64) ([]byte
 
 // DeleteBlock 删除块
 func (d *DiskStore) DeleteBlock(blockID string) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
+	//d.mu.Lock()
+	//defer d.mu.Unlock()
 
 	path := d.blockPath(blockID)
 	if err := os.Remove(path); err != nil {
@@ -185,8 +375,8 @@ func (d *DiskStore) DeleteBlock(blockID string) error {
 
 // BlockExists 检查块是否存在
 func (d *DiskStore) BlockExists(blockID string) (bool, error) {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
+	//d.mu.RLock()
+	//defer d.mu.RUnlock()
 
 	path := d.blockPath(blockID)
 	_, err := os.Stat(path)

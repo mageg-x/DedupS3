@@ -459,7 +459,7 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 
 func (o *ObjectService) WriteObjectMeta(cs *chunk.ChunkService, chunks []*meta.Chunk, blocks map[string]*meta.Block, object *meta.BaseObject) error {
 	obj := meta.BaseObjectToObject(object)
-	err := utils.RetryCall(3, func() error {
+	err := utils.RetryCall(5, func() error {
 		// 备份 allchunk, blocks, obj
 		bakAllChunks := make([]*meta.Chunk, 0, len(chunks))
 		for _, ck := range chunks {
