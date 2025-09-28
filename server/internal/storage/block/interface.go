@@ -20,26 +20,30 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"github.com/mageg-x/boulder/internal/logger"
+	xconf "github.com/mageg-x/boulder/internal/config"
+	"github.com/mageg-x/boulder/internal/fs"
+	"github.com/mageg-x/boulder/internal/utils"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+
+	"github.com/mageg-x/boulder/internal/logger"
 )
 
 var (
 	ErrBlockNotFound = errors.New("block not found")
 )
 
-type pendingWrite struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
-	ver       int32
-	startTime time.Time // 开始时间，用于监控
-	blockID   string
-	status    string // 状态：pending, writing, done, canceled
-}
+var (
+	// 全局共享一个缓存文件系统
+	mmfile       *fs.TieredFs = nil
+	mmfileLocker sync.Mutex   = sync.Mutex{}
+)
 
 // BlockStore  存储后端接口
 type BlockStore interface {
@@ -53,6 +57,36 @@ type BlockStore interface {
 }
 
 type BaseBlockStore struct{}
+
+func GetTieredFs() (*fs.TieredFs, error) {
+	err := utils.WithLock(&mmfileLocker, func() error {
+		if mmfile != nil {
+			return nil
+		}
+		cfg := xconf.Get()
+
+		// 创建配置
+		config := &fs.Config{
+			MmapSize:   2 << 30, // 2GB
+			DiskDir:    filepath.Join(cfg.Node.LocalDir, "cache"),
+			EnableSync: true,
+		}
+
+		// 创建TieredFs实例
+		tfs, err := fs.NewTieredFs(config)
+
+		if err != nil || tfs == nil {
+			logger.GetLogger("boulder").Errorf("failed to create disk store: %v", err)
+			return err
+		}
+		mmfile = tfs
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mmfile, nil
+}
 
 // ReadBlockFromNode 从远程节点读取数据块
 func (b *BaseBlockStore) ReadRemoteBlock(nodeURL string, blockID string, offset, size int64) ([]byte, error) {

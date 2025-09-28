@@ -142,6 +142,10 @@ func WithTryLock(mu *sync.Mutex, fn func() error) error {
 	}
 }
 
+func WrapFunction(fn func() error) error {
+	return fn()
+}
+
 // GenUUID  生成一个有序ID，基于时间戳和随机数
 func GenUUID() string {
 	UUID := strings.ReplaceAll(uuid.New().String(), "-", "")
