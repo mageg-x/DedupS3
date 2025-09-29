@@ -469,8 +469,8 @@ func RetryCall(maxRetries int, fn func() error) error {
 
 		if i < maxRetries-1 {
 			base := 500 * time.Millisecond
-			cap := base * time.Duration(1<<uint(i)) // 500ms, 1s, 2s, 4s...
-			sleep := time.Duration(mrand.Int63n(int64(cap)))
+			delay := base * time.Duration(1<<uint(i)) // 500ms, 1s, 2s, 4s...
+			sleep := time.Duration(mrand.Int63n(int64(delay)))
 			time.Sleep(sleep)
 		}
 	}

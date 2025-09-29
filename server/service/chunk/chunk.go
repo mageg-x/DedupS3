@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	xconf "github.com/mageg-x/boulder/internal/config"
 	"io"
 	"reflect"
 	"sync"
@@ -59,19 +60,18 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.BaseObject, cb WriteObjCB)
 	// 创建输出通道
 	chunkChan := make(chan *meta.Chunk, 100)
 
-	// 配置分块器选项
-	opts := &fastcdc.ChunkerOpts{
-		MinSize:    1024 * 1024,
-		NormalSize: 2 * 1024 * 1024,
-		MaxSize:    4 * 1024 * 1024,
+	// 根据 cfg.Block.ChunkSize 设置 ChunkerOpts
+	cfg := xconf.Get()
+	cz := cfg.Block.ChunkSize
+	// 边界检查
+	if cz < 16*1024 {
+		cz = 16 * 1024 // 默认 4MB
 	}
-	// 小文件分块切分粒度小一些
-	if obj.Size < 16*1024*1024 && obj.ObjType != meta.PART_OBJECT {
-		opts = &fastcdc.ChunkerOpts{
-			MinSize:    16 * 1024,
-			NormalSize: 128 * 1024,
-			MaxSize:    512 * 1024,
-		}
+
+	opts := &fastcdc.ChunkerOpts{
+		MinSize:    cz * 5 / 10, // 50% of S
+		NormalSize: cz,          // 100% of S
+		MaxSize:    cz * 2,      // 200% of S
 	}
 
 	// 切分
@@ -163,49 +163,43 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.BaseObject, cb WriteObjCB)
 
 // Split DoChunk 简单的CDC分块函数
 func (c *ChunkService) Split(ctx context.Context, r io.Reader, outputChan chan *meta.Chunk, opt *fastcdc.ChunkerOpts, obj *meta.BaseObject) error {
-	// bodyData, err := io.ReadAll(r)
-	// 把 []byte 转成 io.Reader
-	// reader := bytes.NewReader(bodyData)
-	// 创建CDC分块器
-	chunker, err := fastcdc.NewChunker("fastcdc", r, opt)
-	if err != nil {
-		return fmt.Errorf("error creating chunker: %w", err)
-	}
+	cfg := xconf.Get()
 	var prevChunk *meta.Chunk
-
-	//hashfile, _ := os.Create(fmt.Sprintf("%s.hash", obj.Key))
-	//defer hashfile.Close()
-	//hashfile, _ := os.OpenFile("split.chunkid", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	//defer hashfile.Close()
-
 	objSize := 0 // 统计真实长度
-	// 循环读取并分块
-	for {
-		// 检查 context 是否已取消
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("fast cdc %s/%s be canceled: %w", obj.Bucket, obj.Key, ctx.Err())
-		default:
-			// 继续执行
-		}
 
-		chunkData, err := chunker.Next()
-		if err != nil && err != io.EOF {
-			return fmt.Errorf("cdc chunk %s/%s error: %w", obj.Bucket, obj.Key, err)
-		}
+	if cfg.Block.ChunkSize >= cfg.Block.MaxSize {
+		// 固定切成 cfg.Block.MaxSize (64MB) 大小的chunk, 如果不够就切成文件原始大小
+		const bufferSize = 1 << 20 // 1MB 缓冲区
+		tempBuf := make([]byte, bufferSize)
+		chunkData := make([]byte, 0, cfg.Block.MaxSize)
+		for {
+			// 检查 context 是否取消
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("fixed split %s/%s canceled: %w", obj.Bucket, obj.Key, ctx.Err())
+			default:
+			}
+			n, err := r.Read(tempBuf)
+			if err != nil && err != io.EOF {
+				logger.GetLogger("boulder").Errorf("%s/%s read data failed: %v", obj.Bucket, obj.Key, err)
+				return fmt.Errorf("read error during fixed split: %w", err)
+			}
 
-		objSize += len(chunkData)
+			if n > 0 {
+				objSize += n
+				chunkData = append(chunkData, tempBuf[:n]...)
+			}
 
-		// 如果有数据，发送到输出通道
-		if len(chunkData) > 0 {
-			currentChunk := meta.NewChunk(chunkData)
-			//fmt.Fprintf(hashfile, "%x\n", currentChunk.Hash)
-			// 避免最后一个分片太小
-			if err == io.EOF && len(chunkData) < opt.MinSize && prevChunk != nil {
+			if err == io.EOF && len(chunkData) < (cfg.Block.MaxSize/2) && prevChunk != nil {
 				// 合并到前一个分片
 				mergedData := append(prevChunk.Data, chunkData...)
 				prevChunk = meta.NewChunk(mergedData)
-			} else {
+				chunkData = make([]byte, 0)
+			}
+
+			if len(chunkData) >= cfg.Block.MaxSize {
+				currentChunk := meta.NewChunk(chunkData)
+				chunkData = make([]byte, 0, cfg.Block.MaxSize)
 				// 发送前一个分片（如果有）
 				if prevChunk != nil {
 					//hashfile.WriteString(fmt.Sprintf("%s  %s\n", obj.Key, prevChunk.Hash))
@@ -214,18 +208,83 @@ func (c *ChunkService) Split(ctx context.Context, r io.Reader, outputChan chan *
 				// 当前分片成为新的前一个分片
 				prevChunk = currentChunk
 			}
+
+			// 检查是否结束
+			if err == io.EOF {
+				if prevChunk != nil {
+					outputChan <- prevChunk
+				}
+				if len(chunkData) > 0 {
+					currentChunk := meta.NewChunk(chunkData)
+					outputChan <- currentChunk
+				}
+				break
+			}
+		}
+	} else {
+		// bodyData, err := io.ReadAll(r)
+		// 把 []byte 转成 io.Reader
+		// reader := bytes.NewReader(bodyData)
+		// 创建CDC分块器
+		chunker, err := fastcdc.NewChunker("fastcdc", r, opt)
+		if err != nil {
+			return fmt.Errorf("error creating chunker: %w", err)
 		}
 
-		// 检查是否结束
-		if err == io.EOF {
-			break
+		//hashfile, _ := os.Create(fmt.Sprintf("%s.hash", obj.Key))
+		//defer hashfile.Close()
+		//hashfile, _ := os.OpenFile("split.chunkid", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		//defer hashfile.Close()
+
+		// 循环读取并分块
+		for {
+			// 检查 context 是否已取消
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("fast cdc %s/%s be canceled: %w", obj.Bucket, obj.Key, ctx.Err())
+			default:
+				// 继续执行
+			}
+
+			chunkData, err := chunker.Next()
+			if err != nil && err != io.EOF {
+				return fmt.Errorf("cdc chunk %s/%s error: %w", obj.Bucket, obj.Key, err)
+			}
+
+			objSize += len(chunkData)
+
+			// 如果有数据，发送到输出通道
+			if len(chunkData) > 0 {
+				currentChunk := meta.NewChunk(chunkData)
+				//fmt.Fprintf(hashfile, "%x\n", currentChunk.Hash)
+				// 避免最后一个分片太小
+				if err == io.EOF && len(chunkData) < opt.MinSize && prevChunk != nil {
+					// 合并到前一个分片
+					mergedData := append(prevChunk.Data, chunkData...)
+					prevChunk = meta.NewChunk(mergedData)
+				} else {
+					// 发送前一个分片（如果有）
+					if prevChunk != nil {
+						//hashfile.WriteString(fmt.Sprintf("%s  %s\n", obj.Key, prevChunk.Hash))
+						outputChan <- prevChunk
+					}
+					// 当前分片成为新的前一个分片
+					prevChunk = currentChunk
+				}
+			}
+
+			// 检查是否结束
+			if err == io.EOF {
+				break
+			}
+		}
+		// 发送最后一个分片（可能是合并后的）
+		if prevChunk != nil {
+			//hashfile.WriteString(fmt.Sprintf("%s  %s\n", obj.Key, prevChunk.Hash))
+			outputChan <- prevChunk
 		}
 	}
-	// 发送最后一个分片（可能是合并后的）
-	if prevChunk != nil {
-		//hashfile.WriteString(fmt.Sprintf("%s  %s\n", obj.Key, prevChunk.Hash))
-		outputChan <- prevChunk
-	}
+
 	logger.GetLogger("boulder").Infof("split object %s/%s  to chunk finished, get size %d:%d", obj.Bucket, obj.Key, objSize, obj.Size)
 	obj.Size = int64(objSize)
 	return nil
@@ -248,13 +307,14 @@ func (c *ChunkService) Dedup(ctx context.Context, inputChan, dedupChan chan *met
 			logger.GetLogger("boulder").Warnf("chunking timed out or cancelled: %v", ctx.Err())
 			return nil, fmt.Errorf("chunking timed out or cancelled for %s/%s: %w", obj.Bucket, obj.Key, ctx.Err())
 		case chunk, ok := <-inputChan:
-			if ok && chunk != nil {
+			if chunk != nil {
 				//logger.GetLogger("boulder").Debugf("get cdc chunk %d fp %s", chunk.Size, chunk.Hash)
 				// 更新整个数据块的 MD5
 				fullMD5.Write(chunk.Data)
 				allChunk = append(allChunk, chunk)
 				batchDedup = append(batchDedup, chunk)
-			} else {
+			}
+			if !ok || chunk == nil {
 				// 通道已关闭，退出循环
 				finished = true
 			}

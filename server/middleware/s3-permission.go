@@ -79,15 +79,8 @@ func S3AuthorizationMiddleware(next http.Handler) http.Handler {
 
 		// 鉴权
 		allow, errCode := IsAllowed(accessKeyID, ak.AccountID, ak.Username, bucketName, objectKey, s3Action)
-		if err != nil {
-			logger.GetLogger("boulder").Errorf("evaluate permission failed: %v", err)
-			xhttp.WriteAWSErr(w, r, errCode)
-			return
-		}
-
-		if !allow {
-			logger.GetLogger("boulder").Errorf("access denied for user %s on %s %s with action %s",
-				ak.AccountID, bucketName, objectKey, s3Action)
+		if errCode != xhttp.ErrNone || !allow {
+			logger.GetLogger("boulder").Errorf("evaluate permission failed: %v", xhttp.ToError(errCode))
 			xhttp.WriteAWSErr(w, r, errCode)
 			return
 		}

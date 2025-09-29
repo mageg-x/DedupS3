@@ -529,6 +529,7 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 			_ = cache.Set(context.Background(), objkey, object, time.Second*600)
 		}
 	}
+	logger.GetLogger("boulder").Debugf("get object %s  %#v", objkey, object)
 
 	// 计算数据范围
 	start := int64(0)

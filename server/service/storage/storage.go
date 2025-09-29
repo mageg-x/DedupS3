@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/mageg-x/boulder/internal/fs"
 	"strings"
 	"sync"
 
@@ -196,9 +197,22 @@ func (s *StorageService) GetStorage(id string) (*meta.Storage, error) {
 		return nil, errors.New("unknown storage type")
 	}
 
-	if err != nil {
+	if err != nil && inst != nil {
 		logger.GetLogger("boulder").Errorf("error creating block store for storage id %s: %v", id, err)
 		return nil, fmt.Errorf("error creating block store: %w", err)
+	}
+
+	// 关键：检查 inst 是否也实现了 fs.SyncTarget
+	syncTarget, ok := inst.(fs.SyncTarget) // 类型断言
+	if !ok {
+		logger.GetLogger("boulder").Errorf("storage instance for id %s does not implement SyncTarget", id)
+		return nil, errors.New("storage does not support syncing")
+	}
+	vfile, err := block.GetTieredFs()
+	if err == nil && vfile != nil {
+		_ = vfile.AddSyncTarget(syncTarget)
+	} else {
+		return nil, fmt.Errorf("failed to get tiered fs: %w", err)
 	}
 
 	storage.Instance = inst

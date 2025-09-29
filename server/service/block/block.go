@@ -67,7 +67,7 @@ func (b *BlockCache) Add(storageID, blockID string, ver int32, data []byte) {
 	cacheKey := fmt.Sprintf("block:%s:%s", storageID, blockID)
 	// 写入block缓存
 	if ver == meta.BLOCK_FINALY_VER {
-		logger.GetLogger("boulder").Errorf("store block %s to block cache", blockID)
+		logger.GetLogger("boulder").Debugf("store block %s to block cache", blockID)
 		bcItem := &BlockCacheItem{
 			data:   data,
 			access: time.Now().UTC(),
@@ -309,22 +309,27 @@ func (s *BlockService) doFlushBlock(ctx context.Context, block *meta.Block) erro
 
 func (s *BlockService) WriteBlock(ctx context.Context, storageID string, blockData *meta.BlockData) error {
 	// 压缩Data
-	if len(blockData.Data) > 1024 && utils.IsCompressible(blockData.Data, 4*1024, 0.9) {
-		compress, err := utils.Compress(blockData.Data)
-		if err == nil && compress != nil && float64(len(compress))/float64(len(blockData.Data)) < 0.9 {
-			blockData.Data = compress
-			blockData.Compressed = true
-			blockData.RealSize = int64(len(compress))
+	cfg := xconf.Get()
+	if cfg.Block.Compress {
+		if len(blockData.Data) > 1024 && utils.IsCompressible(blockData.Data, 4*1024, 0.9) {
+			compress, err := utils.Compress(blockData.Data)
+			if err == nil && compress != nil && float64(len(compress))/float64(len(blockData.Data)) < 0.9 {
+				blockData.Data = compress
+				blockData.Compressed = true
+				blockData.RealSize = int64(len(compress))
+			}
 		}
 	}
 
 	// 加密Data
-	if len(blockData.Data) > 0 {
-		encrypt, err := utils.Encrypt(blockData.Data, blockData.ID)
-		if err == nil && encrypt != nil {
-			blockData.Data = encrypt
-			blockData.Encrypted = true
-			blockData.RealSize = int64(len(encrypt))
+	if cfg.Block.Encrypt {
+		if len(blockData.Data) > 0 {
+			encrypt, err := utils.Encrypt(blockData.Data, blockData.ID)
+			if err == nil && encrypt != nil {
+				blockData.Data = encrypt
+				blockData.Encrypted = true
+				blockData.RealSize = int64(len(encrypt))
+			}
 		}
 	}
 
@@ -364,7 +369,7 @@ func (s *BlockService) ReadBlock(storageID, blockID string) (*meta.BlockData, er
 	cacheKey := fmt.Sprintf("block:%s:%s", storageID, blockID)
 	data := bc.Get(storageID, cacheKey)
 	if data == nil {
-		logger.GetLogger("boulder").Errorf("block %s not found in block cache", blockID)
+		logger.GetLogger("boulder").Debugf("block %s not found in block cache", blockID)
 		ss := storage.GetStorageService()
 		if ss == nil {
 			logger.GetLogger("boulder").Errorf("get nil storage service")

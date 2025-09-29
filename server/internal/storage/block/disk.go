@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/mageg-x/boulder/internal/utils"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +12,7 @@ import (
 
 	xconf "github.com/mageg-x/boulder/internal/config"
 	"github.com/mageg-x/boulder/internal/logger"
+	"github.com/mageg-x/boulder/internal/utils"
 )
 
 // DiskStore 实现基于磁盘的存储后端
@@ -34,12 +34,6 @@ func NewDiskStore(c *xconf.DiskConfig) (*DiskStore, error) {
 		mu:   sync.RWMutex{},
 	}
 
-	vfile, err := GetTieredFs()
-	if err == nil && vfile != nil {
-		vfile.AddSyncTarget(ds)
-	} else {
-		return nil, fmt.Errorf("failed to get tiered fs: %w", err)
-	}
 	logger.GetLogger("boulder").Infof("Disk store initialized successfully")
 	return ds, nil
 }

@@ -122,12 +122,15 @@ type LogConfig struct {
 }
 
 type BlockConfig struct {
-	MaxRetentionTime time.Duration `mapstructure:"max_retention_time" json:"maxRetentionTime"  env:"BOULDER_MAX_RETENTION_TIME" default:"1h"`
-	SyncNum          int           `mapstructure:"sync_num" json:"syncNum" env:"BOULDER_SYNC_NUM" default:"1"`
-	SyncDelay        time.Duration `mapstructure:"sync_delay" json:"syncDelay" evn:"BOULDER_SYNC_DELAY" default:"10s"`
-	ShardNum         int           `mapstructure:"shard_num" json:"shardNum" env:"BOULDER_UPLOAD_SHARD_NUM" default:"10"`
-	MaxSize          int           `mapstructure:"max_size" json:"maxSize" env:"BOULDER_UPLOAD_MAX_SIZE" default:"67108864"`
-	MaxHeadSize      int           `mapstructure:"max_head_size" json:"maxHeadSize" env:"BOULDER_UPLOAD_MAX_HEAD_SIZE" default:"204800"`
+	MaxRetentionTime time.Duration `mapstructure:"max_retention_time" json:"maxRetentionTime"  env:"BOULDER_BLOCK_MAX_RETENTION_TIME" default:"1h"`
+	SyncNum          int           `mapstructure:"sync_num" json:"syncNum" env:"BOULDER_BLOCK_SYNC_NUM" default:"1"`
+	SyncDelay        time.Duration `mapstructure:"sync_delay" json:"syncDelay" evn:"BOULDER_BLOCK_SYNC_DELAY" default:"10s"`
+	ShardNum         int           `mapstructure:"shard_num" json:"shardNum" env:"BOULDER_BLOCK_SHARD_NUM" default:"10"`
+	MaxSize          int           `mapstructure:"max_size" json:"maxSize" env:"BOULDER_BLOCK_MAX_SIZE" default:"67108864"`
+	MaxHeadSize      int           `mapstructure:"max_head_size" json:"maxHeadSize" env:"BOULDER_BLOCK_MAX_HEAD_SIZE" default:"204800"`
+	Compress         bool          `mapstructure:"compress" json:"compress" env:"BOULDER_BLOCK_COMPRESS" default:"true"`
+	Encrypt          bool          `mapstructure:"encryte" json:"encrypt" env:"BOULDER_BLOCK_ENCRYPT" default:"true"`
+	ChunkSize        int           `mapstructure:"chunk_size" json:"chunkSize" env:"BOULDER_BLOCK_CHUNK_SIZE" default:"67108864"`
 }
 
 type NodeConfig struct {

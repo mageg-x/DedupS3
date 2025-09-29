@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/mageg-x/boulder/internal/logger"
 	"io"
 	"os"
 	"path/filepath"
@@ -15,8 +14,10 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/mageg-x/boulder/internal/utils"
 	"golang.org/x/sys/unix"
+
+	"github.com/mageg-x/boulder/internal/logger"
+	"github.com/mageg-x/boulder/internal/utils"
 )
 
 const (
@@ -179,7 +180,7 @@ func NewTieredFs(config *Config) (*TieredFs, error) {
 
 	// 初始化同步管理器
 	if config.EnableSync {
-		fs.syncManager = NewSyncManager(fs.flushToFile)
+		fs.syncManager = NewSyncManager(fs.flushToTarget)
 	}
 
 	// 尝试从文件加载元数据
@@ -340,6 +341,7 @@ func (fs *TieredFs) WriteFile(path string, chunks [][]byte, ver int32) error {
 	}
 
 	if totalLen == 0 {
+		logger.GetLogger("boulder").Errorf("write 0 bytes to file %s", path)
 		return fs.Remove(path) // 空文件视为删除
 	}
 
@@ -382,6 +384,7 @@ func (fs *TieredFs) WriteFile(path string, chunks [][]byte, ver int32) error {
 	// 释放旧空间
 	if oldRegion != nil {
 		fs.freeManager.Free(oldRegion.Start, oldRegion.Size())
+		fs.discardRegion(oldRegion)
 	}
 
 	// 拷贝写入
@@ -543,6 +546,7 @@ func (fs *TieredFs) Remove(path string) error {
 
 	if exists {
 		fs.freeManager.Free(region.Start, region.Size())
+		fs.discardRegion(region)
 	}
 
 	fs.saveMetadata()
@@ -566,7 +570,7 @@ func (fs *TieredFs) Sync(path string) error {
 		return ErrFileNotFound
 	}
 
-	err := fs.flushToFile(region)
+	err := fs.flushToTarget(region)
 	if err == nil {
 		fs.stats.mu.Lock()
 		fs.stats.SyncCount++
@@ -591,7 +595,7 @@ func (fs *TieredFs) SyncAll() error {
 
 	var lastErr error
 	for _, region := range regions {
-		if err := fs.flushToFile(region); err != nil {
+		if err := fs.flushToTarget(region); err != nil {
 			lastErr = err
 		}
 	}
@@ -727,19 +731,19 @@ func (fs *TieredFs) diskPath(blockID string) string {
 
 // flushToFile 将 mmap 区域刷入磁盘文件（调用者需持有锁）
 // 最终修复版本
-func (fs *TieredFs) flushToFile(region *FileRegion) error {
+func (fs *TieredFs) flushToTarget(region *FileRegion) error {
 	if region == nil {
+		logger.GetLogger("boudler").Warnf("region is nil: %v", region)
 		return nil
 	}
 
 	return utils.RetryCall(3, func() error {
 		fs.mu.RLock()
-
 		// 关键修复：验证区域归属
 		currentRegion, exists := fs.files[region.Path]
 		if !exists || !region.Equals(currentRegion) {
-			logger.GetLogger("boulder").Debugf("skip flush req %#v %#v ", currentRegion, region)
 			fs.mu.RUnlock()
+			logger.GetLogger("boulder").Infof("skip flush req %#v %#v ", currentRegion, region)
 			return nil
 		}
 
@@ -763,16 +767,18 @@ func (fs *TieredFs) flushToFile(region *FileRegion) error {
 				fs.mu.Unlock()
 			}
 			return err
+		} else {
+			logger.GetLogger("boulder").Errorf("no flush targer to do for %s ", region.Path)
+			return fmt.Errorf("no flush targer to do for %s ", region.Path)
 		}
-		return nil
 	})
 }
 
-// 在 flushToFile 成功后，释放 mmap 页面
+// discardRegion 在 flushToFile 成功后，释放 mmap 页面
 func (fs *TieredFs) discardRegion(region *FileRegion) {
 	start := region.Start & ^(int64(os.Getpagesize()) - 1) // 页对齐
 	length := ((region.End - start + int64(os.Getpagesize()) - 1) / int64(os.Getpagesize())) * int64(os.Getpagesize())
-
+	// 建议内核丢弃这部分内存（立即释放）
 	_, _, errno := unix.Syscall(
 		unix.SYS_MADVISE,
 		uintptr(unsafe.Pointer(&fs.mmapData[start])),

@@ -90,13 +90,6 @@ func NewS3Store(c *xconf.S3Config) (*S3Store, error) {
 		ctx:      ctx,
 	}
 
-	vfile, err := GetTieredFs()
-	if err == nil && vfile != nil {
-		vfile.AddSyncTarget(s3)
-	} else {
-		return nil, fmt.Errorf("failed to get tiered fs: %w", err)
-	}
-
 	logger.GetLogger("boulder").Infof("S3 store initialized successfully")
 	return s3, nil
 }
@@ -232,7 +225,7 @@ func (s *S3Store) ReadS3Block(blockID string, offset, length int64) ([]byte, err
 				return nil, ErrBlockNotFound
 			}
 		}
-		logger.GetLogger("boulder").Errorf("Failed to read block %s from S3: %v", blockID, err)
+		logger.GetLogger("boulder").Infof("Failed to read block %s from S3: %v", blockID, err)
 		return nil, fmt.Errorf("failed to read block %s from S3: %w", blockID, err)
 	}
 	defer resp.Body.Close()
