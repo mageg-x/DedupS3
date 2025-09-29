@@ -71,6 +71,7 @@ func NewS3Store(c *xconf.S3Config) (*S3Store, error) {
 	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
 		o.BaseEndpoint = aws.String(c.Endpoint)
 		o.UsePathStyle = c.UsePathStyle
+		o.RetryMaxAttempts = 1 // 禁用重试
 		logger.GetLogger("boulder").Debugf("Use path style: %v", c.UsePathStyle)
 	})
 
@@ -92,6 +93,8 @@ func NewS3Store(c *xconf.S3Config) (*S3Store, error) {
 	vfile, err := GetTieredFs()
 	if err == nil && vfile != nil {
 		vfile.AddSyncTarget(s3)
+	} else {
+		return nil, fmt.Errorf("failed to get tiered fs: %w", err)
 	}
 
 	logger.GetLogger("boulder").Infof("S3 store initialized successfully")
@@ -179,7 +182,8 @@ func (s *S3Store) WriteBlockDirect(ctx context.Context, blockID string, data []b
 func (s *S3Store) ReadBlock(location, blockID string, offset, length int64) ([]byte, error) {
 	data, err := s.ReadS3Block(blockID, offset, length)
 	if err != nil {
-		if errors.Is(err, ErrBlockNotFound) {
+		//if errors.Is(err, ErrBlockNotFound)
+		{
 			// S3 上没有， 还在节点缓存中未提交
 			data, err = s.ReadRemoteBlock(location, blockID, offset, length)
 			if err != nil {

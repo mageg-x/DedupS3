@@ -111,22 +111,23 @@ func main() {
 
 	// 初始化 缺省block存储
 	bs := storage.GetStorageService()
-	bs.AddStorage("disk", meta.STANDARD_CLASS_STORAGE, config.StorageConfig{
-		Disk: &config.DiskConfig{
-			Path: "./data/block",
-		},
-	})
-	//
-	//bs.AddStorage("s3", meta.STANDARD_CLASS_STORAGE, config.StorageConfig{
-	//	S3: &config.S3Config{
-	//		Endpoint:     "https://oss-cn-shenzhen-internal.aliyuncs.com",
-	//		AccessKey:    "LTAI5tPDQRzqpgyCwdHVN8hJ",
-	//		SecretKey:    "T7uVSYjjdM05IphUYdameHgnrpqEIm",
-	//		Region:       "cn-shenzhen",
-	//		Bucket:       "slimstor-internal-0905",
-	//		UsePathStyle: false,
+	//bs.AddStorage("disk", meta.STANDARD_CLASS_STORAGE, config.StorageConfig{
+	//	Disk: &config.DiskConfig{
+	//		Path: "./data/block",
 	//	},
 	//})
+	//
+
+	bs.AddStorage("s3", meta.STANDARD_CLASS_STORAGE, config.StorageConfig{
+		S3: &config.S3Config{
+			Endpoint:     "https://oss-cn-shenzhen-internal.aliyuncs.com",
+			AccessKey:    "LTAI5tPDQRzqpgyCwdHVN8hJ",
+			SecretKey:    "T7uVSYjjdM05IphUYdameHgnrpqEIm",
+			Region:       "cn-shenzhen",
+			Bucket:       "slimstor-internal-0905",
+			UsePathStyle: false,
+		},
+	})
 
 	bs.ListStorages()
 

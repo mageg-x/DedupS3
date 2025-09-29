@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -41,12 +42,90 @@ import (
 var (
 	instance *BlockService
 	mu       = sync.Mutex{}
+	bc       = BlockCache{
+		blocks: make(map[string]*BlockCacheItem),
+		mu:     sync.Mutex{},
+	} // final block 缓存
 )
 
 type BlockService struct {
 	kvstore   kv.KVStore
 	preBlocks []*meta.Block
 	lockers   []sync.Mutex // 为每个块单独设置锁
+}
+
+type BlockCacheItem struct {
+	data   []byte
+	access time.Time
+}
+type BlockCache struct {
+	mu     sync.Mutex
+	blocks map[string]*BlockCacheItem
+}
+
+func (b *BlockCache) Add(storageID, blockID string, ver int32, data []byte) {
+	cacheKey := fmt.Sprintf("block:%s:%s", storageID, blockID)
+	// 写入block缓存
+	if ver == meta.BLOCK_FINALY_VER {
+		logger.GetLogger("boulder").Errorf("store block %s to block cache", blockID)
+		bcItem := &BlockCacheItem{
+			data:   data,
+			access: time.Now().UTC(),
+		}
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		b.blocks[cacheKey] = bcItem
+
+		totalSize := int64(0)
+		var keys []string
+		for k, item := range b.blocks {
+			if item != nil {
+				totalSize += int64(len(item.data))
+				keys = append(keys, k)
+			}
+		}
+		// 按 access 时间升序排序：最早的在前
+		sort.Slice(keys, func(i, j int) bool {
+			return b.blocks[keys[i]].access.Before(b.blocks[keys[j]].access)
+		})
+		// 超过10分钟的删除
+		expiredTime := time.Now().UTC().Add(-10 * time.Minute)
+		for _, k := range keys {
+			if item := b.blocks[k]; item != nil {
+				if item.access.Before(expiredTime) {
+					totalSize -= int64(len(item.data))
+					delete(b.blocks, k)
+				} else {
+					break
+				}
+			}
+		}
+		// 缓存大小未2GB
+		for totalSize > 1024*1024*1024*2 {
+			// 删除最老的一项（第一个）
+			oldestKey := keys[0]
+			totalSize -= int64(len(b.blocks[oldestKey].data))
+			delete(b.blocks, oldestKey)
+		}
+	}
+}
+
+func (b *BlockCache) Get(storageID, blockID string) []byte {
+	cacheKey := fmt.Sprintf("block:%s:%s", storageID, blockID)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	item := b.blocks[cacheKey]
+	if item != nil {
+		return item.data
+	}
+	return nil
+}
+
+func (b *BlockCache) Del(storageID, blockID string) {
+	cacheKey := fmt.Sprintf("block:%s:%s", storageID, blockID)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.blocks, cacheKey)
 }
 
 func GetBlockService() *BlockService {
@@ -282,48 +361,81 @@ func (s *BlockService) WriteBlock(ctx context.Context, storageID string, blockDa
 }
 
 func (s *BlockService) ReadBlock(storageID, blockID string) (*meta.BlockData, error) {
-	ss := storage.GetStorageService()
-	if ss == nil {
-		logger.GetLogger("boulder").Errorf("get nil storage service")
-		return nil, fmt.Errorf("get nil storage service")
+	cacheKey := fmt.Sprintf("block:%s:%s", storageID, blockID)
+	data := bc.Get(storageID, cacheKey)
+	if data == nil {
+		logger.GetLogger("boulder").Errorf("block %s not found in block cache", blockID)
+		ss := storage.GetStorageService()
+		if ss == nil {
+			logger.GetLogger("boulder").Errorf("get nil storage service")
+			return nil, fmt.Errorf("get nil storage service")
+		}
+
+		st, err := ss.GetStorage(storageID)
+		if err != nil || st == nil || st.Instance == nil {
+			logger.GetLogger("boulder").Errorf("get nil storage instance")
+			return nil, fmt.Errorf("get nil storage instance: %w", err)
+		}
+
+		// 读取 block meta信息
+		blockKey := meta.GenBlockKey(storageID, blockID)
+		var blockMeta meta.Block
+		exists, err := s.kvstore.Get(blockKey, &blockMeta)
+		if err != nil && !exists {
+			logger.GetLogger("boulder").Debugf("read block meta %s failed: %v", blockID, err)
+			return nil, fmt.Errorf("read block meta %s failed: %w", blockID, err)
+		}
+
+		// 读取block 数据
+		err = utils.WithLockKey(cacheKey, func() error {
+			// 再次检查
+			if data = bc.Get(storageID, blockID); data != nil {
+				return nil
+			}
+
+			data, err = st.Instance.ReadBlock(blockMeta.Location, blockID, 0, 0)
+			if err != nil || len(data) == 0 {
+				logger.GetLogger("boulder").Errorf("read block %s failed: %v", blockID, err)
+				return fmt.Errorf("read block %s failed: %w", blockID, err)
+			}
+
+			// 写入block cache
+			if data != nil {
+				blockData := meta.BlockData{}
+				if err := msgpack.Unmarshal(data, &blockData); err == nil && blockData.ID == blockID && blockData.Ver == meta.BLOCK_FINALY_VER {
+					bc.Add(storageID, blockID, blockData.Ver, data)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	st, err := ss.GetStorage(storageID)
-	if err != nil || st == nil || st.Instance == nil {
-		logger.GetLogger("boulder").Errorf("get nil storage instance")
-		return nil, fmt.Errorf("get nil storage instance: %w", err)
+	if data == nil {
+		logger.GetLogger("boulder").Errorf("block %s not found", blockID)
+		return nil, fmt.Errorf("block %s not found", blockID)
 	}
 
-	// 读取 block meta信息
-	blockKey := meta.GenBlockKey(storageID, blockID)
-	var blockMeta meta.Block
-	exists, err := s.kvstore.Get(blockKey, &blockMeta)
-	if err != nil && !exists {
-		logger.GetLogger("boulder").Debugf("read block meta %s failed: %v", blockID, err)
-		return nil, fmt.Errorf("read block meta %s failed: %w", blockID, err)
-	}
-
-	// 读取block 数据
-	data, err := st.Instance.ReadBlock(blockMeta.Location, blockID, 0, 0)
-	if err != nil || len(data) == 0 {
-		logger.GetLogger("boulder").Errorf("read block %s failed: %v", blockID, err)
-		return nil, fmt.Errorf("read block %s failed: %w", blockID, err)
-	}
 	blockData := meta.BlockData{}
-	err = msgpack.Unmarshal(data, &blockData)
+	err := msgpack.Unmarshal(data, &blockData)
 	if err != nil {
+		bc.Del(storageID, blockID)
 		logger.GetLogger("boulder").Errorf("msgpack unmarshal block %s  data %d to struct failed: %v", blockID, len(data), err)
 		return nil, fmt.Errorf("msgpack unmarshal block %s  data %d to struct failed: %w", blockID, len(data), err)
 	} else {
 		logger.GetLogger("boulder").Debugf("unmarshal block %s size %d  %#v success", blockID, len(data), blockData.BlockHeader)
 	}
 	if blockID != blockData.ID {
+		bc.Del(storageID, blockID)
 		logger.GetLogger("boulder").Errorf("read block %s id not match block %s ", blockID, blockData.ID)
 		return nil, fmt.Errorf("read block %s id not match block %s ", blockID, blockData.ID)
 	}
 	if blockData.Encrypted {
 		_d, err := utils.Decrypt(blockData.Data, blockID)
 		if err != nil {
+			bc.Del(storageID, blockID)
 			logger.GetLogger("boulder").Errorf("decrypt block %s:%s size %d:%d failed: %v", blockID, blockData.ID, len(blockData.Data), blockData.RealSize, err)
 			return nil, fmt.Errorf("decrypt block %s failed: %w", blockID, err)
 		} else {
@@ -335,12 +447,14 @@ func (s *BlockService) ReadBlock(storageID, blockID string) (*meta.BlockData, er
 	if blockData.Compressed {
 		_d, err := utils.Decompress(blockData.Data)
 		if err != nil {
+			bc.Del(storageID, blockID)
 			logger.GetLogger("boulder").Errorf("decompress block %s data failed: %v", blockID, err)
 			return nil, fmt.Errorf("decompress block %s data failed: %w", blockID, err)
 		}
 		blockData.Data = _d
 	}
 	if blockData.TotalSize != int64(len(blockData.Data)) {
+		bc.Del(storageID, blockID)
 		logger.GetLogger("boulder").Errorf("read block %s size not match %d:%d ", blockID, blockData.TotalSize, len(blockData.Data))
 		return nil, fmt.Errorf("block %s  data be damaged size not match %d:%d", blockID, blockData.TotalSize, len(blockData.Data))
 	}

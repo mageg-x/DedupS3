@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 )
@@ -15,9 +16,14 @@ func (r Region) Size() int64 {
 	return r.End - r.Start
 }
 
-// Contains 检查是否包含指定偏移
-func (r Region) Contains(offset int64) bool {
-	return offset >= r.Start && offset < r.End
+// ContainsRegion 检查是否完全包含另一个区域
+func (r Region) Contains(other Region) bool {
+	return r.Start <= other.Start && r.End >= other.End
+}
+
+// Overlaps 检查是否有重叠
+func (r Region) Overlaps(other Region) bool {
+	return r.Start < other.End && other.Start < r.End
 }
 
 // FileRegion 表示一个文件在 mmap 中的区域
@@ -50,6 +56,52 @@ func NewFreeListManager(totalSize int64) *FreeListManager {
 		freeList:  []Region{{0, totalSize}},
 		totalSize: totalSize,
 	}
+}
+
+func (flm *FreeListManager) AllocAt(start int64, end int64) error {
+	if start >= end || start < 0 {
+		return ErrInvalidSize
+	}
+	flm.mu.Lock()
+	defer flm.mu.Unlock()
+
+	target := Region{Start: start, End: end}
+	targetSize := target.Size()
+	if targetSize <= 0 {
+		return ErrInvalidSize
+	}
+
+	// 查找能覆盖目标区域的空闲块
+	for i, r := range flm.freeList {
+		if r.Contains(target) {
+			// 完全包含，可以分配
+			var newRegions []Region
+
+			// 左侧剩余
+			if r.Start < target.Start {
+				newRegions = append(newRegions, Region{r.Start, target.Start})
+			}
+
+			// 右侧剩余
+			if r.End > target.End {
+				newRegions = append(newRegions, Region{target.End, r.End})
+			}
+
+			// 替换当前空闲块为剩余部分
+			flm.freeList = append(flm.freeList[:i], append(newRegions, flm.freeList[i+1:]...)...)
+
+			return nil // 分配成功
+		}
+
+		// 如果有重叠但不完全包含，说明部分区域已被占用
+		if r.Overlaps(target) {
+			return fmt.Errorf("%w: region [%d, %d) overlaps with free [%d, %d) but not fully contained, likely partially allocated",
+				ErrSpaceExhausted, start, end, r.Start, r.End)
+		}
+	}
+
+	// 没找到能包含目标区域的空闲块
+	return fmt.Errorf("%w: no free region contains [%d, %d)", ErrSpaceExhausted, start, end)
 }
 
 // BestFitAlloc 最佳适应分配算法（优化版）

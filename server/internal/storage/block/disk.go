@@ -37,6 +37,8 @@ func NewDiskStore(c *xconf.DiskConfig) (*DiskStore, error) {
 	vfile, err := GetTieredFs()
 	if err == nil && vfile != nil {
 		vfile.AddSyncTarget(ds)
+	} else {
+		return nil, fmt.Errorf("failed to get tiered fs: %w", err)
 	}
 	logger.GetLogger("boulder").Infof("Disk store initialized successfully")
 	return ds, nil
@@ -84,7 +86,7 @@ func (d *DiskStore) WriteBlock(ctx context.Context, blockID string, data []byte,
 }
 
 func (s *DiskStore) WriteBlockDirect(ctx context.Context, blockID string, data []byte) error {
-	logger.GetLogger("boulder").Errorf("[DiskStore WriteBlockDirect] blockID=%s", blockID)
+	logger.GetLogger("boulder").Debugf("[DiskStore WriteBlockDirect] blockID=%s", blockID)
 	path := s.BlockPath(blockID)
 	// 确保目录存在
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

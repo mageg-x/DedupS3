@@ -597,6 +597,8 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 	for bid := range blockIDs {
 		bids = append(bids, bid)
 	}
+
+	logger.GetLogger("boulder").Debugf("to get the object %s blocks %#v", params.ObjKey, bids)
 	bs := block.GetBlockService()
 	if bs == nil {
 		logger.GetLogger("boulder").Errorf("failed to get the block service")
@@ -653,7 +655,7 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 			}
 
 			// 为了防止内存爆炸，释放一些 已经用过的block data
-			if len(blockDatas) > 2 {
+			if len(blockLoaded) > 20 {
 				delBlockID := blockLoaded[0]
 				delete(blockDatas, delBlockID)
 				blockLoaded = blockLoaded[1:]

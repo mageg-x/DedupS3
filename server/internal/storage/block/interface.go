@@ -76,7 +76,7 @@ func GetTieredFs() (*fs.TieredFs, error) {
 		tfs, err := fs.NewTieredFs(config)
 
 		if err != nil || tfs == nil {
-			logger.GetLogger("boulder").Errorf("failed to create disk store: %v", err)
+			logger.GetLogger("boulder").Errorf("failed to create TieredFs: %v", err)
 			return err
 		}
 		mmfile = tfs

@@ -4,27 +4,59 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/mageg-x/boulder/internal/logger"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/mageg-x/boulder/internal/utils"
 	"golang.org/x/sys/unix"
 )
 
-var (
-	ErrInvalidSize    = errors.New("invalid size")
-	ErrSpaceExhausted = errors.New("mmap space exhausted")
-	ErrFileNotFound   = errors.New("file not found")
-	ErrFileTooLarge   = errors.New("file too large")
-	ErrOutOfBounds    = errors.New("write out of bounds")
-	ErrInvalidPath    = errors.New("invalid path")
-	ErrSystemClosed   = errors.New("filesystem closed")
+const (
+	MagicNumber      uint64 = 0x424f554c44455200 // "BOULDER\0"
+	MetadataVersion  uint32 = 1
+	MetadataMaxFiles        = 200
+	MetadataPathLen         = 32
 )
+
+var (
+	MetadataTotalSize = int64(unsafe.Sizeof(Metadata{}))
+)
+
+var (
+	ErrInvalidSize     = errors.New("invalid size")
+	ErrSpaceExhausted  = errors.New("mmap space exhausted")
+	ErrFileNotFound    = errors.New("file not found")
+	ErrFileTooLarge    = errors.New("file too large")
+	ErrOutOfBounds     = errors.New("write out of bounds")
+	ErrInvalidPath     = errors.New("invalid path")
+	ErrSystemClosed    = errors.New("filesystem closed")
+	ErrInvalidMetadata = errors.New("invalid metadata")
+)
+
+// FileMetadata 用于序列化的文件元数据
+type FileMetadata struct {
+	Path    [MetadataPathLen]byte // 固定长度路径
+	Start   int64
+	End     int64
+	Ver     int32
+	Discard bool
+}
+
+// Metadata 整个文件系统的元数据
+type Metadata struct {
+	MagicNumber uint64    // 魔数，用于识别文件格式
+	Version     uint32    // 元数据版本
+	Reserved    [116]byte // 保留字段，用于对齐和未来扩展
+	Files       [MetadataMaxFiles]FileMetadata
+}
 
 // TieredFs 基于 mmap 的二级存储文件系统（优化版）
 type TieredFs struct {
@@ -80,7 +112,7 @@ type Config struct {
 // DefaultConfig 默认配置
 func DefaultConfig() *Config {
 	return &Config{
-		MmapSize:     1 << 30, // 1GB
+		MmapSize:     2 << 30, // 2GB
 		SyncInterval: 100 * time.Millisecond,
 		BatchSize:    10,
 		EnableSync:   true,
@@ -96,23 +128,39 @@ func NewTieredFs(config *Config) (*TieredFs, error) {
 	if err := os.MkdirAll(config.DiskDir, 0755); err != nil {
 		return nil, fmt.Errorf("create disk dir: %w", err)
 	}
+	var (
+		file *os.File
+		err  error
+	)
 
+	//# 降低比例阈值，但延长存在时间
+	//echo 30 > /proc/sys/vm/dirty_ratio
+	//echo 20 > /proc/sys/vm/dirty_background_ratio
+	//# 关键：均匀刷盘的核心参数
+	//echo 6000 > /proc/sys/vm/dirty_expire_centisecs
+	//echo 1000 > /proc/sys/vm/dirty_writeback_centisecs
 	// 创建 mmap 文件
 	mmapPath := filepath.Join(config.DiskDir, ".mmap_cache.dat")
-	file, err := os.OpenFile(mmapPath, os.O_CREATE|os.O_RDWR, 0644)
+
+	file, err = os.OpenFile(mmapPath, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("create mmap file: %w", err)
 	}
 
 	// 扩展文件
-	if err := unix.Ftruncate(int(file.Fd()), config.MmapSize); err != nil {
+	if err = unix.Ftruncate(int(file.Fd()), config.MmapSize); err != nil {
 		_ = file.Close()
-		return nil, fmt.Errorf("truncate mmap file: %w", err)
+		return nil, fmt.Errorf("failed truncate mmap file: %w", err)
+	}
+
+	// 创建文件后，用 fallocate 预分配空间
+	err = unix.Fallocate(int(file.Fd()), 0, 0, config.MmapSize)
+	if err != nil {
+		logger.GetLogger("boulder").Warnf("failed to fallocate mmap file: %v", err)
 	}
 
 	// mmap 映射
-	data, err := unix.Mmap(int(file.Fd()), 0, int(config.MmapSize),
-		unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED)
+	data, err := unix.Mmap(int(file.Fd()), 0, int(config.MmapSize), unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED)
 	if err != nil {
 		_ = file.Close()
 		return nil, fmt.Errorf("mmap failed: %w", err)
@@ -134,7 +182,133 @@ func NewTieredFs(config *Config) (*TieredFs, error) {
 		fs.syncManager = NewSyncManager(fs.flushToFile)
 	}
 
+	// 尝试从文件加载元数据
+	if err := fs.loadMetadata(); err != nil {
+		_ = file.Close()
+		// 如果加载失败，记录警告日志并继续，使用空的文件系统
+		logger.GetLogger("boulder").Warnf("Failed to load metadata, starting fresh: %v", err)
+		return nil, fmt.Errorf("failed to load metadata: %w", err)
+	}
+
+	// 设置“伪析构函数”
+	runtime.SetFinalizer(fs, func(f *TieredFs) {
+		_ = f.Close()
+	})
 	return fs, nil
+}
+
+// loadMetadata 从mmap_cache.dat文件加载元数据
+func (fs *TieredFs) loadMetadata() error {
+	// 检查文件大小是否至少有元数据头部大小
+	fileInfo, err := fs.mmapFile.Stat()
+	if err != nil {
+		return fmt.Errorf("stat file: %w", err)
+	}
+
+	if fileInfo.Size() < MetadataTotalSize {
+		// 文件太小，不可能包含有效元数据
+		return ErrInvalidMetadata
+	}
+
+	// 恢复文件系统状态
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	// 直接将 mmap 内存映射为结构体指针
+	metaPtr := (*Metadata)(unsafe.Pointer(&fs.mmapData[0]))
+
+	if metaPtr.MagicNumber == 0 {
+		// 未初始化的 内容
+		metaPtr.MagicNumber = MagicNumber
+		metaPtr.Version = MetadataVersion
+		// 保留元数据区域不被分配
+		err = fs.freeManager.AllocAt(0, MetadataTotalSize)
+		// 异步同步，不阻塞业务
+		unix.Msync(fs.mmapData, unix.MS_ASYNC)
+		return err
+	}
+
+	// 验证魔数
+	if metaPtr.MagicNumber != MagicNumber {
+		return ErrInvalidMetadata
+	}
+	// 验证版本
+	if metaPtr.Version != MetadataVersion {
+		return fmt.Errorf("unsupported metadata version: %d", metaPtr.Version)
+	}
+
+	// 保留元数据区域不被分配
+	err = fs.freeManager.AllocAt(0, MetadataTotalSize)
+	// 保留元数据区域不被分配
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("allocate meta region failed: %v", err)
+		return fmt.Errorf("allocate meta region failed: %w", err)
+	}
+
+	for i := 0; i < MetadataMaxFiles; i++ {
+		fileMeta := metaPtr.Files[i]
+		// 验证元数据的有效性
+		if fileMeta.End <= fileMeta.Start || fileMeta.End > fs.mmapSize {
+			fileMeta.Discard = true
+		}
+		if fileMeta.Discard {
+			continue
+		}
+		path := string(fileMeta.Path[:])
+		// 创建文件区域
+		fileRegion := &FileRegion{
+			Region: Region{Start: fileMeta.Start, End: fileMeta.End},
+			Path:   path,
+			Ver:    fileMeta.Ver,
+		}
+		// 添加到文件映射表
+		fs.files[path] = fileRegion
+		// 从空闲空间中移除已使用的区域
+		fs.freeManager.AllocAt(fileMeta.Start, fileMeta.End)
+	}
+	logger.GetLogger("boulder").Errorf("Loaded %#v files", fs.files)
+	return nil
+}
+
+// saveMetadata 将元数据保存到mmap_cache.dat文件
+func (fs *TieredFs) saveMetadata() error {
+	if fs.mmapData == nil || fs.mmapFile == nil {
+		logger.GetLogger("boulder").Errorf("mmap data is empty")
+		return fmt.Errorf("mmap data or file is empty")
+	}
+
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	// 直接将 mmap 内存映射为结构体指针
+	metaPtr := (*Metadata)(unsafe.Pointer(&fs.mmapData[0]))
+	metaPtr.MagicNumber = MagicNumber
+	metaPtr.Version = MetadataVersion
+
+	if len(fs.files) > MetadataMaxFiles {
+		logger.GetLogger("boulder").Errorf("too many files")
+		return fmt.Errorf("too many files")
+	}
+	idx := 0
+	for _, file := range fs.files {
+		var path [MetadataPathLen]byte
+		copy(path[:], file.Path)
+		metaPtr.Files[idx] = FileMetadata{
+			Path:    path,
+			Start:   file.Start,
+			End:     file.End,
+			Ver:     file.Ver,
+			Discard: false,
+		}
+		idx++
+	}
+
+	for ; idx < MetadataMaxFiles; idx++ {
+		metaPtr.Files[idx] = FileMetadata{}
+	}
+	// 异步同步，不阻塞业务
+	unix.Msync(fs.mmapData, unix.MS_ASYNC)
+	return nil
 }
 
 func (fs *TieredFs) AddSyncTarget(target SyncTarget) error {
@@ -154,6 +328,11 @@ func (fs *TieredFs) WriteFile(path string, chunks [][]byte, ver int32) error {
 		return err
 	}
 
+	if len(fs.files) >= MetadataMaxFiles {
+		logger.GetLogger("boulder").Errorf("too many files")
+		return fmt.Errorf("too many files")
+	}
+
 	// 计算总长度
 	var totalLen int64
 	for _, chunk := range chunks {
@@ -171,7 +350,8 @@ func (fs *TieredFs) WriteFile(path string, chunks [][]byte, ver int32) error {
 	// 分配空间
 	offset, err := fs.freeManager.BestFitAlloc(totalLen)
 	if err != nil {
-		return err
+		logger.GetLogger("boulder").Errorf("no space for alloc: %v", err)
+		return fmt.Errorf("no space for alloc %w", err)
 	}
 
 	// 边界检查
@@ -189,14 +369,6 @@ func (fs *TieredFs) WriteFile(path string, chunks [][]byte, ver int32) error {
 		return nil
 	}
 
-	// 零拷贝写入
-	dest := fs.mmapData[offset : offset+totalLen]
-	written := 0
-	for _, chunk := range chunks {
-		n := copy(dest[written:], chunk)
-		written += n
-	}
-
 	// 更新文件映射
 	newRegion := &FileRegion{
 		Region: Region{Start: offset, End: offset + totalLen},
@@ -210,6 +382,20 @@ func (fs *TieredFs) WriteFile(path string, chunks [][]byte, ver int32) error {
 	// 释放旧空间
 	if oldRegion != nil {
 		fs.freeManager.Free(oldRegion.Start, oldRegion.Size())
+	}
+
+	// 拷贝写入
+	dest := fs.mmapData[offset : offset+totalLen]
+	written := 0
+	for _, chunk := range chunks {
+		n := copy(dest[written:], chunk)
+		written += n
+	}
+
+	fs.saveMetadata()
+	if fs.mmapData != nil {
+		// 异步同步，不阻塞业务
+		unix.Msync(fs.mmapData, unix.MS_ASYNC)
 	}
 
 	// 更新统计
@@ -359,6 +545,8 @@ func (fs *TieredFs) Remove(path string) error {
 		fs.freeManager.Free(region.Start, region.Size())
 	}
 
+	fs.saveMetadata()
+
 	// 删除磁盘文件（忽略错误）
 	_ = os.Remove(fs.diskPath(path))
 	return nil
@@ -460,6 +648,9 @@ func (fs *TieredFs) FreeSpace() int64 {
 
 // Close 关闭文件系统（优化版）
 func (fs *TieredFs) Close() error {
+	// 先移除 finalizer，防止重复调用
+	runtime.SetFinalizer(fs, nil)
+
 	if !atomic.CompareAndSwapInt32(&fs.closed, 0, 1) {
 		return nil // 已经关闭
 	}
@@ -473,6 +664,8 @@ func (fs *TieredFs) Close() error {
 		}
 	}
 
+	fs.saveMetadata()
+
 	// 最终同步
 	if err := fs.SyncAll(); err != nil {
 		errs = append(errs, fmt.Errorf("final sync: %w", err))
@@ -480,6 +673,14 @@ func (fs *TieredFs) Close() error {
 
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
+
+	// 底层存储同步 - 确保 mmap 数据落地
+	if fs.mmapData != nil {
+		if err := unix.Msync(fs.mmapData, unix.MS_ASYNC); err != nil {
+			errs = append(errs, fmt.Errorf("storage layer sync: %w", err))
+		}
+	}
+
 	// 清理资源
 	if fs.mmapData != nil {
 		if err := unix.Munmap(fs.mmapData); err != nil {
@@ -537,6 +738,7 @@ func (fs *TieredFs) flushToFile(region *FileRegion) error {
 		// 关键修复：验证区域归属
 		currentRegion, exists := fs.files[region.Path]
 		if !exists || !region.Equals(currentRegion) {
+			logger.GetLogger("boulder").Debugf("skip flush req %#v %#v ", currentRegion, region)
 			fs.mu.RUnlock()
 			return nil
 		}
@@ -555,6 +757,8 @@ func (fs *TieredFs) flushToFile(region *FileRegion) error {
 				if exists && region.Equals(currentRegion) {
 					delete(fs.files, region.Path)
 					fs.freeManager.Free(region.Start, region.Size())
+					// 上传成功，释放 mmap 页面，避免写回磁盘
+					fs.discardRegion(region)
 				}
 				fs.mu.Unlock()
 			}
@@ -562,4 +766,20 @@ func (fs *TieredFs) flushToFile(region *FileRegion) error {
 		}
 		return nil
 	})
+}
+
+// 在 flushToFile 成功后，释放 mmap 页面
+func (fs *TieredFs) discardRegion(region *FileRegion) {
+	start := region.Start & ^(int64(os.Getpagesize()) - 1) // 页对齐
+	length := ((region.End - start + int64(os.Getpagesize()) - 1) / int64(os.Getpagesize())) * int64(os.Getpagesize())
+
+	_, _, errno := unix.Syscall(
+		unix.SYS_MADVISE,
+		uintptr(unsafe.Pointer(&fs.mmapData[start])),
+		uintptr(length),
+		uintptr(unix.MADV_DONTNEED),
+	)
+	if errno != 0 {
+		logger.GetLogger("boulder").Warnf("madvise MADV_DONTNEED failed: %v", errno)
+	}
 }

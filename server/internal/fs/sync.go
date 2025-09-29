@@ -3,6 +3,8 @@ package fs
 import (
 	"context"
 	"fmt"
+	xconf "github.com/mageg-x/boulder/internal/config"
+	"golang.org/x/sync/errgroup"
 	"sync"
 	"time"
 
@@ -18,6 +20,7 @@ type SyncTarget interface {
 type SyncRequest struct {
 	Region   *FileRegion
 	Priority int // 优先级：0=低，1=中，2=高
+	CreateAt time.Time
 	Callback func(error)
 }
 
@@ -72,10 +75,15 @@ func (sm *SyncManager) Submit(region *FileRegion, priority int, callback func(er
 		priority = 0
 	}
 
+	if region.Ver != 0x07FFFF {
+		priority = 0
+	}
+
 	req := &SyncRequest{
 		Region:   region,
 		Priority: priority,
 		Callback: callback,
+		CreateAt: time.Now().UTC(),
 	}
 
 	select {
@@ -103,24 +111,65 @@ func (sm *SyncManager) worker() {
 
 	ticker := time.NewTicker(sm.flushTimeout)
 	defer ticker.Stop()
-
+	cfg := xconf.Get()
 	batch := make([]*SyncRequest, 0, sm.batchSize)
+	lowPriorityDelay := cfg.Block.SyncDelay
 
 	flushBatch := func() {
 		if len(batch) == 0 {
 			return
 		}
 
+		versionMap := make(map[string]int32) // 记录每个文件的最高版本
+		// 第一遍：找出每个文件的最高版本
 		for _, req := range batch {
-			err := sm.flushFunc(req.Region)
-			if req.Callback != nil {
-				req.Callback(err)
-			}
-			if err != nil {
-				logger.GetLogger("boulder").Errorf("flush failed for %s: %v", req.Region.Path, err)
+			path := req.Region.Path
+			currentVer := req.Region.Ver
+
+			if maxVer, ok := versionMap[path]; !ok || currentVer > maxVer {
+				versionMap[path] = currentVer
 			}
 		}
-		batch = batch[:0]
+
+		// 第二遍开始执行有效的req
+		var g errgroup.Group
+		var mu sync.Mutex
+		semaphore := make(chan struct{}, cfg.Block.SyncNum)
+		keepReqs := make([]*SyncRequest, 0)
+		for _, req := range batch {
+			if maxVer, ok := versionMap[req.Region.Path]; ok && req.Region.Ver < maxVer {
+				logger.GetLogger("boulder").Debugf("Skipping %s version %d (max is %d)", req.Region.Path, req.Region.Ver, maxVer)
+				continue
+			}
+
+			// 低优先级的请求要延迟执行
+			if req.Priority == 0 && req.Region.Ver != 0x07FFFF && time.Since(req.CreateAt) < lowPriorityDelay {
+				keepReqs = append(keepReqs, req)
+				continue
+			}
+
+			// 正确传参 + 并发控制
+			semaphore <- struct{}{} // 获取令牌
+			g.Go(func(r *SyncRequest) func() error {
+				return func() error {
+					defer func() { <-semaphore }() // 释放令牌
+
+					err := sm.flushFunc(r.Region)
+					if r.Callback != nil {
+						r.Callback(err)
+					}
+					if err != nil {
+						logger.GetLogger("boulder").Errorf("flush failed for %s: %v", r.Region.Path, err)
+						mu.Lock()
+						keepReqs = append(keepReqs, r)
+						mu.Unlock()
+					}
+					return nil
+				}
+			}(req))
+		}
+		_ = g.Wait() // 等待全部完成
+		batch = keepReqs
 	}
 
 	for {
@@ -132,19 +181,19 @@ func (sm *SyncManager) worker() {
 		case <-ticker.C:
 			flushBatch()
 
-		case req := <-sm.queues[2]: // 高优先级
+		case req := <-sm.queues[2]: // 高优先级：立即处理
 			batch = append(batch, req)
 			if len(batch) >= sm.batchSize {
 				flushBatch()
 			}
 
-		case req := <-sm.queues[1]: // 中优先级
+		case req := <-sm.queues[1]: // 中优先级：立即处理
 			batch = append(batch, req)
 			if len(batch) >= sm.batchSize {
 				flushBatch()
 			}
 
-		case req := <-sm.queues[0]: // 低优先级
+		case req := <-sm.queues[0]: /// 低优先级：延迟处理
 			batch = append(batch, req)
 			if len(batch) >= sm.batchSize {
 				flushBatch()
