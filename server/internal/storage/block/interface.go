@@ -20,15 +20,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	xconf "github.com/mageg-x/boulder/internal/config"
-	"github.com/mageg-x/boulder/internal/fs"
-	"github.com/mageg-x/boulder/internal/utils"
 	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	xconf "github.com/mageg-x/boulder/internal/config"
+	"github.com/mageg-x/boulder/internal/fs"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
@@ -56,35 +56,39 @@ type BlockStore interface {
 	BlockExists(blockID string) (bool, error)
 }
 
-type BaseBlockStore struct{}
+type BaseBlockStore struct {
+	ID    string
+	Class string
+	Type  string
+}
 
 func GetTieredFs() (*fs.TieredFs, error) {
-	err := utils.WithLock(&mmfileLocker, func() error {
-		if mmfile != nil {
-			return nil
-		}
-		cfg := xconf.Get()
+	mmfileLocker.Lock()
+	defer mmfileLocker.Unlock()
+	if mmfile != nil {
+		return mmfile, nil
+	}
 
-		// 创建配置
-		config := &fs.Config{
-			MmapSize:   2 << 30, // 2GB
-			DiskDir:    filepath.Join(cfg.Node.LocalDir, "cache"),
-			EnableSync: true,
-		}
+	cfg := xconf.Get()
+	cacheDir, err := filepath.Abs(cfg.Node.LocalDir + "/cache")
+	if err != nil || cacheDir == "" {
+		cacheDir, _ = filepath.Abs("./data/cache")
+	}
+	// 创建配置
+	config := &fs.Config{
+		MmapSize: 2 << 30, // 2GB
+		DiskDir:  cacheDir,
+	}
 
-		// 创建TieredFs实例
-		tfs, err := fs.NewTieredFs(config)
-
-		if err != nil || tfs == nil {
-			logger.GetLogger("boulder").Errorf("failed to create TieredFs: %v", err)
-			return err
-		}
-		mmfile = tfs
-		return nil
-	})
-	if err != nil {
+	// 创建TieredFs实例
+	tfs, err := fs.NewTieredFs(config)
+	if err != nil || tfs == nil {
+		logger.GetLogger("boulder").Errorf("failed to create TieredFs: %v", err)
 		return nil, err
 	}
+
+	mmfile = tfs
+
 	return mmfile, nil
 }
 
@@ -93,7 +97,7 @@ func (b *BaseBlockStore) ReadRemoteBlock(nodeURL string, blockID string, offset,
 	logger.GetLogger("boulder").Debugf("Reading block %s from node %s with offset=%d, size=%d", blockID, nodeURL, offset, size)
 
 	// 构造请求URL，包含offset和size参数
-	reqURL := fmt.Sprintf("%s/boulder/node/%s?readBlock=&offset=%d&size=%d", strings.TrimSuffix(nodeURL, "/"), blockID, offset, size)
+	reqURL := fmt.Sprintf("%s/boulder/node/%s?readBlock=&storageid=%s&offset=%d&size=%d", strings.TrimSuffix(nodeURL, "/"), blockID, b.ID, offset, size)
 
 	// 创建HTTP请求
 	req, err := http.NewRequest("GET", reqURL, nil)

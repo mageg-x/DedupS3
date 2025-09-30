@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -25,6 +26,11 @@ import (
 	"github.com/mageg-x/boulder/internal/logger"
 )
 
+var (
+	s3Stores map[string]*S3Store = make(map[string]*S3Store)
+	s3Locker sync.Mutex
+)
+
 // S3Store 实现基于S3的存储后端
 type S3Store struct {
 	BaseBlockStore
@@ -35,8 +41,13 @@ type S3Store struct {
 }
 
 // NewS3Store NewS3Storage 创建新的S3存储后端
-func NewS3Store(c *xconf.S3Config) (*S3Store, error) {
+func NewS3Store(id, class string, c *xconf.S3Config) (*S3Store, error) {
 	logger.GetLogger("boulder").Infof("Creating new S3 store with bucket: %#v", c)
+	s3Locker.Lock()
+	defer s3Locker.Unlock()
+	if s := s3Stores[id]; s != nil {
+		return s, nil
+	}
 
 	ctx := context.Background()
 
@@ -83,15 +94,21 @@ func NewS3Store(c *xconf.S3Config) (*S3Store, error) {
 	uploader.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
 
 	// 创建S3Store实例
-	s3 := &S3Store{
+	s := &S3Store{
+		BaseBlockStore: BaseBlockStore{
+			ID:    id,
+			Class: class,
+			Type:  "s3",
+		},
 		client:   client,
 		uploader: uploader,
 		conf:     c,
 		ctx:      ctx,
 	}
 
+	s3Stores[id] = s
 	logger.GetLogger("boulder").Infof("S3 store initialized successfully")
-	return s3, nil
+	return s, nil
 }
 
 // Type 返回存储类型
@@ -110,8 +127,8 @@ func (s *S3Store) WriteBlock(ctx context.Context, blockID string, data []byte, v
 	}
 
 	oldVer := int32(-1)
-	if vfile.Exists(blockID) {
-		if v, err := vfile.ReadFile(blockID, 0, 4); err == nil && v != nil {
+	if vfile.Exists(s.ID, blockID) {
+		if v, err := vfile.ReadFile(s.ID, blockID, 0, 4); err == nil && v != nil {
 			oldVer = int32(binary.BigEndian.Uint32(v[:]))
 			logger.GetLogger("boulder").Debugf("get block %s old ver %d", blockID, oldVer)
 		}
@@ -125,7 +142,7 @@ func (s *S3Store) WriteBlock(ctx context.Context, blockID string, data []byte, v
 	versionBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(versionBuf, uint32(ver))
 
-	if err := vfile.WriteFile(blockID, [][]byte{versionBuf, data}, ver); err != nil {
+	if err := vfile.WriteFile(s.ID, blockID, [][]byte{versionBuf, data}, ver); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to write block %s: %v", blockID, err)
 		return fmt.Errorf("failed to write block %s: %w", blockID, err)
 	}

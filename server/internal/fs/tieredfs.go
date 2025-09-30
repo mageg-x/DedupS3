@@ -24,7 +24,6 @@ const (
 	MagicNumber      uint64 = 0x424f554c44455200 // "BOULDER\0"
 	MetadataVersion  uint32 = 1
 	MetadataMaxFiles        = 200
-	MetadataPathLen         = 32
 )
 
 var (
@@ -44,11 +43,12 @@ var (
 
 // FileMetadata 用于序列化的文件元数据
 type FileMetadata struct {
-	Path    [MetadataPathLen]byte // 固定长度路径
-	Start   int64
-	End     int64
-	Ver     int32
-	Discard bool
+	StorageID [32]byte
+	BlockID   [32]byte // 固定长度路径
+	Start     int64
+	End       int64
+	Ver       int32
+	Discard   bool
 }
 
 // Metadata 整个文件系统的元数据
@@ -57,6 +57,13 @@ type Metadata struct {
 	Version     uint32    // 元数据版本
 	Reserved    [116]byte // 保留字段，用于对齐和未来扩展
 	Files       [MetadataMaxFiles]FileMetadata
+}
+
+type TargetTask struct {
+	storageID string
+	blockID   string
+	ver       int32
+	cancel    context.CancelFunc
 }
 
 // TieredFs 基于 mmap 的二级存储文件系统（优化版）
@@ -71,6 +78,9 @@ type TieredFs struct {
 	mmapFile *os.File
 	mmapFD   int
 
+	// target任务map
+	targetTasks map[string]*TargetTask
+
 	// 文件管理
 	mu    sync.RWMutex
 	files map[string]*FileRegion
@@ -82,7 +92,7 @@ type TieredFs struct {
 	syncManager *SyncManager
 
 	// 同步目标，disk 或 S3
-	syncTarget SyncTarget
+	syncTargetor map[string]SyncTargetor
 
 	// 统计信息
 	stats *Stats
@@ -107,7 +117,6 @@ type Config struct {
 	DiskDir      string        // 磁盘目录
 	SyncInterval time.Duration // 同步间隔
 	BatchSize    int           // 批处理大小
-	EnableSync   bool          // 是否启用异步同步
 }
 
 // DefaultConfig 默认配置
@@ -116,7 +125,6 @@ func DefaultConfig() *Config {
 		MmapSize:     2 << 30, // 2GB
 		SyncInterval: 100 * time.Millisecond,
 		BatchSize:    10,
-		EnableSync:   true,
 	}
 }
 
@@ -168,20 +176,20 @@ func NewTieredFs(config *Config) (*TieredFs, error) {
 	}
 
 	fs := &TieredFs{
-		diskDir:     config.DiskDir,
-		mmapSize:    config.MmapSize,
-		mmapData:    data,
-		mmapFile:    file,
-		mmapFD:      int(file.Fd()),
-		files:       make(map[string]*FileRegion),
-		freeManager: NewFreeListManager(config.MmapSize),
-		stats:       &Stats{},
+		diskDir:      config.DiskDir,
+		mmapSize:     config.MmapSize,
+		mmapData:     data,
+		mmapFile:     file,
+		mmapFD:       int(file.Fd()),
+		targetTasks:  make(map[string]*TargetTask),
+		files:        make(map[string]*FileRegion),
+		syncTargetor: make(map[string]SyncTargetor),
+		freeManager:  NewFreeListManager(config.MmapSize),
+		stats:        &Stats{},
 	}
 
 	// 初始化同步管理器
-	if config.EnableSync {
-		fs.syncManager = NewSyncManager(fs.flushToTarget)
-	}
+	fs.syncManager = NewSyncManager(fs.flushToTarget)
 
 	// 尝试从文件加载元数据
 	if err := fs.loadMetadata(); err != nil {
@@ -255,19 +263,27 @@ func (fs *TieredFs) loadMetadata() error {
 		if fileMeta.Discard {
 			continue
 		}
-		path := string(fileMeta.Path[:])
+		storageID := string(fileMeta.StorageID[:])
+		blockID := string(fileMeta.BlockID[:])
 		// 创建文件区域
 		fileRegion := &FileRegion{
-			Region: Region{Start: fileMeta.Start, End: fileMeta.End},
-			Path:   path,
-			Ver:    fileMeta.Ver,
+			Region:    Region{Start: fileMeta.Start, End: fileMeta.End},
+			StorageID: storageID,
+			BlockID:   blockID,
+			Ver:       fileMeta.Ver,
 		}
 		// 添加到文件映射表
-		fs.files[path] = fileRegion
+		fs.files[blockID] = fileRegion
 		// 从空闲空间中移除已使用的区域
 		fs.freeManager.AllocAt(fileMeta.Start, fileMeta.End)
 	}
-	logger.GetLogger("boulder").Errorf("Loaded %#v files", fs.files)
+
+	// 重建 fs.syncManager 同步任务
+	for _, file := range fs.files {
+		logger.GetLogger("boulder").Errorf("restore file %s meta form mmap", file.BlockID)
+		fs.syncManager.Submit(file, 0, nil)
+	}
+	logger.GetLogger("boulder").Infof("Loaded %#v files", fs.files)
 	return nil
 }
 
@@ -292,14 +308,17 @@ func (fs *TieredFs) saveMetadata() error {
 	}
 	idx := 0
 	for _, file := range fs.files {
-		var path [MetadataPathLen]byte
-		copy(path[:], file.Path)
+		var storageID, blockID [32]byte
+		// 自动截断超过32字节的部分，不足32字节用 \x00 填充
+		copy(storageID[:], file.StorageID)
+		copy(blockID[:], file.BlockID)
 		metaPtr.Files[idx] = FileMetadata{
-			Path:    path,
-			Start:   file.Start,
-			End:     file.End,
-			Ver:     file.Ver,
-			Discard: false,
+			StorageID: storageID,
+			BlockID:   blockID,
+			Start:     file.Start,
+			End:       file.End,
+			Ver:       file.Ver,
+			Discard:   false,
 		}
 		idx++
 	}
@@ -312,20 +331,20 @@ func (fs *TieredFs) saveMetadata() error {
 	return nil
 }
 
-func (fs *TieredFs) AddSyncTarget(target SyncTarget) error {
+func (fs *TieredFs) AddSyncTargetor(storageID string, targetor SyncTargetor) error {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
-	fs.syncTarget = target
+	fs.syncTargetor[storageID] = targetor
 	return nil
 }
 
 // WriteFile 写入文件（优化版）
-func (fs *TieredFs) WriteFile(path string, chunks [][]byte, ver int32) error {
+func (fs *TieredFs) WriteFile(storageID, blockID string, chunks [][]byte, ver int32) error {
 	if atomic.LoadInt32(&fs.closed) == 1 {
 		return ErrSystemClosed
 	}
 
-	if err := fs.validatePath(path); err != nil {
+	if err := fs.validatePath(blockID); err != nil {
 		return err
 	}
 
@@ -341,8 +360,8 @@ func (fs *TieredFs) WriteFile(path string, chunks [][]byte, ver int32) error {
 	}
 
 	if totalLen == 0 {
-		logger.GetLogger("boulder").Errorf("write 0 bytes to file %s", path)
-		return fs.Remove(path) // 空文件视为删除
+		logger.GetLogger("boulder").Errorf("write 0 bytes to file %s", blockID)
+		return fs.Remove(storageID, blockID) // 空文件视为删除
 	}
 
 	if totalLen > fs.mmapSize {
@@ -364,7 +383,7 @@ func (fs *TieredFs) WriteFile(path string, chunks [][]byte, ver int32) error {
 
 	fs.mu.Lock()
 	//logger.GetLogger("boulder").Errorf("block %s get write region [%d-%d]", path, offset, offset+totalLen)
-	oldRegion := fs.files[path]
+	oldRegion := fs.files[blockID]
 	if oldRegion != nil && ver < oldRegion.Ver {
 		// 现有的版本更新
 		fs.freeManager.Free(offset, totalLen)
@@ -373,12 +392,13 @@ func (fs *TieredFs) WriteFile(path string, chunks [][]byte, ver int32) error {
 
 	// 更新文件映射
 	newRegion := &FileRegion{
-		Region: Region{Start: offset, End: offset + totalLen},
-		Path:   path,
-		Ver:    ver,
+		Region:    Region{Start: offset, End: offset + totalLen},
+		StorageID: storageID,
+		BlockID:   blockID,
+		Ver:       ver,
 	}
 
-	fs.files[path] = newRegion
+	fs.files[blockID] = newRegion
 	fs.mu.Unlock()
 
 	// 释放旧空间
@@ -409,19 +429,23 @@ func (fs *TieredFs) WriteFile(path string, chunks [][]byte, ver int32) error {
 
 	// 异步同步
 	if fs.syncManager != nil {
-		return fs.syncManager.Submit(newRegion, 1, nil)
+		priority := 1
+		if ver == 0x07FFFF {
+			priority = 3
+		}
+		return fs.syncManager.Submit(newRegion, priority, nil)
 	}
 
 	return nil
 }
 
 // ReadFile 读取文件（支持偏移量读取）
-func (fs *TieredFs) ReadFile(path string, offset, length int64) ([]byte, error) {
+func (fs *TieredFs) ReadFile(storageID, blockID string, offset, length int64) ([]byte, error) {
 	if atomic.LoadInt32(&fs.closed) == 1 {
 		return nil, ErrSystemClosed
 	}
 
-	if err := fs.validatePath(path); err != nil {
+	if err := fs.validatePath(blockID); err != nil {
 		return nil, err
 	}
 
@@ -437,7 +461,7 @@ func (fs *TieredFs) ReadFile(path string, offset, length int64) ([]byte, error) 
 
 	err := utils.WrapFunction(func() error {
 		fs.mu.RLock()
-		region, exists := fs.files[path]
+		region, exists := fs.files[blockID]
 		if exists {
 			defer fs.mu.RUnlock()
 			fileSize := region.Size()
@@ -465,7 +489,11 @@ func (fs *TieredFs) ReadFile(path string, offset, length int64) ([]byte, error) 
 		} else {
 			// 及时释放锁
 			fs.mu.RUnlock()
-			diskPath := fs.diskPath(path)
+
+			diskPath := fs.diskPath(storageID, blockID)
+			if diskPath == "" {
+				return fmt.Errorf("file not found for %s %s", storageID, blockID)
+			}
 			// 缓存未命中，从磁盘读取
 			info, err := os.Stat(diskPath)
 			if err != nil {
@@ -528,19 +556,19 @@ func (fs *TieredFs) ReadFile(path string, offset, length int64) ([]byte, error) 
 }
 
 // Remove 删除文件（优化版）
-func (fs *TieredFs) Remove(path string) error {
+func (fs *TieredFs) Remove(storageID, blockID string) error {
 	if atomic.LoadInt32(&fs.closed) == 1 {
 		return ErrSystemClosed
 	}
 
-	if err := fs.validatePath(path); err != nil {
+	if err := fs.validatePath(blockID); err != nil {
 		return err
 	}
 
 	fs.mu.Lock()
-	region, exists := fs.files[path]
+	region, exists := fs.files[blockID]
 	if exists {
-		delete(fs.files, path)
+		delete(fs.files, blockID)
 	}
 	fs.mu.Unlock()
 
@@ -552,7 +580,10 @@ func (fs *TieredFs) Remove(path string) error {
 	fs.saveMetadata()
 
 	// 删除磁盘文件（忽略错误）
-	_ = os.Remove(fs.diskPath(path))
+	_path := fs.diskPath(storageID, blockID)
+	if _path != "" {
+		_ = os.Remove(_path)
+	}
 	return nil
 }
 
@@ -611,22 +642,28 @@ func (fs *TieredFs) SyncAll() error {
 }
 
 // Exists 检查文件是否存在
-func (fs *TieredFs) Exists(path string) bool {
+func (fs *TieredFs) Exists(strorageID, blockID string) bool {
 	if atomic.LoadInt32(&fs.closed) == 1 {
 		return false
 	}
 
 	fs.mu.RLock()
-	_, exists := fs.files[path]
+	_, exists := fs.files[blockID]
 	fs.mu.RUnlock()
 
 	if exists {
 		return true
+	} else {
+		logger.GetLogger("boulder").Debugf("file %s %s does not exist in %#v", strorageID, blockID, fs.files)
 	}
 
 	// 检查磁盘
-	_, err := os.Stat(fs.diskPath(path))
-	return err == nil
+	_path := fs.diskPath(strorageID, blockID)
+	if _path != "" {
+		_, err := os.Stat(_path)
+		return err == nil
+	}
+	return false
 }
 
 // ListFiles 列出所有文件
@@ -722,11 +759,13 @@ func (fs *TieredFs) validatePath(path string) error {
 }
 
 // diskPath 获取磁盘路径
-func (fs *TieredFs) diskPath(blockID string) string {
-	if fs.syncTarget != nil {
-		return fs.syncTarget.BlockPath(blockID)
+func (fs *TieredFs) diskPath(storageID, blockID string) string {
+	fs.mu.RLock()
+	defer fs.mu.RUnlock()
+	if fs.syncTargetor != nil && fs.syncTargetor[storageID] != nil {
+		return fs.syncTargetor[storageID].BlockPath(blockID)
 	}
-	return filepath.Clean(blockID)
+	return ""
 }
 
 // flushToFile 将 mmap 区域刷入磁盘文件（调用者需持有锁）
@@ -740,26 +779,52 @@ func (fs *TieredFs) flushToTarget(region *FileRegion) error {
 	return utils.RetryCall(3, func() error {
 		fs.mu.RLock()
 		// 关键修复：验证区域归属
-		currentRegion, exists := fs.files[region.Path]
+		currentRegion, exists := fs.files[region.BlockID]
 		if !exists || !region.Equals(currentRegion) {
 			fs.mu.RUnlock()
 			logger.GetLogger("boulder").Infof("skip flush req %#v %#v ", currentRegion, region)
 			return nil
 		}
-
 		// 复制数据避免竞态
 		data := make([]byte, region.Size())
 		copy(data, fs.mmapData[region.Start:region.End])
+
+		syncTargetor := fs.syncTargetor[region.StorageID]
 		fs.mu.RUnlock()
 
-		if fs.syncTarget != nil {
-			err := fs.syncTarget.WriteBlockDirect(context.Background(), region.Path, data)
+		if syncTargetor != nil {
+			// 取消正在上传的老版本任务
+			fs.mu.Lock()
+			if t := fs.targetTasks[region.BlockID]; t != nil {
+				if t.ver < region.Ver && t.cancel != nil {
+					logger.GetLogger("boulder").Errorf("cancel old ver %d for block %s flush target task", t.ver, t.blockID)
+					t.cancel()
+				}
+			}
+			fs.mu.Unlock()
+
+			// WithLockKey 避免同一个对象，多个routine在上传
+			err := utils.WithLockKey(region.BlockID, func() error {
+				ctx, cancel := context.WithCancel(context.Background())
+				t := &TargetTask{
+					storageID: region.StorageID,
+					blockID:   region.BlockID,
+					ver:       region.Ver,
+					cancel:    cancel,
+				}
+				fs.mu.Lock()
+				fs.targetTasks[region.BlockID] = t
+				fs.mu.Unlock()
+				defer delete(fs.targetTasks, region.BlockID)
+				return syncTargetor.WriteBlockDirect(ctx, region.BlockID, data)
+			})
+
 			if err == nil {
 				fs.mu.Lock()
 				// 再次验证
-				currentRegion, exists = fs.files[region.Path]
+				currentRegion, exists = fs.files[region.BlockID]
 				if exists && region.Equals(currentRegion) {
-					delete(fs.files, region.Path)
+					delete(fs.files, region.BlockID)
 					fs.freeManager.Free(region.Start, region.Size())
 					// 上传成功，释放 mmap 页面，避免写回磁盘
 					fs.discardRegion(region)
@@ -768,8 +833,8 @@ func (fs *TieredFs) flushToTarget(region *FileRegion) error {
 			}
 			return err
 		} else {
-			logger.GetLogger("boulder").Errorf("no flush targer to do for %s ", region.Path)
-			return fmt.Errorf("no flush targer to do for %s ", region.Path)
+			logger.GetLogger("boulder").Debugf("no flush targer to do for block  %s ", region.BlockID)
+			return fmt.Errorf("no flush targer to do for %s ", region.BlockID)
 		}
 	})
 }

@@ -2,15 +2,13 @@ package node
 
 import (
 	"fmt"
-	"path/filepath"
+	"github.com/mageg-x/boulder/service/storage"
 	"sync"
 
 	"github.com/mageg-x/boulder/internal/config"
+	"github.com/mageg-x/boulder/internal/logger"
 	"github.com/mageg-x/boulder/internal/storage/block"
 	"github.com/mageg-x/boulder/internal/storage/kv"
-	"github.com/mageg-x/boulder/service/storage"
-
-	"github.com/mageg-x/boulder/internal/logger"
 )
 
 type NodeService struct {
@@ -40,19 +38,22 @@ func GetNodeService() *NodeService {
 	return instance
 }
 
-func (n *NodeService) ReadLocalBlock(blockID string, offset, length int64) ([]byte, error) {
-	var localPath string
-	cfg := config.Get()
+func (n *NodeService) ReadLocalBlock(storageID, blockID string, offset, length int64) ([]byte, error) {
 	ss := storage.GetStorageService()
-	st, err := ss.GetStorage(storage.LOCAL_DISK_STORAGE_ID)
-	if err == nil && st != nil {
-		localPath = st.Conf.Disk.Path
-	} else {
-		localPath = filepath.Join(cfg.Node.LocalDir, "block")
+	if ss == nil {
+		logger.GetLogger("boulder").Errorf("get nil storage service")
+		return nil, fmt.Errorf("get nil storage service")
 	}
 
-	ds, err := block.NewDiskStore(&config.DiskConfig{
-		Path: localPath,
+	st, err := ss.GetStorage(storageID)
+	if err != nil || st == nil || st.Instance == nil {
+		logger.GetLogger("boulder").Errorf("get nil storage instance id %s ", storageID)
+		return nil, fmt.Errorf("get nil storage instance: %w", err)
+	}
+
+	cfg := config.Get()
+	ds, err := block.NewDiskStore(storageID, st.Class, &config.DiskConfig{
+		Path: cfg.Node.LocalDir, // 这个路径这里用不上，随便填一个都可以，主要是利用器
 	})
 
 	if ds == nil || err != nil {

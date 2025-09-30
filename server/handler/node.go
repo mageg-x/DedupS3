@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/mux"
 
@@ -18,7 +19,7 @@ import (
 func ReadBlockHandler(w http.ResponseWriter, r *http.Request) {
 	// 从路径中提取blockID
 	vars := utils.DecodeVars(mux.Vars(r))
-	blockID := vars["blockID"]
+	blockID := strings.TrimSpace(vars["blockID"])
 	logger.GetLogger("boulder").Debugf("API called: ReadBlockDataHandler blockID %s head %#v", blockID, r.Header)
 	if !utils.IsValidUUID(blockID) {
 		logger.GetLogger("boulder").Errorf("Missing or invalid block_id in read request: %s", blockID)
@@ -28,7 +29,13 @@ func ReadBlockHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 从查询参数中提取offset和size
 	query := utils.DecodeQuerys(r.URL.Query())
-
+	storageID := query.Get("storageid")
+	storageID = strings.TrimSpace(storageID)
+	if storageID == "" {
+		logger.GetLogger("boulder").Errorf("Missing or invalid storageid in read request: %s", storageID)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
+		return
+	}
 	offset := int64(0)
 	if offsetStr := query.Get("offset"); offsetStr != "" {
 		val, err := strconv.ParseInt(offsetStr, 10, 64)
@@ -54,7 +61,7 @@ func ReadBlockHandler(w http.ResponseWriter, r *http.Request) {
 	logger.GetLogger("boulder").Debugf("ReadBlockHandler called with blockID=%s, offset=%d, size=%d", blockID, offset, size)
 
 	localStore := node.NodeService{}
-	data, err := localStore.ReadLocalBlock(blockID, offset, size)
+	data, err := localStore.ReadLocalBlock(storageID, blockID, offset, size)
 	if err != nil || len(data) == 0 {
 		logger.GetLogger("boulder").Infof("ReadLocalBlock %s failed: %v", blockID, err)
 		if errors.Is(err, block.ErrBlockNotFound) {

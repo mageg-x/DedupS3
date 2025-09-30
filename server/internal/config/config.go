@@ -21,12 +21,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"github.com/mageg-x/boulder/internal/utils"
 	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/mageg-x/boulder/internal/utils"
 
 	"github.com/mageg-x/boulder/internal/logger"
 
@@ -70,14 +71,135 @@ type S3Config struct {
 	UsePathStyle bool   `mapstructure:"use_path_style" json:"usePathStyle" env:"BOULDER_BLOCK_S3_USE_PATH_STYLE" default:"true"`
 }
 
+func (s *S3Config) Validate() error {
+	if s.AccessKey == "" {
+		return fmt.Errorf("config error: missing s3.access_key")
+	}
+	if s.SecretKey == "" {
+		return fmt.Errorf("config error: missing s3.secret_key")
+	}
+	if s.Bucket == "" {
+		return fmt.Errorf("config error: missing s3.bucket")
+	}
+	if s.Region == "" {
+		return fmt.Errorf("config error: missing s3.region")
+	}
+
+	// 仅做基本合法性检查（可选）
+	if s.Endpoint != "" {
+		if strings.TrimSpace(s.Endpoint) == "" {
+			return fmt.Errorf("config error: s3.endpoint cannot be blank")
+		}
+		if strings.Contains(s.Endpoint, " ") {
+			return fmt.Errorf("config error: s3.endpoint cannot contain spaces")
+		}
+	}
+
+	return nil
+}
+
+func (s *S3Config) Equal(other *S3Config) bool {
+	if s == nil && other == nil {
+		return true
+	}
+	if s == nil || other == nil {
+		return false
+	}
+
+	return s.AccessKey == other.AccessKey &&
+		s.SecretKey == other.SecretKey &&
+		s.Region == other.Region &&
+		s.Endpoint == other.Endpoint &&
+		s.Bucket == other.Bucket &&
+		s.UsePathStyle == other.UsePathStyle
+}
+
 type DiskConfig struct {
 	Path string `mapstructure:"path" json:"path" env:"BOULDER_BLOCK_DISK_PATH" default:"./data/block"`
 }
 
+func (d *DiskConfig) Validate() error {
+	if d.Path == "" {
+		return fmt.Errorf("config error: cannot empty disk path")
+	}
+	if absPath, err := filepath.Abs(d.Path); err != nil {
+		return fmt.Errorf("config error:  invalid disk path: %s", d.Path)
+	} else {
+		d.Path = absPath
+	}
+	return nil
+}
+
+func (d *DiskConfig) Equal(other *DiskConfig) bool {
+	if d == nil && other == nil {
+		return true
+	}
+	if d == nil || other == nil {
+		return false
+	}
+
+	// 转为绝对路径并 clean 后比较
+	path1, _ := filepath.Abs(d.Path)
+	path2, _ := filepath.Abs(other.Path)
+	return path1 == path2
+}
+
 // StorageConfig 存储Block相关配置
 type StorageConfig struct {
-	S3   *S3Config   `mapstructure:"s3" json:"s3"`
-	Disk *DiskConfig `mapstructure:"disk" json:"disk"`
+	ID    string `mapstructure:"id" json:"id" env:"BOULDER_BLOCK_STORAGE_ID"`
+	Class string `mapstructure:"class" json:"class" env:"BOULDER_STORAGE_CLASS" default:"STANDARD"`
+
+	// Only one of the following should be set
+	S3   *S3Config   `mapstructure:"s3" json:"s3,omitempty"`
+	Disk *DiskConfig `mapstructure:"disk" json:"disk,omitempty"`
+}
+
+func (s *StorageConfig) Validate() error {
+	// S3 和 disk 只能择其一
+	if s.S3 != nil && s.Disk != nil {
+		return fmt.Errorf("config error: cannot specify both 's3' and 'disk' storage of class %s", s.Class)
+	}
+
+	if s.S3 == nil && s.Disk == nil {
+		return fmt.Errorf("config error: must have one configured 's3' or 'disk' storage of class %s", s.Class)
+	}
+
+	if s.Disk != nil {
+		if err := s.Disk.Validate(); err != nil {
+			return err
+		}
+	}
+
+	if s.S3 != nil {
+		if err := s.S3.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *StorageConfig) Equal(other *StorageConfig) bool {
+	if other == nil {
+		return false
+	}
+	if s.Class != other.Class {
+		return false
+	}
+
+	if s.S3 != nil && other.S3 != nil && !s.S3.Equal(other.S3) {
+		return false
+	}
+	if s.Disk != nil && other.Disk != nil && !s.Disk.Equal(other.Disk) {
+		return false
+	}
+
+	if (s.S3 != nil && other.S3 == nil) || (s.S3 == nil && other.S3 != nil) {
+		return false
+	}
+	if (s.Disk != nil && other.Disk == nil) || (s.Disk == nil && other.Disk != nil) {
+		return false
+	}
+	return s.S3.Equal(other.S3)
 }
 
 // RedisConfig Redis集群配置
@@ -131,6 +253,7 @@ type BlockConfig struct {
 	Compress         bool          `mapstructure:"compress" json:"compress" env:"BOULDER_BLOCK_COMPRESS" default:"true"`
 	Encrypt          bool          `mapstructure:"encryte" json:"encrypt" env:"BOULDER_BLOCK_ENCRYPT" default:"true"`
 	ChunkSize        int           `mapstructure:"chunk_size" json:"chunkSize" env:"BOULDER_BLOCK_CHUNK_SIZE" default:"67108864"`
+	FixChunk         bool          `mapstructure:"fix_chunk"json:"fixChunk" env:"BOULDER_BLOCK_FIX_CHUNK" default:"false"`
 }
 
 type NodeConfig struct {
@@ -139,13 +262,31 @@ type NodeConfig struct {
 }
 
 type Config struct {
-	Server ServerConfig `mapstructure:"server" json:"server"`
-	Log    LogConfig    `mapstructure:"log" json:"log"`
-	KV     KVConfig     `mapstructure:"kv" json:"kv"`
-	Cache  CacheConfig  `mapstructure:"cache" json:"cache"`
-	Iam    IAMConfig    `mapstructure:"iam" json:"iam"`
-	Block  BlockConfig  `mapstructure:"block" json:"block"`
-	Node   NodeConfig   `mapstructure:"node" json:"node"`
+	Server   ServerConfig    `mapstructure:"server" json:"server"`
+	Log      LogConfig       `mapstructure:"log" json:"log"`
+	KV       KVConfig        `mapstructure:"kv" json:"kv"`
+	Cache    CacheConfig     `mapstructure:"cache" json:"cache"`
+	Iam      IAMConfig       `mapstructure:"iam" json:"iam"`
+	Block    BlockConfig     `mapstructure:"block" json:"block"`
+	Node     NodeConfig      `mapstructure:"node" json:"node"`
+	Storages []StorageConfig `mapstructure:"storage" json:"storage"`
+}
+
+func (c *Config) Validate() error {
+	// 检查 storages 的配置
+	// 一个class 只能配置一个存储
+	classMap := make(map[string]bool, 0)
+	for _, storage := range c.Storages {
+		storage.Class = strings.ToUpper(storage.Class)
+		if yes := classMap[storage.Class]; yes {
+			return fmt.Errorf("config error: must specify one storage of class %s", storage.Class)
+		}
+		if err := storage.Validate(); err != nil {
+			return err
+		}
+		classMap[storage.Class] = true
+	}
+	return nil
 }
 
 // DefaultConfig 创建带默认值的配置实例
@@ -226,7 +367,7 @@ func Load(configPath string) error {
 	}
 
 	// 对一些 调用频繁的数据进行 规范
-	cfg.Node.LocalDir = filepath.Clean(cfg.Node.LocalDir)
+	cfg.Node.LocalDir, _ = filepath.Abs(cfg.Node.LocalDir)
 	cfg.Node.LocalNode = strings.TrimSpace(cfg.Node.LocalNode)
 	globalConfig.Store(cfg)
 

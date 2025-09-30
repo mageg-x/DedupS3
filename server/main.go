@@ -21,7 +21,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/mageg-x/boulder/meta"
+	"github.com/mageg-x/boulder/internal/fs"
+	"github.com/mageg-x/boulder/internal/storage/block"
 	"math/rand"
 	"os"
 	"os/signal"
@@ -82,6 +83,10 @@ func main() {
 	confPath := cli.ConfigPath
 	_ = config.Load(confPath)
 	cfg := config.Get()
+	if err := cfg.Validate(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 
 	logger.Init(&logger.Config{
 		LogDir:     cfg.Log.Dir,
@@ -109,27 +114,43 @@ func main() {
 		panic(err)
 	}
 
-	// 初始化 缺省block存储
+	// 初始化 block存储
 	bs := storage.GetStorageService()
-	//bs.AddStorage("disk", meta.STANDARD_CLASS_STORAGE, config.StorageConfig{
-	//	Disk: &config.DiskConfig{
-	//		Path: "./data/block",
-	//	},
-	//})
-	//
-
-	bs.AddStorage("s3", meta.STANDARD_CLASS_STORAGE, config.StorageConfig{
-		S3: &config.S3Config{
-			Endpoint:     "https://oss-cn-shenzhen-internal.aliyuncs.com",
-			AccessKey:    "LTAI5tPDQRzqpgyCwdHVN8hJ",
-			SecretKey:    "T7uVSYjjdM05IphUYdameHgnrpqEIm",
-			Region:       "cn-shenzhen",
-			Bucket:       "slimstor-internal-0905",
-			UsePathStyle: false,
-		},
-	})
-
-	bs.ListStorages()
+	// 先把本地配置，加入到云配置中
+	for _, s := range cfg.Storages {
+		if s.Disk != nil {
+			bs.AddStorage("disk", s.Class, config.StorageConfig{Disk: s.Disk})
+		} else if s.S3 != nil {
+			bs.AddStorage("s3", s.Class, config.StorageConfig{S3: s.S3})
+		}
+	}
+	// 拉取所有云配置
+	storages := bs.ListStorages()
+	if storages == nil {
+		logger.GetLogger("boulder").Error("no storages configure valid")
+		os.Exit(1)
+	}
+	for i, s := range storages {
+		logger.GetLogger("boulder").Warnf("storage %d %#v", i, s)
+		_storage, err := bs.GetStorage(s.ID)
+		if err != nil {
+			logger.GetLogger("boulder").Error("failed to init storage", zap.Error(err))
+			os.Exit(1)
+		}
+		// 关键：检查 inst 是否也实现了 fs.SyncTarget
+		syncTargetor, ok := _storage.Instance.(fs.SyncTargetor) // 类型断言
+		if !ok {
+			logger.GetLogger("boulder").Errorf("storage instance for id %#v does not implement SyncTarget", _storage)
+			os.Exit(1)
+		}
+		vfile, err := block.GetTieredFs()
+		if err == nil && vfile != nil {
+			_ = vfile.AddSyncTargetor(s.ID, syncTargetor)
+		} else {
+			logger.GetLogger("boulder").Errorf("failed to get tiered fs for storage %#v", _storage)
+			os.Exit(1)
+		}
+	}
 
 	// 初始化 垃圾回收后台服务
 	gc := gc2.GetGCService()

@@ -15,6 +15,11 @@ import (
 	"github.com/mageg-x/boulder/internal/utils"
 )
 
+var (
+	diskStores map[string]*DiskStore = make(map[string]*DiskStore)
+	diskLocker sync.Mutex
+)
+
 // DiskStore 实现基于磁盘的存储后端
 type DiskStore struct {
 	BaseBlockStore
@@ -23,16 +28,28 @@ type DiskStore struct {
 }
 
 // NewDiskStore  创建新的磁盘存储
-func NewDiskStore(c *xconf.DiskConfig) (*DiskStore, error) {
+func NewDiskStore(id, class string, c *xconf.DiskConfig) (*DiskStore, error) {
 	if err := os.MkdirAll(c.Path, 0755); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to create disk store directory: %v", err)
 		return nil, err
 	}
 
+	diskLocker.Lock()
+	defer diskLocker.Unlock()
+	if ds := diskStores[id]; ds != nil {
+		return ds, nil
+	}
+
 	ds := &DiskStore{
+		BaseBlockStore: BaseBlockStore{
+			ID:    id,
+			Class: class,
+			Type:  "disk",
+		},
 		conf: c,
 		mu:   sync.RWMutex{},
 	}
+	diskStores[id] = ds
 
 	logger.GetLogger("boulder").Infof("Disk store initialized successfully")
 	return ds, nil
@@ -55,8 +72,8 @@ func (d *DiskStore) WriteBlock(ctx context.Context, blockID string, data []byte,
 	}
 
 	oldVer := int32(-1)
-	if vfile.Exists(blockID) {
-		if v, err := vfile.ReadFile(blockID, 0, 4); err == nil && v != nil {
+	if vfile.Exists(d.ID, blockID) {
+		if v, err := vfile.ReadFile(d.ID, blockID, 0, 4); err == nil && v != nil {
 			oldVer = int32(binary.BigEndian.Uint32(v[:]))
 			logger.GetLogger("boulder").Debugf("get block %s old ver %d", blockID, oldVer)
 		}
@@ -70,7 +87,7 @@ func (d *DiskStore) WriteBlock(ctx context.Context, blockID string, data []byte,
 	versionBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(versionBuf, uint32(ver))
 
-	if err := vfile.WriteFile(blockID, [][]byte{versionBuf, data}, ver); err != nil {
+	if err := vfile.WriteFile(d.ID, blockID, [][]byte{versionBuf, data}, ver); err != nil {
 		logger.GetLogger("boulder").Errorf("failed to write block %s: %v", blockID, err)
 		return fmt.Errorf("failed to write block %s: %w", blockID, err)
 	}
@@ -128,12 +145,12 @@ func (d *DiskStore) ReadLocalBlock(blockID string, offset, length int64) ([]byte
 		return nil, fmt.Errorf("failed to get tiered fs: %v", err)
 	}
 
-	if !vfile.Exists(blockID) {
+	if !vfile.Exists(d.ID, blockID) {
 		logger.GetLogger("boulder").Errorf("Block %s does not exist", blockID)
 		return nil, ErrBlockNotFound
 	}
 
-	data, err := vfile.ReadFile(blockID, offset+4, length)
+	data, err := vfile.ReadFile(d.ID, blockID, offset+4, length)
 	if err != nil || data == nil {
 		logger.GetLogger("boulder").Errorf("failed to read block %s: %v", blockID, err)
 		return nil, fmt.Errorf("failed to read block %s: %w", blockID, err)
@@ -154,8 +171,8 @@ func (d *DiskStore) DeleteBlock(blockID string) error {
 		return fmt.Errorf("failed to get tiered fs: %v", err)
 	}
 
-	if err := vfile.Remove(blockID); err != nil {
-		if !vfile.Exists(blockID) {
+	if err := vfile.Remove(d.ID, blockID); err != nil {
+		if !vfile.Exists(d.ID, blockID) {
 			logger.GetLogger("boulder").Debugf("Block %s does not exist for deletion", blockID)
 			return nil
 		}
@@ -178,7 +195,7 @@ func (d *DiskStore) BlockExists(blockID string) (bool, error) {
 		return false, fmt.Errorf("failed to get tiered fs: %v", err)
 	}
 
-	if !vfile.Exists(blockID) {
+	if !vfile.Exists(d.ID, blockID) {
 		logger.GetLogger("boulder").Debugf("Block %s does not exist", blockID)
 		return false, nil
 	}

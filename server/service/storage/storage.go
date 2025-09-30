@@ -21,15 +21,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/mageg-x/boulder/internal/fs"
+	"github.com/mageg-x/boulder/internal/utils"
+	"path/filepath"
 	"strings"
 	"sync"
 
+	"github.com/mageg-x/boulder/internal/config"
 	"github.com/mageg-x/boulder/internal/logger"
 	"github.com/mageg-x/boulder/internal/storage/block"
-	"github.com/mageg-x/boulder/internal/utils"
-
-	"github.com/mageg-x/boulder/internal/config"
 	"github.com/mageg-x/boulder/internal/storage/kv"
 	"github.com/mageg-x/boulder/meta"
 )
@@ -40,10 +39,6 @@ type StorageService struct {
 	kvStore kv.KVStore
 	stores  map[string]*meta.Storage
 }
-
-const (
-	LOCAL_DISK_STORAGE_ID = "111111111111111111111111"
-)
 
 var (
 	// 全局存储管理器实例
@@ -80,30 +75,48 @@ func GetStorageService() *StorageService {
 // AddStorage 注册新的存储实例
 func (s *StorageService) AddStorage(strType, strClass string, conf config.StorageConfig) (*meta.Storage, error) {
 	// 每种class 只能有一个存储
-	sl := s.GetStoragesByClass(strClass)
-	if sl != nil && len(sl) > 0 {
-		logger.GetLogger("boulder").Infof("storage already has a storage with class %s", strClass)
-		return nil, errors.New("storage already has a storage with class " + strClass)
+	err := utils.WrapFunction(func() error {
+		sl := s.GetStoragesByClass(strClass)
+		if sl != nil && len(sl) > 0 {
+			if len(sl) == 1 {
+				s0 := sl[0]
+				if s0.Type == strType && s0.Class == strClass && s0.Conf.Equal(&conf) {
+					return nil
+				}
+			}
+			logger.GetLogger("boulder").Errorf("storage already has a storage with class %s", strClass)
+			return errors.New("storage already has a storage with class " + strClass)
+		}
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
+
 	// 检查 ID 是否已存在
-	id := ""
-	switch strings.ToLower(strType) {
-	case meta.S3_TYPE_STORAGE:
-		//根据 Endpoint, bucket, region 生成uuid
-		id = hex.EncodeToString(utils.HmacSHA256([]byte(conf.S3.Region+conf.S3.Endpoint+conf.S3.Bucket), "aws:storage"))
-		id = id[0:24]
-		logger.GetLogger("boulder").Debugf("generated s3 storage id: %s", id)
-	case meta.DISK_TYPE_STORAGE:
-		if strClass == meta.STANDARD_CLASS_STORAGE {
-			id = LOCAL_DISK_STORAGE_ID
-		} else {
+	id := conf.ID
+	if id == "" {
+		switch strings.ToLower(strType) {
+		case meta.S3_TYPE_STORAGE:
+			//根据 Endpoint, bucket, region 生成uuid
+			id = hex.EncodeToString(utils.HmacSHA256([]byte(conf.S3.Region+conf.S3.Endpoint+conf.S3.Bucket), "aws:storage"))
+			id = id[0:24]
+			logger.GetLogger("boulder").Debugf("generated s3 storage id: %s", id)
+		case meta.DISK_TYPE_STORAGE:
+			if path, err := filepath.Abs(conf.Disk.Path); err == nil {
+				conf.Disk.Path = path
+			}
 			id = hex.EncodeToString(utils.HmacSHA256([]byte(conf.Disk.Path), "aws:storage"))
 			id = id[0:24]
+			logger.GetLogger("boulder").Debugf("generated disk storage id: %s", id)
 		}
+	}
 
-		logger.GetLogger("boulder").Debugf("generated disk storage id: %s", id)
-	default:
-		logger.GetLogger("boulder").Errorf("unknown storage type: %s", strType)
+	if strType == meta.DISK_TYPE_STORAGE || strType == meta.S3_TYPE_STORAGE || id != "" {
+		// pass
+	} else {
+		logger.GetLogger("boulder").Errorf("unknown storage type: %s id %s", strType, id)
 		return nil, fmt.Errorf("unknown storage type: %s", strType)
 	}
 
@@ -119,15 +132,16 @@ func (s *StorageService) AddStorage(strType, strClass string, conf config.Storag
 	}()
 
 	key := "aws:storage:" + id
-	var existing meta.Storage
-	ok, err := txn.Get(key, &existing)
+	var oldStorage meta.Storage
+	ok, err := txn.Get(key, &oldStorage)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to get  storage %s : %v", key, err)
 		return nil, fmt.Errorf("failed to get  storage %s : %w", key, err)
 	}
-	if ok {
-		logger.GetLogger("boulder").Warnf("storage with id %s already exists", id)
-		return nil, errors.New("storage with this id already exists")
+
+	if ok && !conf.Equal(&oldStorage.Conf) {
+		logger.GetLogger("boulder").Warnf("storage with id %s already exists, old config be overwrite", id)
+		//return nil, errors.New("storage with this id already exists")
 	}
 
 	// 创建并存储新的 Storage 对象
@@ -150,12 +164,13 @@ func (s *StorageService) AddStorage(strType, strClass string, conf config.Storag
 	txn = nil
 
 	logger.GetLogger("boulder").Infof("successfully added storage with id: %s, type: %s", id, strType)
-	return storage, nil
+	return s.GetStorage(id)
 }
 
 // GetStorage 根据 ID 获取存储实例
 func (s *StorageService) GetStorage(id string) (*meta.Storage, error) {
 	if id == "" {
+		logger.GetLogger("boulder").Errorf("no storage id provided")
 		return nil, errors.New("empty storage id")
 	}
 	s.mutex.Lock()
@@ -170,7 +185,7 @@ func (s *StorageService) GetStorage(id string) (*meta.Storage, error) {
 	var storage meta.Storage
 	found, err := s.kvStore.Get(key, &storage)
 	if err != nil || !found {
-		logger.GetLogger("boulder").Debugf("storage with id %s does not exist", id)
+		logger.GetLogger("boulder").Errorf("storage with id %s does not exist", id)
 		return nil, errors.New("storage with this id does not exist")
 	}
 
@@ -184,14 +199,14 @@ func (s *StorageService) GetStorage(id string) (*meta.Storage, error) {
 			return nil, errors.New("s3 storage not configured")
 		}
 		logger.GetLogger("boulder").Debugf("creating s3 block store for bucket: %s", storage.Conf.S3.Bucket)
-		inst, err = block.NewS3Store(storage.Conf.S3)
+		inst, err = block.NewS3Store(id, storage.Class, storage.Conf.S3)
 	case meta.DISK_TYPE_STORAGE:
 		if storage.Conf.Disk == nil {
 			logger.GetLogger("boulder").Error("disk storage not configured")
 			return nil, errors.New("disk storage not configured")
 		}
 		logger.GetLogger("boulder").Debugf("creating disk block store at path: %s", storage.Conf.Disk.Path)
-		inst, err = block.NewDiskStore(storage.Conf.Disk)
+		inst, err = block.NewDiskStore(id, storage.Class, storage.Conf.Disk)
 	default:
 		logger.GetLogger("boulder").Errorf("unknown storage type: %s", storage.Type)
 		return nil, errors.New("unknown storage type")
@@ -200,19 +215,6 @@ func (s *StorageService) GetStorage(id string) (*meta.Storage, error) {
 	if err != nil && inst != nil {
 		logger.GetLogger("boulder").Errorf("error creating block store for storage id %s: %v", id, err)
 		return nil, fmt.Errorf("error creating block store: %w", err)
-	}
-
-	// 关键：检查 inst 是否也实现了 fs.SyncTarget
-	syncTarget, ok := inst.(fs.SyncTarget) // 类型断言
-	if !ok {
-		logger.GetLogger("boulder").Errorf("storage instance for id %s does not implement SyncTarget", id)
-		return nil, errors.New("storage does not support syncing")
-	}
-	vfile, err := block.GetTieredFs()
-	if err == nil && vfile != nil {
-		_ = vfile.AddSyncTarget(syncTarget)
-	} else {
-		return nil, fmt.Errorf("failed to get tiered fs: %w", err)
 	}
 
 	storage.Instance = inst

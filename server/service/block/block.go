@@ -350,7 +350,7 @@ func (s *BlockService) WriteBlock(ctx context.Context, storageID string, blockDa
 
 	st, err := ss.GetStorage(storageID)
 	if err != nil || st == nil || st.Instance == nil {
-		logger.GetLogger("boulder").Errorf("get nil storage instance")
+		logger.GetLogger("boulder").Errorf("get nil storage instance id %s ", storageID)
 		return fmt.Errorf("get nil storage instance: %w", err)
 	}
 

@@ -29,8 +29,9 @@ func (r Region) Overlaps(other Region) bool {
 // FileRegion 表示一个文件在 mmap 中的区域
 type FileRegion struct {
 	Region
-	Ver  int32
-	Path string
+	Ver       int32
+	BlockID   string
+	StorageID string
 }
 
 // FreeListManager 空闲空间管理器
@@ -44,7 +45,8 @@ func (r *FileRegion) Equals(other *FileRegion) bool {
 	if r == nil || other == nil {
 		return r == other // 都为 nil 才相等
 	}
-	return r.Path == other.Path &&
+	return r.StorageID == other.StorageID &&
+		r.BlockID == other.BlockID &&
 		r.Start == other.Start &&
 		r.End == other.End &&
 		r.Ver == other.Ver
