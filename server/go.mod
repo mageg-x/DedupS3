@@ -19,6 +19,8 @@ require (
 	github.com/creasty/defaults v1.8.0
 	github.com/dgraph-io/badger/v4 v4.8.0
 	github.com/dgraph-io/ristretto v0.2.0
+	github.com/fatih/color v1.18.0
+	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/gorilla/mux v1.8.1
 	github.com/rabbitmq/amqp091-go v1.10.0
 	github.com/redis/go-redis/v9 v9.12.1
@@ -27,6 +29,7 @@ require (
 	github.com/tikv/client-go/v2 v2.0.7
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	golang.org/x/crypto v0.39.0
+	golang.org/x/sync v0.17.0
 	golang.org/x/sys v0.34.0
 	golang.org/x/time v0.8.0
 	gorm.io/driver/mysql v1.6.0
@@ -50,9 +53,10 @@ require (
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.12 // indirect
+	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
-	github.com/panjf2000/ants/v2 v2.11.3 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
 	github.com/sagikazarmark/locafero v0.7.0 // indirect
@@ -65,7 +69,6 @@ require (
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/zeebo/blake3 v0.2.4 // indirect
 	golang.org/x/net v0.41.0 // indirect
-	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241209162323-e6fa225c2576 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241223144023-3abc09e42ca8 // indirect

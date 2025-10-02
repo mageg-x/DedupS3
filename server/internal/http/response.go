@@ -25,6 +25,28 @@ import (
 	"github.com/mageg-x/boulder/internal/logger"
 )
 
+// 通用响应结构
+type AdminResponse struct {
+	Code int         `json:"code"`
+	Msg  string      `json:"msg"`
+	Data interface{} `json:"data,omitempty"` // omitempty 表示 nil 时不输出
+}
+
+// 快捷错误响应函数（如密码错误）
+func AdminWriteJSONError(w http.ResponseWriter, r *http.Request, code int, msg string, data interface{}, statusCode int) {
+	// 构造响应
+	resp := AdminResponse{
+		Code: code,
+		Msg:  msg,
+		Data: data,
+	}
+
+	// 使用 json.NewEncoder 避免缓冲，更高效
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(statusCode) // 设置 HTTP 状态码
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
 // AWSErrorResponse AWS 错误响应结构 (同时支持XML和JSON格式)
 type AWSErrorResponse struct {
 	XMLName   xml.Name `xml:"Error" json:",omitempty"`

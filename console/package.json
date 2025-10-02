@@ -12,6 +12,8 @@
     "@aws-sdk/client-s3": "^3.864.0",
     "@element-plus/icons-vue": "^2.3.2",
     "@tailwindcss/vite": "^4.1.11",
+    "axios": "^1.12.2",
+    "blueimp-md5": "^2.19.0",
     "element-plus": "^2.10.6",
     "tailwindcss": "^4.1.11",
     "vue": "^3.5.18",

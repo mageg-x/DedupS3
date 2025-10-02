@@ -24,7 +24,29 @@ import (
 	"github.com/mageg-x/boulder/middleware"
 )
 
-func SetupRouter() *mux.Router {
+func SetupAdminRouter() *mux.Router {
+	// SkipClean  false  替换为 //  替换 .. .
+	mr := mux.NewRouter().SkipClean(false).UseEncodedPath()
+	// 添加请求ID中间件（应放在首位）
+	mr.Use(mux.CORSMethodMiddleware(mr))
+	mr.Use(middleware.RequestIDMiddleware)
+	mr.Use(middleware.RateLimitMiddleware(middleware.RateLimitConfig{
+		RequestsPerSecond: 10,
+		BurstSize:         20,
+		KeyFunc:           middleware.ByIP,
+	}))
+
+	registerAdminRouter(mr)
+
+	// 使用http.HandlerFunc适配器将函数转换为http.Handler接口
+	// 将NotFoundHandler和MethodNotAllowedHandler设置在主路由上，以捕获所有未匹配请求
+	mr.NotFoundHandler = http.HandlerFunc(handler.NotFoundHandler)
+	mr.MethodNotAllowedHandler = http.HandlerFunc(handler.NotAllowedHandler)
+
+	return mr
+}
+
+func SetupS3Router() *mux.Router {
 	// SkipClean  false  替换为 //  替换 .. .
 	mr := mux.NewRouter().SkipClean(false).UseEncodedPath()
 

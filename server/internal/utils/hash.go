@@ -19,10 +19,26 @@ package utils
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"math/rand"
+	"time"
 )
+
+// 先在 init 或程序启动时设置种子（只需一次）
+func init() {
+	rand.Seed(time.Now().UnixNano()) // Go 1.20+ 可省略，但建议保留
+}
 
 func HmacSHA256(key []byte, data string) []byte {
 	hasher := hmac.New(sha256.New, key)
 	hasher.Write([]byte(data))
 	return hasher.Sum(nil)
+}
+
+func RandString(n int) string {
+	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(b)
 }

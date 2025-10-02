@@ -21,29 +21,33 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/mageg-x/boulder/internal/fs"
-	"github.com/mageg-x/boulder/internal/storage/block"
 	"math/rand"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/mageg-x/boulder/service/iam"
-
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/mageg-x/boulder/internal/config"
+	"github.com/mageg-x/boulder/internal/fs"
 	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/mageg-x/boulder/internal/logger"
+	"github.com/mageg-x/boulder/internal/storage/block"
 	"github.com/mageg-x/boulder/internal/storage/cache"
 	"github.com/mageg-x/boulder/internal/storage/kv"
 	"github.com/mageg-x/boulder/router"
 	gc2 "github.com/mageg-x/boulder/service/gc"
+	"github.com/mageg-x/boulder/service/iam"
 	"github.com/mageg-x/boulder/service/storage"
-	"github.com/mageg-x/boulder/web"
+)
+
+var (
+	once singleflight.Group
 )
 
 type CLI struct {
@@ -53,7 +57,7 @@ type CLI struct {
 	Verbose     int
 }
 
-func ParseCLI() *CLI {
+func parseCLI() *CLI {
 	cli := &CLI{}
 
 	pflag.StringVarP(&cli.ConfigPath, "config", "c", "", "Path to configuration file")
@@ -65,10 +69,54 @@ func ParseCLI() *CLI {
 	return cli
 }
 
+func startAdminSvr() error {
+	errCh := make(chan error, 1) // 缓冲 1，防止 goroutine 泄漏
+
+	go once.Do("start-admin-server", func() (interface{}, error) {
+		cfg := config.Get()
+		mr := router.SetupAdminRouter()
+		adminServer := &http.Server{
+			Addr:    cfg.Server.ConsoleAddress,
+			Handler: mr,
+		}
+		logger.GetLogger("boulder").Infof("admin server started at %s", adminServer.Addr)
+		if err := adminServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.GetLogger("boulder").Errorf("admin server running failed: %v", err)
+		}
+
+		defer func(svr *http.Server) {
+			if svr != nil {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := svr.Shutdown(ctx); err != nil {
+					logger.GetLogger("boulder").Errorf("stop admin server %s failed: %v", svr.Addr, err)
+				} else {
+					logger.GetLogger("boulder").Infof("admin server %s stopped", svr.Addr)
+				}
+			}
+		}(adminServer)
+
+		close(errCh) // 正常退出
+		return nil, nil
+	})
+
+	// 等待1秒 errCh, 如果没有就表示成功
+	// 等待最多 1 秒，看是否启动失败
+	select {
+	case <-errCh:
+		// 一秒钟进来，必然是失败
+		return fmt.Errorf("admin server  started failed")
+	case <-time.After(1 * time.Second):
+		// 1 秒内没有错误，也没有 close → 说明服务正在正常运行
+		logger.GetLogger("boulder").Infof("admin server started successfully")
+		return nil //认为启动成功
+	}
+}
+
 func main() {
 	rand.New(rand.NewSource(time.Now().UnixNano()))
 	// 1、 初始化配置和 日志部分
-	cli := ParseCLI()
+	cli := parseCLI()
 	if cli.ShowHelp {
 		flag.Usage()
 		os.Exit(0)
@@ -175,8 +223,13 @@ func main() {
 	ak, err := iamService.CreateAccessKey(account.AccountID, account.Name, time.Now().Add(time.Hour*24*365), cfg.Iam.AK, cfg.Iam.SK)
 	logger.GetLogger("boulder").Warnf("create account %v ak %v ", account, ak)
 
+	// 启动 admin server
+	if err := startAdminSvr(); err != nil {
+		logger.GetLogger("boulder").Error("failed to start admin server", zap.Error(err))
+		panic(err)
+	}
 	// 3. 创建路由处理器
-	mux := router.SetupRouter()
+	mr := router.SetupS3Router()
 
 	// 4. 创建服务器实例（监听 3000 端口）
 	tcpOpt := xhttp.TCPOptions{
@@ -204,7 +257,7 @@ func main() {
 	for i := 0; i < cfg.Server.Listeners; i++ {
 		servers[i] = xhttp.NewServer([]string{cfg.Server.Address})
 		// 配置服务器参数
-		servers[i].UseHandler(mux).UseIdleTimeout(cfg.Server.IdleTimeout).UseReadTimeout(cfg.Server.ReadTimeout).UseWriteTimeout(cfg.Server.WriteTimeout)
+		servers[i].UseHandler(mr).UseIdleTimeout(cfg.Server.IdleTimeout).UseReadTimeout(cfg.Server.ReadTimeout).UseWriteTimeout(cfg.Server.WriteTimeout)
 		servers[i].UseTCPOptions(tcpOpt).UseBaseContext(context.Background())
 
 		// 初始化服务器
@@ -224,9 +277,6 @@ func main() {
 		}(i)
 	}
 
-	// 5、启动console服务
-	web.Start()
-
 	// 创建一个通道来接收操作系统的中断信号
 	quit := make(chan os.Signal, 1)
 	// 注册中断信号
@@ -236,9 +286,6 @@ func main() {
 
 	// 执行优雅关机
 	logger.GetLogger("boulder").Infof("stop servers ...")
-
-	// 关闭console 服务
-	web.Close()
 
 	// 关闭主服务器
 	for _, srv := range servers {

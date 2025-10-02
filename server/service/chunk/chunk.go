@@ -62,16 +62,12 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.BaseObject, cb WriteObjCB)
 
 	// 根据 cfg.Block.ChunkSize 设置 ChunkerOpts
 	cfg := xconf.Get()
-	cz := cfg.Block.ChunkSize
-	// 边界检查
-	if cz < 16*1024 {
-		cz = 16 * 1024 // 默认 4MB
-	}
-
+	// 边界检查,默认 16KB
+	chunkSize := max(cfg.Block.ChunkSize, 16*1024)
 	opts := &fastcdc.ChunkerOpts{
-		MinSize:    cz * 5 / 10, // 50% of S
-		NormalSize: cz,          // 100% of S
-		MaxSize:    cz * 2,      // 200% of S
+		MinSize:    chunkSize * 5 / 10, // 50% of S
+		NormalSize: chunkSize,          // 100% of S
+		MaxSize:    chunkSize * 2,      // 200% of S
 	}
 
 	// 切分
@@ -167,11 +163,11 @@ func (c *ChunkService) Split(ctx context.Context, r io.Reader, outputChan chan *
 	var prevChunk *meta.Chunk
 	objSize := 0 // 统计真实长度
 
-	if cfg.Block.ChunkSize >= cfg.Block.MaxSize {
-		// 固定切成 cfg.Block.MaxSize (64MB) 大小的chunk, 如果不够就切成文件原始大小
-		const bufferSize = 1 << 20 // 1MB 缓冲区
-		tempBuf := make([]byte, bufferSize)
-		chunkData := make([]byte, 0, cfg.Block.MaxSize)
+	if cfg.Block.FixChunk {
+		// 固定切片
+		chunkSize := max(cfg.Block.ChunkSize, 16*1024)
+		tempBuf := make([]byte, chunkSize)
+		chunkData := make([]byte, 0, chunkSize)
 		for {
 			// 检查 context 是否取消
 			select {
@@ -190,16 +186,16 @@ func (c *ChunkService) Split(ctx context.Context, r io.Reader, outputChan chan *
 				chunkData = append(chunkData, tempBuf[:n]...)
 			}
 
-			if err == io.EOF && len(chunkData) < (cfg.Block.MaxSize/2) && prevChunk != nil {
+			if err == io.EOF && len(chunkData) < chunkSize/2 && prevChunk != nil {
 				// 合并到前一个分片
 				mergedData := append(prevChunk.Data, chunkData...)
 				prevChunk = meta.NewChunk(mergedData)
 				chunkData = make([]byte, 0)
 			}
 
-			if len(chunkData) >= cfg.Block.MaxSize {
-				currentChunk := meta.NewChunk(chunkData)
-				chunkData = make([]byte, 0, cfg.Block.MaxSize)
+			if len(chunkData) >= chunkSize {
+				currentChunk := meta.NewChunk(chunkData[:chunkSize])
+				chunkData = chunkData[chunkSize:]
 				// 发送前一个分片（如果有）
 				if prevChunk != nil {
 					//hashfile.WriteString(fmt.Sprintf("%s  %s\n", obj.Key, prevChunk.Hash))

@@ -21,7 +21,7 @@
                                 d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
                         </svg>
                     </div>
-                    <div class="logo-text">磐石 (面向对象存储)</div>
+                    <div class="logo-text">磐石 (兼容S3对象存储)</div>
                 </div>
 
                 <h1 class="tagline">高级云存储<span>管理平台</span></h1>
@@ -31,67 +31,66 @@
                     <div class="feature flex flex-col items-center">
                         <div class="flex items-center w-full gap-x-4">
                             <div class="feature-icon">
+                                <i class="fas fa-plug"></i>
+                            </div>
+                            <div class="feature-header">
+                                <div class="feature-title">完美兼容</div>
+                            </div>
+                        </div>
+                        <div class="feature-content">
+                            <p class="feature-description">
+                                完全兼容AWS接口规范，完美适配各种SDK和客户端工具，无缝迁移零成本。
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="feature flex flex-col items-center">
+                        <div class="flex items-center w-full gap-x-4">
+                            <div class="feature-icon">
+                                <i class="fas fa-piggy-bank"></i>
+                            </div>
+                            <div class="feature-header">
+                                <div class="feature-title">高效节省</div>
+                            </div>
+                        </div>
+
+                        <div class="feature-content">
+                            <p class="feature-description">
+                                采用智能复用重复内容和快速压缩算法，大比例节省存储空间，特别适合存储备份数据、镜像文件和文本文档。
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="feature flex flex-col items-center">
+                        <div class="flex items-center w-full gap-x-4">
+                            <div class="feature-icon">
+                                <i class="fas fa-balance-scale"></i>
+                            </div>
+                            <div class="feature-header">
+                                <div class="feature-title">无损性能</div>
+                            </div>
+                        </div>
+
+                        <div class="feature-content">
+                            <p class="feature-description">
+                                虽然系统采用极致去重和压缩技术，但读写接口性能几乎无损耗，用户仍可享受高速数据访问体验。
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="feature flex flex-col items-center">
+                        <div class="flex items-center w-full gap-x-4">
+                            <div class="feature-icon">
                                 <i class="fas fa-shield-alt"></i>
                             </div>
                             <div class="feature-header">
-                                <div class="feature-title">端到端加密凭证</div>
-                            </div>
-                        </div>
-                        <div class="feature-content">
-                            <p class="feature-description">
-                                所有凭证在传输和存储过程中都经过AES-256加密处理。
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="feature flex flex-col items-center">
-                        <div class="flex items-center w-full gap-x-4">
-                            <div class="feature-icon">
-                                <i class="fas fa-bolt"></i>
-                            </div>
-                            <div class="feature-header">
-                                <div class="feature-title">闪电般传输速度</div>
+                                <div class="feature-title">安全可靠</div>
                             </div>
                         </div>
 
                         <div class="feature-content">
                             <p class="feature-description">
-                                使用多线程传输和智能分块技术，支持断点续传和并行上传。
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="feature flex flex-col items-center">
-                        <div class="flex items-center w-full gap-x-4">
-                            <div class="feature-icon">
-                                <i class="fas fa-globe-americas"></i>
-                            </div>
-                            <div class="feature-header">
-                                <div class="feature-title">多区域支持</div>
-                            </div>
-                        </div>
-
-                        <div class="feature-content">
-
-                            <p class="feature-description">
-                                支持多区域。智能路由选择确保您始终连接到最近的服务器节点。
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="feature flex flex-col items-center">
-                        <div class="flex items-center w-full gap-x-4">
-                            <div class="feature-icon">
-                                <i class="fas fa-sync-alt"></i>
-                            </div>
-                            <div class="feature-header">
-                                <div class="feature-title">跨设备同步</div>
-                            </div>
-                        </div>
-
-                        <div class="feature-content">
-                            <p class="feature-description">
-                                在任何设备上访问您的最新文件，实时同步确保数据一致性。
+                                所有凭证在传输和存储过程中都经过AES-256加密处理，确保数据安全与隐私保护。
                             </p>
                         </div>
                     </div>
@@ -177,23 +176,6 @@
                                 <el-input v-model="loginForm.endpoint" placeholder="https://s3.amazonaws.com 或自定义端点"
                                     size="large" />
                             </el-form-item>
-
-                            <el-form-item label="Region(可选)">
-                                <el-select v-model="loginForm.region" placeholder="选择区域" size="large"
-                                    style="width: 100%">
-                                    <el-option label="美国东部 (弗吉尼亚北部)" value="us-east-1" />
-                                    <el-option label="美国东部 (俄亥俄州)" value="us-east-2" />
-                                    <el-option label="美国西部 (俄勒冈州)" value="us-west-2" />
-                                    <el-option label="欧洲 (爱尔兰)" value="eu-west-1" />
-                                    <el-option label="亚太地区 (新加坡)" value="ap-southeast-1" />
-                                    <el-option label="自定义" value="custom" />
-                                </el-select>
-                            </el-form-item>
-
-                            <!-- 自定义区域输入框 -->
-                            <el-form-item v-if="loginForm.region === 'custom'" label="自定义区域" prop="customRegion">
-                                <el-input v-model="loginForm.customRegion" placeholder="输入自定义区域名称" size="large" />
-                            </el-form-item>
                         </div>
 
                         <!-- 用户名密码登录表单 -->
@@ -232,7 +214,10 @@
 <script setup>
 import { ref, reactive, watch } from 'vue';
 import { ElMessage } from 'element-plus';
+import { useRouter } from 'vue-router';
+import { login, logout } from '../api/admin';
 
+const router = useRouter();
 const loginFormRef = ref(null);
 const loading = ref(false);
 const loginMethod = ref('iam'); // 's3' 或 'iam'
@@ -241,8 +226,6 @@ const loginForm = reactive({
     accessKeyId: '',
     secretAccessKey: '',
     endpoint: '',
-    region: 'us-east-1',
-    customRegion: '',
     username: '',
     password: '',
     remember: false
@@ -258,9 +241,6 @@ const rules = {
     endpoint: [
         { required: true, message: '请输入 endpoint', trigger: 'blur' }
     ],
-    customRegion: [
-        { required: true, message: '请输入自定义区域', trigger: 'blur' }
-    ],
     username: [
         { required: true, message: '请输入用户名', trigger: 'blur' }
     ],
@@ -270,20 +250,6 @@ const rules = {
     ]
 };
 
-// 监听region变化，当选择custom时清空自定义区域验证
-watch(
-    () => loginForm.region,
-    (newValue) => {
-        if (newValue !== 'custom') {
-            // 重置自定义区域值
-            loginForm.customRegion = '';
-            // 如果有验证错误，清除它
-            if (loginFormRef.value) {
-                loginFormRef.value.clearValidate('customRegion');
-            }
-        }
-    }
-);
 
 // 切换登录方式时重置表单验证
 watch(loginMethod, () => {
@@ -301,19 +267,16 @@ const handleLogin = async () => {
 
         loading.value = true;
 
-        // 模拟API调用
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        const result = await login(loginForm.username, loginForm.password);
+        
+        if (result.success) {
+            ElMessage.success(`登录成功！正在跳转...`);
+            router.push('/dashboard');
+        } else {
+            ElMessage.error(`登录失败: ${result.message}`);
+        }
 
-        // 成功消息
-        const method = loginMethod.value === 's3' ? 'S3' : 'iam';
-        ElMessage.success(`${method}登录成功！正在跳转...`);
-
-        // 模拟跳转
-        setTimeout(() => {
-            // 实际项目中这里应该是路由跳转
-            console.log(`Redirecting to ${method} dashboard...`);
-        }, 1000);
-
+        loading.value = false;        
     } catch (error) {
         ElMessage.error('登录失败: ' + error.message);
     } finally {

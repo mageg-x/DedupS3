@@ -19,27 +19,21 @@ package logger
 import (
 	"fmt"
 	"github.com/aws/smithy-go/logging"
+	"github.com/mageg-x/boulder/internal/color"
 	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-type Config struct {
-	LogDir     string // 日志根目录
-	MaxSize    int    // 每个日志文件最大 10MB
-	MaxBackups int    // 保留 7 个备份
-	MaxAge     int    // 30 天过期
-	Compress   bool   // 压缩旧日志
-}
-
 var (
-	loggers = make(map[string]*logrus.Logger)
+	loggers = sync.Map{} // 替换 map[string]*logrus.Logger
 	mu      sync.Mutex
 	config  = Config{
 		LogDir:     "./logs",
@@ -50,6 +44,14 @@ var (
 	}
 )
 
+type Config struct {
+	LogDir     string // 日志根目录
+	MaxSize    int    // 每个日志文件最大 10MB
+	MaxBackups int    // 保留 7 个备份
+	MaxAge     int    // 30 天过期
+	Compress   bool   // 压缩旧日志
+}
+
 // 首先，定义一个空记录器类型
 // 定义符合 AWS SDK 接口的空日志记录器
 type AWSNullLogger struct{}
@@ -57,6 +59,32 @@ type AWSNullLogger struct{}
 // 实现 AWS SDK 所需的 Logf 方法
 func (AWSNullLogger) Logf(classification logging.Classification, format string, v ...interface{}) {
 	// 什么都不做，完全忽略所有日志
+}
+
+type CustomLogFormatter struct{}
+
+func (f *CustomLogFormatter) Format(entry *logrus.Entry) ([]byte, error) {
+	var levelColor string
+	switch entry.Level {
+	case logrus.DebugLevel:
+		levelColor = color.BlueBold("[DEBU]")
+	case logrus.InfoLevel:
+		levelColor = color.GreenBold("[INFO]")
+	case logrus.WarnLevel:
+		levelColor = color.YellowBold("[WARN]")
+	case logrus.ErrorLevel, logrus.FatalLevel, logrus.PanicLevel:
+		levelColor = color.RedBold("[ERRO]")
+	case logrus.TraceLevel:
+		levelColor = color.CyanBold("[TRAC]")
+	default:
+		levelColor = fmt.Sprintf("[%s]", entry.Level.String())
+	}
+
+	// 构建最终日志行：[LEVEL] file:func:line msg
+	// 注意：entry.Message 已经包含了 caller 和内容（由 Debugf/Infof 等构造）
+	ts := time.Now().Format("2006-01-02 15:04:05")
+	msg := fmt.Sprintf("%s %s %s\n", levelColor, ts, entry.Message)
+	return []byte(msg), nil
 }
 
 // getLoggerKey 标准化 logger 名称（避免路径问题）
@@ -221,13 +249,17 @@ func GetLogger(name string) *Logger {
 	}
 
 	key := getLoggerKey(name)
-	mu.Lock()
-	defer mu.Unlock()
-	// 如果已存在，直接返回封装的 Logger
-	if logger, exists := loggers[key]; exists {
-		return &Logger{logger}
+	// 先尝试读取（无锁）
+	if logger, ok := loggers.Load(key); ok {
+		return &Logger{logger.(*logrus.Logger)}
 	}
 
+	mu.Lock()
+	defer mu.Unlock()
+	// 再次检查，防止重复创建（双重检查）
+	if logger, ok := loggers.Load(key); ok {
+		return &Logger{logger.(*logrus.Logger)}
+	}
 	// 创建日志目录
 	if err := os.MkdirAll(config.LogDir, 0755); err != nil {
 		fmt.Printf("无法创建日志目录: %v\n", err)
@@ -249,15 +281,10 @@ func GetLogger(name string) *Logger {
 	}
 	logger.SetOutput(io.MultiWriter(os.Stdout, fileWriter))
 
-	logger.SetFormatter(&logrus.TextFormatter{
-		ForceColors:     true,
-		FullTimestamp:   true,
-		PadLevelText:    false,
-		TimestampFormat: "2006-01-02 15:04:05",
-	})
+	logger.SetFormatter(&CustomLogFormatter{})
 
 	// 缓存原始 *logrus.Logger
-	loggers[key] = logger
+	loggers.Store(key, logger)
 
 	// 返回封装的 Logger
 	return &Logger{logger}

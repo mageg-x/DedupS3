@@ -280,7 +280,7 @@ func (fs *TieredFs) loadMetadata() error {
 
 	// 重建 fs.syncManager 同步任务
 	for _, file := range fs.files {
-		logger.GetLogger("boulder").Errorf("restore file %s meta form mmap", file.BlockID)
+		logger.GetLogger("boulder").Debugf("restore file %s meta form mmap", file.BlockID)
 		fs.syncManager.Submit(file, 0, nil)
 	}
 	logger.GetLogger("boulder").Infof("Loaded %#v files", fs.files)

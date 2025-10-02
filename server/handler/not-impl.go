@@ -121,7 +121,7 @@ func NotImplementedHandler(w http.ResponseWriter, r *http.Request) {
 
 func NotFoundHandler(w http.ResponseWriter, r *http.Request) {
 	logger.GetLogger("boulder").Errorf("API called: NotFoundHandler, %v", r)
-	http.Error(w, "The specified key does not exist", http.StatusNotFound)
+	http.Error(w, "The specified path does not exist", http.StatusNotFound)
 }
 
 func NotAllowedHandler(w http.ResponseWriter, r *http.Request) {

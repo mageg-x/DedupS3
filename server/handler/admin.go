@@ -1,0 +1,81 @@
+package handler
+
+import (
+	"crypto/md5"
+	"encoding/hex"
+	"encoding/json"
+	xhttp "github.com/mageg-x/boulder/internal/http"
+	"net/http"
+	"strings"
+
+	"github.com/mageg-x/boulder/internal/logger"
+	"github.com/mageg-x/boulder/internal/utils"
+	"github.com/mageg-x/boulder/meta"
+	iam2 "github.com/mageg-x/boulder/service/iam"
+)
+
+// POST /api/login
+func LoginHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	json.NewDecoder(r.Body).Decode(&req)
+
+	username := strings.TrimSpace(req.Username)
+	if err := meta.ValidateUsername(username); err != nil {
+		logger.GetLogger("boulder").Errorf("username %s is invalid format", username)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid username", nil, http.StatusBadRequest)
+		return
+	}
+	accountID := meta.GenerateAccountID(req.Username)
+
+	iam := iam2.GetIamService()
+	ac, err := iam.GetAccount(accountID)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to get account %s", req.Username)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "failed to get account", nil, http.StatusBadRequest)
+		return
+	}
+	// 验证用户名密码
+	user := ac.Users[username]
+	if user == nil {
+		logger.GetLogger("boulder").Errorf("user %s not found", username)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "user not found", nil, http.StatusBadRequest)
+		return
+	}
+
+	password := strings.TrimSpace(req.Password)
+	inputStr := user.Password + ":" + user.Username
+	outputStr := md5.Sum([]byte(inputStr))
+	expectStr := hex.EncodeToString(outputStr[:])
+	if expectStr != password {
+		logger.GetLogger("boulder").Errorf("password mismatch for user %s, %s:%s", username, password, expectStr)
+		xhttp.AdminWriteJSONError(w, r, http.StatusUnauthorized, "passwords mismatch", nil, http.StatusUnauthorized)
+		return
+	}
+
+	// 生成 JWT
+	token, err := utils.GenerateToken(username)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to generate token for user %s", username)
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "internal server error", nil, http.StatusInternalServerError)
+		return
+	}
+
+	// 设置 Cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "access_token",          // Cookie 名字
+		Value:    token,                   // Token 值
+		Path:     "/",                     // 作用路径
+		HttpOnly: true,                    // 关键：JS 无法读取，防 XSS
+		Secure:   true,                    // 仅 HTTPS（开发环境可设 false）
+		SameSite: http.SameSiteStrictMode, // 防 CSRF
+		MaxAge:   3600,                    // 有效期 1 小时（秒）
+		// Expires: time.Now().Add(1 * time.Hour), // 过期时间（旧方式）
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
