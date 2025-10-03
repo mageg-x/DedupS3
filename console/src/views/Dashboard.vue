@@ -23,7 +23,7 @@
           <span v-if="card.footerType === 'growth'" class="text-green-500 font-medium flex items-center bg-green-50 px-2 py-1 rounded-lg">
             <i class="fas fa-arrow-up w-3 h-3 mr-1.5"></i>
             +{{ card.growthValue }}%
-            <span class="text-gray-400 ml-2">较上月</span>
+            <span class="text-gray-400 ml-2 whitespace-nowrap">{{ t('dashboard.comparedToLastMonth') }}</span>
           </span>
           <span v-else-if="card.footerType === 'saving'" class="text-green-500 font-medium flex items-center bg-green-50 px-2 py-1 rounded-lg">
             <i class="fas fa-arrow-down w-3 h-3 mr-1.5"></i>
@@ -41,6 +41,9 @@
 
 <script setup>
 import { ref, computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 // 统计数据
 const stats = ref({
@@ -91,7 +94,7 @@ const formatSize = (bytes) => {
 const statCards = computed(() => [
   {
     id: 'bucket-count',
-    title: '存储桶数量',
+    title: t('dashboard.bucketCount'),
     value: stats.value.bucketCount,
     iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center text-blue-500',
     iconWrapperClass: 'w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-blue',
@@ -101,7 +104,7 @@ const statCards = computed(() => [
   },
   {
     id: 'object-count',
-    title: '对象总数',
+    title: t('dashboard.objectCount'),
     value: formatNumber(stats.value.objectCount),
     iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-50 to-purple-100 flex items-center justify-center text-purple-500',
     iconWrapperClass: 'w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-purple',
@@ -111,7 +114,7 @@ const statCards = computed(() => [
   },
   {
     id: 'block-count',
-    title: '块数量',
+    title: t('dashboard.blockCount'),
     value: formatNumber(stats.value.blockCount),
     iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-green-50 to-green-100 flex items-center justify-center text-green-500',
     iconWrapperClass: 'w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-green',
@@ -121,7 +124,7 @@ const statCards = computed(() => [
   },
   {
     id: 'chunk-count',
-    title: '切片数量',
+    title: t('dashboard.chunkCount'),
     value: formatNumber(stats.value.chunkCount),
     iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-50 to-amber-100 flex items-center justify-center text-amber-500',
     iconWrapperClass: 'w-8 h-8 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl flex items-center justify-center shadow-amber',
@@ -131,7 +134,7 @@ const statCards = computed(() => [
   },
   {
     id: 'original-size',
-    title: '原始数据大小',
+    title: t('dashboard.originalSize'),
     value: formatSize(stats.value.originalSize),
     iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-red-50 to-red-100 flex items-center justify-center text-red-500',
     iconWrapperClass: 'w-8 h-8 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center shadow-red',
@@ -141,7 +144,7 @@ const statCards = computed(() => [
   },
   {
     id: 'actual-size',
-    title: '实际存储大小',
+    title: t('dashboard.actualSize'),
     value: formatSize(stats.value.actualSize),
     iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-50 to-cyan-100 flex items-center justify-center text-cyan-500',
     iconWrapperClass: 'w-8 h-8 bg-gradient-to-br from-cyan-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-cyan',
@@ -151,23 +154,23 @@ const statCards = computed(() => [
   },
   {
     id: 'compression-ratio',
-    title: '容缩比',
+    title: t('dashboard.compressionRatio'),
     value: stats.value.compressionRatio + 'x',
     iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-50 to-indigo-100 flex items-center justify-center text-indigo-500',
     iconWrapperClass: 'w-8 h-8 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-indigo',
     iconClass: 'fas fa-chart-line',
     footerType: 'saving',
-    savingText: '节省了 ' + formatSize(stats.value.savedSize)
+    savingText: t('dashboard.saved') + ' ' + formatSize(stats.value.savedSize)
   },
   {
     id: 'reuse-stats',
-    title: '复用统计',
+    title: t('dashboard.reuseStats'),
     value: stats.value.reuseRatio + '%',
     iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-pink-50 to-pink-100 flex items-center justify-center text-pink-500',
     iconWrapperClass: 'w-8 h-8 bg-gradient-to-br from-pink-500 to-pink-600 rounded-xl flex items-center justify-center shadow-pink',
     iconClass: 'fas fa-copy',
     footerType: 'reuse',
-    reuseText: '复用切片: ' + formatNumber(stats.value.reusedChunkCount) + ' 个，共 ' + formatSize(stats.value.reusedSize)
+    reuseText: t('dashboard.reusedChunks') + ': ' + formatNumber(stats.value.reusedChunkCount) + ' ' + t('dashboard.pieces') + '，' + t('dashboard.total') + ' ' + formatSize(stats.value.reusedSize)
   }
 ]);
 </script>

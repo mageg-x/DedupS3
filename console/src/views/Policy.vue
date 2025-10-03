@@ -2,11 +2,11 @@
   <div class="policies-container">
     <!-- 页面标题和操作按钮 -->
     <div class="page-header flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-bold text-gray-800">策略管理</h1>
+      <h1 class="text-2xl font-bold text-gray-800">{{ t('policy.pageTitle') }}</h1>
       <button @click="showAddPolicyDialog" 
               class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
         <i class="fas fa-plus"></i>
-        <span>添加策略</span>
+        <span>{{ t('policy.addPolicy') }}</span>
       </button>
     </div>
 
@@ -15,7 +15,7 @@
       <div class="relative">
         <input type="text" 
                v-model="searchKeyword" 
-               placeholder="搜索策略名称或描述..." 
+               :placeholder="t('policy.searchPlaceholder')" 
                class="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
         <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
       </div>
@@ -25,14 +25,12 @@
     <div class="card bg-white rounded-xl shadow-sm overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full">
-          <thead class="bg-gray-50 border-b border-gray-200">
+          <thead class=" text-sm bg-gray-50 border-b border-gray-200">
             <tr>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">名称</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">描述</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">关联用户</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">关联组</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">创建时间</th>
-              <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">{{ t('policy.name') }}</th>
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">{{ t('policy.description') }}</th>
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">{{ t('policy.creationTime') }}</th>
+              <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">{{ t('policy.operation') }}</th>
             </tr>
           </thead>
           <tbody class="bg-white divide-y divide-gray-200">
@@ -48,17 +46,7 @@
                 </div>
               </td>
               <td class="px-6 py-4 text-sm text-gray-500">
-                {{ policy.description || '无描述' }}
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap">
-                <span class="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
-                  {{ policy.users ? policy.users.length : 0 }}
-                </span>
-              </td>
-              <td class="px-6 py-4 whitespace-nowrap">
-                <span class="px-2 py-1 text-xs font-medium rounded-full bg-purple-100 text-purple-800">
-                  {{ policy.groups ? policy.groups.length : 0 }}
-                </span>
+                {{ policy.description || t('policy.noDescription') }}
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 {{ formatDate(policy.createdAt) }}
@@ -66,15 +54,15 @@
               <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                 <button @click="showPolicyDetails(policy)" 
                         class="text-green-600 hover:text-green-900 transition-colors mr-3">
-                  <i class="fas fa-eye mr-1"></i>查看
+                  <i class="fas fa-eye mr-1"></i>{{ t('policy.view') }}
                 </button>
                 <button @click="showEditPolicyDialog(policy)" 
                         class="text-blue-600 hover:text-blue-900 transition-colors mr-3">
-                  <i class="fas fa-edit mr-1"></i>编辑
+                  <i class="fas fa-edit mr-1"></i>{{ t('policy.edit') }}
                 </button>
                 <button @click="handleDeletePolicy(policy.id)" 
                         class="text-red-600 hover:text-red-900 transition-colors">
-                  <i class="fas fa-trash-alt mr-1"></i>删除
+                  <i class="fas fa-trash-alt mr-1"></i>{{ t('policy.delete') }}
                 </button>
               </td>
             </tr>
@@ -86,8 +74,8 @@
         <div class="text-gray-400 mb-4">
           <i class="fas fa-file-signature-slash text-4xl"></i>
         </div>
-        <h3 class="text-lg font-medium text-gray-900 mb-2">暂无策略</h3>
-        <p class="text-gray-500 mb-6">点击上方"添加策略"按钮创建第一个策略</p>
+        <h3 class="text-lg font-medium text-gray-900 mb-2">{{ t('policy.noPolicies') }}</h3>
+        <p class="text-gray-500 mb-6">{{ t('policy.clickAddPolicy') }}</p>
       </div>
     </div>
 
@@ -95,7 +83,7 @@
     <div v-if="dialogVisible" class="fixed inset-0 bg-[rgba(0,0,0,0.5)] flex items-center justify-center z-50">
       <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-4 overflow-hidden animate-fadeIn max-h-[90vh] flex flex-col">
         <div class="p-5 border-b border-gray-100 flex items-center justify-between">
-          <h3 class="text-lg font-bold text-gray-800">{{ isEditMode ? '编辑策略' : '添加策略' }}</h3>
+          <h3 class="text-lg font-bold text-gray-800">{{ isEditMode ? t('policy.editPolicy') : t('policy.addNewPolicy') }}</h3>
           <button @click="closeDialog" class="text-gray-500 hover:text-gray-700 transition-colors" aria-label="关闭">
             <i class="fas fa-times"></i>
           </button>
@@ -103,25 +91,25 @@
         <div class="p-5 flex-grow overflow-y-auto">
           <form @submit.prevent="handleSubmit">
             <div class="mb-4">
-              <label for="policyName" class="block text-sm font-medium text-gray-700 mb-1">策略名称</label>
+              <label for="policyName" class="block text-sm font-medium text-gray-700 mb-1">{{ t('policy.name') }}</label>
               <input type="text" id="policyName" v-model="formData.name" 
                      class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" 
-                     required>
+                     :placeholder="t('policy.pleaseEnterPolicyName')" required>
             </div>
             <div class="mb-4">
-              <label for="description" class="block text-sm font-medium text-gray-700 mb-1">描述</label>
+              <label for="description" class="block text-sm font-medium text-gray-700 mb-1">{{ t('policy.description') }}</label>
               <textarea id="description" v-model="formData.description" 
                         class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" 
-                        rows="2"></textarea>
+                        :placeholder="t('policy.pleaseEnterPolicyDescription')" rows="2"></textarea>
             </div>
             
             <!-- 策略文档 -->
             <div class="mb-6">
               <div class="flex items-center justify-between mb-2">
-                <label for="policyDocument" class="block text-sm font-medium text-gray-700">策略文档 (JSON)</label>
+                <label for="policyDocument" class="block text-sm font-medium text-gray-700">{{ t('policy.policyDocument') }} (JSON)</label>
                 <button type="button" @click="validateJson()" 
                         class="text-sm text-blue-600 hover:text-blue-900 transition-colors">
-                  验证JSON
+                  {{ t('policy.validateJSON') }}
                 </button>
               </div>
               <div class="relative">
@@ -130,25 +118,25 @@
                           rows="12"></textarea>
                 <div v-if="jsonError" class="absolute top-1 right-1 text-sm text-red-500 bg-white px-2 py-0.5 rounded">
                   <i class="fas fa-exclamation-circle mr-1"></i>
-                  JSON格式错误
+                  {{ t('policy.jsonFormatError') }}
                 </div>
                 <div v-else-if="formData.documentText" class="absolute top-1 right-1 text-sm text-green-500 bg-white px-2 py-0.5 rounded">
                   <i class="fas fa-check-circle mr-1"></i>
-                  格式正确
+                  {{ t('policy.formatCorrect') }}
                 </div>
               </div>
               <div class="mt-2 text-xs text-gray-500">
-                使用标准S3策略格式，版本应为2012-10-17
+                {{ t('policy.useStandardS3Format') }}
               </div>
             </div>
           </form>
         </div>
         <div class="p-5 border-t border-gray-100 flex items-center justify-end gap-3">
           <button @click="closeDialog" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
-            取消
+            {{ t('policy.cancel') }}
           </button>
           <button @click="handleSubmit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-            {{ isEditMode ? '更新' : '创建' }}
+            {{ isEditMode ? t('policy.update') : t('policy.create') }}
           </button>
         </div>
       </div>
@@ -158,44 +146,27 @@
     <div v-if="detailsVisible" class="fixed inset-0 bg-[rgba(0,0,0,0.5)] flex items-center justify-center z-50">
       <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-4 overflow-hidden animate-fadeIn max-h-[90vh] flex flex-col">
         <div class="p-5 border-b border-gray-100 flex items-center justify-between">
-          <h3 class="text-lg font-bold text-gray-800">策略详情</h3>
+          <h3 class="text-lg font-bold text-gray-800">{{ t('policy.policyDetails') }}</h3>
           <button @click="closeDetails" class="text-gray-500 hover:text-gray-700 transition-colors" aria-label="关闭">
             <i class="fas fa-times"></i>
           </button>
         </div>
         <div class="p-5 flex-grow overflow-y-auto">
           <div class="mb-4">
-            <h4 class="text-sm font-medium text-gray-500">名称</h4>
+            <h4 class="text-sm font-medium text-gray-500">{{ t('policy.name') }}</h4>
             <p class="font-medium text-gray-900">{{ currentPolicy.name }}</p>
           </div>
           <div class="mb-4">
-            <h4 class="text-sm font-medium text-gray-500">描述</h4>
-            <p class="text-gray-700">{{ currentPolicy.description || '无描述' }}</p>
+            <h4 class="text-sm font-medium text-gray-500">{{ t('policy.description') }}</h4>
+            <p class="text-gray-700">{{ currentPolicy.description || t('policy.noDescription') }}</p>
           </div>
-          <div class="mb-4">
-            <h4 class="text-sm font-medium text-gray-500">关联用户</h4>
-            <div v-if="currentPolicy.users && currentPolicy.users.length > 0">
-              <span v-for="user in currentPolicy.users" :key="user.id" class="inline-block px-2 py-1 bg-blue-100 text-blue-800 rounded mr-2 mb-2">
-                {{ user.username }}
-              </span>
-            </div>
-            <span v-else class="text-gray-400">未关联任何用户</span>
-          </div>
-          <div class="mb-4">
-            <h4 class="text-sm font-medium text-gray-500">关联用户组</h4>
-            <div v-if="currentPolicy.groups && currentPolicy.groups.length > 0">
-              <span v-for="group in currentPolicy.groups" :key="group.id" class="inline-block px-2 py-1 bg-purple-100 text-purple-800 rounded mr-2 mb-2">
-                {{ group.name }}
-              </span>
-            </div>
-            <span v-else class="text-gray-400">未关联任何用户组</span>
-          </div>
+
           <div class="mb-2">
-            <h4 class="text-sm font-medium text-gray-500">创建时间</h4>
+            <h4 class="text-sm font-medium text-gray-500">{{ t('policy.creationTime') }}</h4>
             <p class="text-gray-700">{{ formatDate(currentPolicy.createdAt) }}</p>
           </div>
           <div class="mt-6">
-            <h4 class="text-sm font-medium text-gray-500 mb-2">策略文档</h4>
+            <h4 class="text-sm font-medium text-gray-500 mb-2">{{ t('policy.policyDocument') }}</h4>
             <pre class="bg-gray-50 p-4 rounded-lg text-sm font-mono overflow-x-auto whitespace-pre-wrap break-all">
               {{ JSON.stringify(currentPolicy.document, null, 2) }}
             </pre>
@@ -203,7 +174,7 @@
         </div>
         <div class="p-5 border-t border-gray-100 flex items-center justify-end gap-3">
           <button @click="closeDetails" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
-            关闭
+            {{ t('policy.close') }}
           </button>
         </div>
       </div>
@@ -213,23 +184,20 @@
     <div v-if="deleteDialogVisible" class="fixed inset-0 bg-[rgba(0,0,0,0.5)] flex items-center justify-center z-50">
       <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 overflow-hidden animate-fadeIn">
         <div class="p-5 border-b border-gray-100 flex items-center justify-between">
-          <h3 class="text-lg font-bold text-gray-800">确认删除</h3>
+          <h3 class="text-lg font-bold text-gray-800">{{ t('policy.confirmDelete') }}</h3>
           <button @click="closeDeleteDialog" class="text-gray-500 hover:text-gray-700 transition-colors" aria-label="关闭">
             <i class="fas fa-times"></i>
           </button>
         </div>
         <div class="p-5">
-          <p class="text-gray-700">确定要删除这个策略吗？此操作不可恢复。</p>
-          <p v-if="(usersInCurrentPolicy > 0 || groupsInCurrentPolicy > 0)" class="text-sm text-red-500 mt-2">
-            注意：该策略已关联 {{ usersInCurrentPolicy }} 个用户和 {{ groupsInCurrentPolicy }} 个用户组，删除后这些关联将被移除。
-          </p>
+          <p class="text-gray-700">{{ t('policy.confirmDeleteMessage') }}</p>
         </div>
         <div class="p-5 border-t border-gray-100 flex items-center justify-end gap-3">
           <button @click="closeDeleteDialog" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
-            取消
+            {{ t('policy.cancel') }}
           </button>
           <button @click="confirmDeletePolicy" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
-            确认删除
+            {{ t('policy.confirmDelete') }}
           </button>
         </div>
       </div>
@@ -249,6 +217,10 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+// 获取翻译函数
+const { t } = useI18n();
 
 // 模拟数据
 const policiesList = ref([]);
@@ -266,8 +238,6 @@ const deleteDialogVisible = ref(false);
 const isEditMode = ref(false);
 const currentPolicyId = ref(null);
 const currentPolicy = ref({});
-const usersInCurrentPolicy = ref(0);
-const groupsInCurrentPolicy = ref(0);
 const jsonError = ref(false);
 
 // 表单数据
@@ -308,20 +278,6 @@ const defaultPolicyDocument = {
 
 // 加载模拟数据
 const loadMockData = () => {
-  // 模拟用户数据
-  usersList.value = [
-    { id: 1, username: 'admin', role: 'admin', createdAt: new Date('2023-01-15T10:00:00') },
-    { id: 2, username: 'developer', role: 'user', createdAt: new Date('2023-01-20T14:30:00') },
-    { id: 3, username: 'tester', role: 'user', createdAt: new Date('2023-01-25T09:15:00') }
-  ];
-
-  // 模拟用户组数据
-  groupsList.value = [
-    { id: 1, name: '开发组', description: '开发人员用户组', createdAt: new Date('2023-01-15T10:00:00') },
-    { id: 2, name: '测试组', description: '测试人员用户组', createdAt: new Date('2023-01-16T14:30:00') },
-    { id: 3, name: '管理员组', description: '系统管理员用户组', createdAt: new Date('2023-01-17T09:15:00') }
-  ];
-
   // 模拟策略数据
   policiesList.value = [
     {
@@ -346,8 +302,6 @@ const loadMockData = () => {
           }
         ]
       },
-      users: [usersList.value[0]],
-      groups: [groupsList.value[2]],
       createdAt: new Date('2023-01-15T10:00:00')
     },
     {
@@ -364,8 +318,6 @@ const loadMockData = () => {
           }
         ]
       },
-      users: [],
-      groups: [groupsList.value[0]],
       createdAt: new Date('2023-01-16T14:30:00')
     }
   ];
@@ -423,8 +375,6 @@ const closeDetails = () => {
 const closeDeleteDialog = () => {
   deleteDialogVisible.value = false;
   currentPolicyId.value = null;
-  usersInCurrentPolicy.value = 0;
-  groupsInCurrentPolicy.value = 0;
 };
 
 // 验证JSON格式
@@ -504,10 +454,6 @@ const handleSubmit = () => {
 const handleDeletePolicy = (policyId) => {
   currentPolicyId.value = policyId;
   const policy = policiesList.value.find(p => p.id === policyId);
-  if (policy) {
-    usersInCurrentPolicy.value = policy.users ? policy.users.length : 0;
-    groupsInCurrentPolicy.value = policy.groups ? policy.groups.length : 0;
-  }
   deleteDialogVisible.value = true;
 };
 
@@ -527,9 +473,7 @@ const savePolicies = () => {
   try {
     // 转换对象引用为ID引用以便存储
     const policiesToSave = policiesList.value.map(policy => ({
-      ...policy,
-      users: policy.users.map(user => user.id),
-      groups: policy.groups.map(group => group.id)
+      ...policy
     }));
     localStorage.setItem('policiesList', JSON.stringify(policiesToSave));
   } catch (error) {
@@ -545,15 +489,7 @@ const loadPolicies = () => {
       const parsedPolicies = JSON.parse(savedPolicies);
       policiesList.value = parsedPolicies.map(policy => ({
         ...policy,
-        createdAt: new Date(policy.createdAt),
-        // 恢复用户引用
-        users: usersList.value.filter(user => 
-          policy.users.some(u => u === user.id)
-        ),
-        // 恢复用户组引用
-        groups: groupsList.value.filter(group => 
-          policy.groups.some(g => g === group.id)
-        )
+        createdAt: new Date(policy.createdAt)
       }));
       // 更新下一个策略ID
       if (policiesList.value.length > 0) {

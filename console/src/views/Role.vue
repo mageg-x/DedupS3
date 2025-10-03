@@ -2,11 +2,11 @@
   <div class="roles-container">
     <!-- 页面标题和操作按钮 -->
     <div class="page-header flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-bold text-gray-800">角色管理</h1>
+      <h1 class="text-2xl font-bold text-gray-800">{{ t('role.pageTitle') }}</h1>
       <button @click="showAddRoleDialog" 
               class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
         <i class="fas fa-plus"></i>
-        <span>添加角色</span>
+        <span>{{ t('role.addRole') }}</span>
       </button>
     </div>
 
@@ -15,7 +15,7 @@
       <div class="relative">
         <input type="text" 
                v-model="searchKeyword" 
-               placeholder="搜索角色名称或描述..." 
+               :placeholder="t('role.searchPlaceholder')" 
                class="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
         <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
       </div>
@@ -27,12 +27,12 @@
         <table class="w-full">
           <thead class="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">名称</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">描述</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">关联策略</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">关联用户</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">创建时间</th>
-              <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('role.name') }}</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('role.description') }}</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('role.associatedPolicies') }}</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('role.associatedUsers') }}</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('role.creationTime') }}</th>
+              <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('role.operation') }}</th>
             </tr>
           </thead>
           <tbody class="bg-white divide-y divide-gray-200">
@@ -48,7 +48,7 @@
                 </div>
               </td>
               <td class="px-6 py-4 text-sm text-gray-500">
-                {{ role.description || '无描述' }}
+                {{ role.description || t('role.noDescription') }}
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
                 <span class="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
@@ -66,15 +66,15 @@
               <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                 <button @click="showRoleDetails(role)" 
                         class="text-green-600 hover:text-green-900 transition-colors mr-3">
-                  <i class="fas fa-eye mr-1"></i>查看
+                  <i class="fas fa-eye mr-1"></i>{{ t('role.view') }}
                 </button>
                 <button @click="showEditRoleDialog(role)" 
                         class="text-blue-600 hover:text-blue-900 transition-colors mr-3">
-                  <i class="fas fa-edit mr-1"></i>编辑
+                  <i class="fas fa-edit mr-1"></i>{{ t('role.edit') }}
                 </button>
                 <button @click="handleDeleteRole(role.id)" 
                         class="text-red-600 hover:text-red-900 transition-colors">
-                  <i class="fas fa-trash-alt mr-1"></i>删除
+                  <i class="fas fa-trash-alt mr-1"></i>{{ t('role.delete') }}
                 </button>
               </td>
             </tr>
@@ -86,8 +86,8 @@
         <div class="text-gray-400 mb-4">
           <i class="fas fa-user-tag-slash text-4xl"></i>
         </div>
-        <h3 class="text-lg font-medium text-gray-900 mb-2">暂无角色</h3>
-        <p class="text-gray-500 mb-6">点击上方"添加角色"按钮创建第一个角色</p>
+        <h3 class="text-lg font-medium text-gray-900 mb-2">{{ t('role.noRoles') }}</h3>
+        <p class="text-gray-500 mb-6">{{ t('role.clickAddRole') }}</p>
       </div>
     </div>
 
@@ -95,7 +95,7 @@
     <div v-if="dialogVisible" class="fixed inset-0 bg-[rgba(0,0,0,0.5)] flex items-center justify-center z-50">
       <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-4 overflow-hidden animate-fadeIn max-h-[90vh] flex flex-col">
         <div class="p-5 border-b border-gray-100 flex items-center justify-between">
-          <h3 class="text-lg font-bold text-gray-800">{{ isEditMode ? '编辑角色' : '添加角色' }}</h3>
+          <h3 class="text-lg font-bold text-gray-800">{{ isEditMode ? t('role.editRole') : t('role.addNewRole') }}</h3>
           <button @click="closeDialog" class="text-gray-500 hover:text-gray-700 transition-colors" aria-label="关闭">
             <i class="fas fa-times"></i>
           </button>
@@ -103,17 +103,17 @@
         <div class="p-5 flex-grow overflow-y-auto">
           <form @submit.prevent="handleSubmit">
             <div class="mb-4">
-              <label for="roleName" class="block text-sm font-medium text-gray-700 mb-1">角色名称</label>
-              <input type="text" id="roleName" v-model="formData.name" 
-                     class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" 
-                     required>
-            </div>
+            <label for="roleName" class="block text-sm font-medium text-gray-700 mb-1">{{ t('role.name') }}</label>
+            <input type="text" id="roleName" v-model="formData.name" 
+                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" 
+                   :placeholder="t('role.pleaseEnterRoleName')" required>
+          </div>
             <div class="mb-6">
-              <label for="description" class="block text-sm font-medium text-gray-700 mb-1">描述</label>
-              <textarea id="description" v-model="formData.description" 
-                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" 
-                        rows="2"></textarea>
-            </div>
+            <label for="description" class="block text-sm font-medium text-gray-700 mb-1">{{ t('role.description') }}</label>
+            <textarea id="description" v-model="formData.description" 
+                      class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" 
+                      rows="2" :placeholder="t('role.pleaseEnterRoleDescription')"></textarea>
+          </div>
             
             <!-- 关联策略 -->
             <div class="mb-6">
@@ -150,10 +150,10 @@
         </div>
         <div class="p-5 border-t border-gray-100 flex items-center justify-end gap-3">
           <button @click="closeDialog" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
-            取消
+            {{ t('role.cancel') }}
           </button>
           <button @click="handleSubmit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-            {{ isEditMode ? '更新' : '创建' }}
+            {{ isEditMode ? t('role.save') : t('role.create') }}
           </button>
         </div>
       </div>
@@ -248,6 +248,10 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+// 获取翻译函数
+const { t } = useI18n();
 
 // 模拟数据
 const rolesList = ref([]);

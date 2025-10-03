@@ -14,8 +14,8 @@
                 d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
             </svg>
           </div>
-          <span
-            class="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 text-transparent bg-clip-text">磐石存储</span>
+          <span class="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 text-transparent bg-clip-text">{{
+            t('brand.name') }}</span>
         </div>
         <div v-else
           class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
@@ -121,19 +121,19 @@
           </div>
 
           <!-- 右侧工具栏 -->
-            <div class="flex items-center gap-5">
-              <!-- 通知图标 -->
-              <button
-                class="relative p-2 text-gray-600 hover:text-blue-500 transition-all duration-300 rounded-full hover:bg-gray-100">
-                <i class="fas fa-bell text-lg"></i>
-                <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-              </button>
+          <div class="flex items-center gap-5">
+            <!-- 通知图标 -->
+            <button
+              class="relative p-2 text-gray-600 hover:text-blue-500 transition-all duration-300 rounded-full hover:bg-gray-100">
+              <i class="fas fa-bell text-lg"></i>
+              <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+            </button>
 
-              <!-- 语言切换 -->
-              <LanguageSwitch :sidebar-collapsed="sidebarCollapsed" />
+            <!-- 语言切换 -->
+            <LanguageSwitch :sidebar-collapsed="sidebarCollapsed" />
 
-              <!-- 用户信息 -->
-              <div class="flex items-center gap-3 cursor-pointer group relative">
+            <!-- 用户信息 -->
+            <div class="flex items-center gap-3 cursor-pointer group relative">
               <div class="relative">
                 <img v-if="currentUser.avatar" :src="currentUser.avatar" alt="用户头像"
                   class="w-10 h-10 rounded-full border-2 border-transparent hover:border-blue-500 transition-all duration-300 shadow-sm">
@@ -150,7 +150,7 @@
                   {{ currentUser.name || '未登录' }}
                 </div>
                 <div class="text-xs text-gray-500">
-                  {{ currentUser.role === 'admin' ? '管理员' : '普通用户' }}
+                  {{ currentUser.role === 'admin' ? t('brand.admin') : t('brand.regularUser') }}
                 </div>
               </div>
               <i
@@ -196,28 +196,28 @@ const currentUser = ref({
 
 // 菜单列表
 const menuItems = [
-  { path: '/dashboard', label: t('dashboard'), icon: 'fa-home' },
-  { path: '/buckets', label: t('buckets'), icon: 'svg-bucket' },
-  { path: '/accesskey', label: t('accessKey'), icon: 'fa-key' },
-  { 
-    label: t('accountsAndPermissions'),
+  { path: '/dashboard', label: t('mainMenu.dashboard'), icon: 'fa-home' },
+  { path: '/buckets', label: t('mainMenu.buckets'), icon: 'svg-bucket' },
+  { path: '/accesskey', label: t('mainMenu.accessKey'), icon: 'fa-key' },
+  {
+    label: t('mainMenu.iam'),
     icon: 'fa-lock',
     children: [
-      { path: '/user', label: t('subAccount'), icon: 'fa-user' },
-      { path: '/group', label: t('accountGroup'), icon: 'fa-user-group' },
-      { path: '/role', label: t('role'), icon: 'fa-user-tag' },
-      { path: '/policy', label: t('policy'), icon: 'fa-file-signature' },
+      { path: '/user', label: t('mainMenu.user'), icon: 'fa-user' },
+      { path: '/group', label: t('mainMenu.group'), icon: 'fa-user-group' },
+      { path: '/role', label: t('mainMenu.role'), icon: 'fa-user-tag' },
+      { path: '/policy', label: t('mainMenu.policy'), icon: 'fa-file-signature' },
     ]
   },
-  { path: '/event', label: t('eventLogs'), icon: 'fa-bell' },
-  { path: '/audit', label: t('auditRecords'), icon: 'fa-file-text' },
-  { 
-    label: t('configurationManagement'),
+  { path: '/event', label: t('mainMenu.event'), icon: 'fa-bell' },
+  { path: '/audit', label: t('mainMenu.audit'), icon: 'fa-file-text' },
+  {
+    label: t('mainMenu.configuration'),
     icon: 'fa-cog',
     children: [
-      { path: '/endpoint', label: t('endpoint'), icon: 'fa-map-marker-alt' },
-      { path: '/quota', label: t('quota'), icon: 'fa-tachometer-alt' },
-      { path: '/chunk', label: t('chunk'), icon: 'fa-chart-pie' },
+      { path: '/endpoint', label: t('mainMenu.endpoint'), icon: 'fa-map-marker-alt' },
+      { path: '/quota', label: t('mainMenu.quota'), icon: 'fa-tachometer-alt' },
+      { path: '/chunk', label: t('mainMenu.chunk'), icon: 'fa-chart-pie' },
     ]
   },
 ];
@@ -255,36 +255,32 @@ const isActiveMenuItem = (item) => {
 // 计算面包屑导航
 const breadcrumbs = computed(() => {
   const path = route.path;
-  const crumbs = [{ path: '/dashboard', label: t('home') }];
+  const crumbs = [{ path: '/dashboard', label: t('common.home') }];
 
-  if (path !== '/dashboard') {
-    // 查找当前路径对应的菜单项，包括子菜单
-    let found = false;
-    for (const item of menuItems) {
-      // 检查是否是主菜单项
-      if (item.path === path) {
-        crumbs.push({ path, label: item.label });
+  // 查找当前路径对应的菜单项，包括子菜单
+  let found = false;
+  for (const item of menuItems) {
+    // 检查是否是主菜单项
+    if (item.path === path) {
+      crumbs.push({ path, label: item.label });
+      found = true;
+      break;
+    }
+    // 检查是否是子菜单项
+    if (item.children) {
+      const subItem = item.children.find(s => s.path === path);
+      if (subItem) {
+        crumbs.push({ path: item.path || '#', label: item.label });
+        crumbs.push({ path, label: subItem.label });
         found = true;
         break;
       }
-      // 检查是否是子菜单项
-      if (item.children) {
-        const subItem = item.children.find(s => s.path === path);
-        if (subItem) {
-          crumbs.push({ path: item.path || '#', label: item.label });
-          crumbs.push({ path, label: subItem.label });
-          found = true;
-          break;
-        }
-      }
-    }
-
-    // 如果没有找到对应的菜单项，只添加当前路径
-    if (!found) {
-      crumbs.push({ path, label: path.split('/').pop() || path });
     }
   }
-
+  // 如果没有找到对应的菜单项，只添加当前路径
+  if (!found) {
+    crumbs.push({ path, label: path.split('/').pop() || path });
+  }
   return crumbs;
 });
 

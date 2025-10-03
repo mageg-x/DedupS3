@@ -2,11 +2,11 @@
   <div class="groups-container">
     <!-- 页面标题和操作按钮 -->
     <div class="page-header flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-bold text-gray-800">用户组管理</h1>
+      <h1 class="text-2xl font-bold text-gray-800">{{ t('group.pageTitle') }}</h1>
       <button @click="showAddGroupDialog" 
               class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
         <i class="fas fa-plus"></i>
-        <span>添加用户组</span>
+        <span>{{ t('group.addUserGroup') }}</span>
       </button>
     </div>
 
@@ -15,7 +15,7 @@
       <div class="relative">
         <input type="text" 
                v-model="searchKeyword" 
-               placeholder="搜索用户组名称..." 
+               :placeholder="t('group.searchPlaceholder')" 
                class="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
         <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
       </div>
@@ -27,12 +27,12 @@
         <table class="w-full">
           <thead class="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">名称</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">描述</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('group.name') }}</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('group.description') }}</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">用户数量</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">策略数量</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">创建时间</th>
-              <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('group.creationTime') }}</th>
+              <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('group.operation') }}</th>
             </tr>
           </thead>
           <tbody class="bg-white divide-y divide-gray-200">
@@ -48,7 +48,7 @@
                 </div>
               </td>
               <td class="px-6 py-4 text-sm text-gray-500">
-                {{ group.description || '无描述' }}
+                {{ group.description || t('group.noDescription') }}
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
                 <span class="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
@@ -66,11 +66,11 @@
               <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                 <button @click="showEditGroupDialog(group)" 
                         class="text-blue-600 hover:text-blue-900 transition-colors mr-3">
-                  <i class="fas fa-edit mr-1"></i>编辑
+                  <i class="fas fa-edit mr-1"></i>{{ t('group.edit') }}
                 </button>
                 <button @click="handleDeleteGroup(group.id)" 
                         class="text-red-600 hover:text-red-900 transition-colors">
-                  <i class="fas fa-trash-alt mr-1"></i>删除
+                  <i class="fas fa-trash-alt mr-1"></i>{{ t('group.delete') }}
                 </button>
               </td>
             </tr>
@@ -82,8 +82,8 @@
         <div class="text-gray-400 mb-4">
           <i class="fas fa-users-slash text-4xl"></i>
         </div>
-        <h3 class="text-lg font-medium text-gray-900 mb-2">暂无用户组</h3>
-        <p class="text-gray-500 mb-6">点击上方"添加用户组"按钮创建第一个用户组</p>
+        <h3 class="text-lg font-medium text-gray-900 mb-2">{{ t('group.noUserGroups') }}</h3>
+        <p class="text-gray-500 mb-6">{{ t('group.clickAddUserGroup') }}</p>
       </div>
     </div>
 
@@ -91,7 +91,7 @@
     <div v-if="dialogVisible" class="fixed inset-0 bg-[rgba(0,0,0,0.5)] flex items-center justify-center z-50">
       <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 overflow-hidden animate-fadeIn">
         <div class="p-5 border-b border-gray-100 flex items-center justify-between">
-          <h3 class="text-lg font-bold text-gray-800">{{ isEditMode ? '编辑用户组' : '添加用户组' }}</h3>
+          <h3 class="text-lg font-bold text-gray-800">{{ isEditMode ? t('group.editUserGroup') : t('group.addNewUserGroup') }}</h3>
           <button @click="closeDialog" class="text-gray-500 hover:text-gray-700 transition-colors" aria-label="关闭">
             <i class="fas fa-times"></i>
           </button>
@@ -99,15 +99,17 @@
         <div class="p-5">
           <form @submit.prevent="handleSubmit">
             <div class="mb-4">
-              <label for="groupName" class="block text-sm font-medium text-gray-700 mb-1">用户组名称</label>
+              <label for="groupName" class="block text-sm font-medium text-gray-700 mb-1">{{ t('group.name') }}</label>
               <input type="text" id="groupName" v-model="formData.name" 
                      class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" 
+                     :placeholder="t('group.pleaseEnterGroupName')"
                      required>
             </div>
             <div class="mb-4">
-              <label for="description" class="block text-sm font-medium text-gray-700 mb-1">描述</label>
+              <label for="description" class="block text-sm font-medium text-gray-700 mb-1">{{ t('group.description') }}</label>
               <textarea id="description" v-model="formData.description" 
                         class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" 
+                        :placeholder="t('group.pleaseEnterGroupDescription')"
                         rows="3"></textarea>
             </div>
             
@@ -150,10 +152,10 @@
         </div>
         <div class="p-5 border-t border-gray-100 flex items-center justify-end gap-3">
           <button @click="closeDialog" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
-            取消
+            {{ t('group.cancel') }}
           </button>
           <button @click="handleSubmit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-            {{ isEditMode ? '更新' : '创建' }}
+            {{ isEditMode ? t('group.update') : t('group.create') }}
           </button>
         </div>
       </div>
@@ -163,23 +165,23 @@
     <div v-if="deleteDialogVisible" class="fixed inset-0 bg-[rgba(0,0,0,0.5)] flex items-center justify-center z-50">
       <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 overflow-hidden animate-fadeIn">
         <div class="p-5 border-b border-gray-100 flex items-center justify-between">
-          <h3 class="text-lg font-bold text-gray-800">确认删除</h3>
+          <h3 class="text-lg font-bold text-gray-800">{{ t('group.confirmDelete') }}</h3>
           <button @click="closeDeleteDialog" class="text-gray-500 hover:text-gray-700 transition-colors" aria-label="关闭">
             <i class="fas fa-times"></i>
           </button>
         </div>
         <div class="p-5">
-          <p class="text-gray-700">确定要删除这个用户组吗？此操作不可恢复。</p>
+          <p class="text-gray-700">{{ t('group.confirmDeleteMessage') }}</p>
           <p v-if="usersInCurrentGroup > 0" class="text-sm text-red-500 mt-2">
-            注意：该用户组中还有 {{ usersInCurrentGroup }} 个用户，删除后这些用户将不再属于该组。
+            {{ t('group.userGroupUsersWarning', { count: usersInCurrentGroup }) }}
           </p>
         </div>
         <div class="p-5 border-t border-gray-100 flex items-center justify-end gap-3">
           <button @click="closeDeleteDialog" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
-            取消
+            {{ t('group.cancel') }}
           </button>
           <button @click="confirmDeleteGroup" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
-            确认删除
+            {{ t('group.confirmDelete') }}
           </button>
         </div>
       </div>
@@ -199,6 +201,10 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+// 获取翻译函数
+const { t } = useI18n();
 
 // 模拟数据
 const groupsList = ref([]);

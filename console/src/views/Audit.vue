@@ -2,7 +2,7 @@
   <div class="audits-container">
     <!-- 页面标题和操作按钮 -->
     <div class="page-header flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-bold text-gray-800">{{ t('auditRecords') }}</h1>
+      <h1 class="text-2xl font-bold text-gray-800">{{ t('audit.pageTitle') }}</h1>
       <div class="flex items-center gap-3">
         <div class="relative">
           <select v-model="auditTypeFilter"
@@ -74,7 +74,7 @@
         <button @click="exportAudits"
           class="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
           <i class="fas fa-download"></i>
-          <span>{{ t('export') }}</span>
+          <span>{{ t('audit.export') }}</span>
         </button>
       </div>
     </div>
@@ -82,7 +82,7 @@
     <!-- 搜索框 -->
     <div class="search-container mb-6 text-sm">
       <div class="relative">
-        <input type="text" v-model="searchKeyword" :placeholder="t('searchPlaceholder')"
+        <input type="text" v-model="searchKeyword" :placeholder="t('audit.searchPlaceholder')"
           class=" text-sm w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
         <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
       </div>
@@ -91,32 +91,44 @@
     <!-- 时间范围选择和风险级别筛选 -->
     <div class="filter-row  mb-6 flex flex-wrap gap-4 items-center">
       <div class="flex items-center gap-2">
-        <label class="text-sm font-medium text-gray-700">{{ t('startTime') }}</label>
-        <input type="datetime-local" v-model="startDate"
-          class="border text-[0.8rem] border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
+        <label class="text-sm font-medium text-gray-700">{{ t('audit.startTime') }}</label>
+        <el-date-picker
+          v-model="startDate"
+          type="datetime"
+          format="YYYY-MM-DD HH:mm:ss"
+          value-format="YYYY-MM-DDTHH:mm:ss"
+          :placeholder="t('audit.selectStartDate')"
+          class="w-full text-[0.8rem]"
+        />
       </div>
       <div class="flex items-center gap-2">
-        <label class="text-sm font-medium text-gray-700">{{ t('endTime') }}</label>
-        <input type="datetime-local" v-model="endDate"
-          class="border text-[0.8rem] border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
+        <label class="text-sm font-medium text-gray-700">{{ t('audit.endTime') }}</label>
+        <el-date-picker
+          v-model="endDate"
+          type="datetime"
+          format="YYYY-MM-DD HH:mm:ss"
+          value-format="YYYY-MM-DDTHH:mm:ss"
+          :placeholder="t('audit.selectEndDate')"
+          class="w-full text-[0.8rem]"
+        />
       </div>
       <div class="flex items-center gap-2">
-        <label class="text-sm font-medium text-gray-700">{{ t('riskLevel') }}</label>
+        <label class="text-sm font-medium text-gray-700">{{ t('audit.riskLevel') }}</label>
         <div class="flex gap-2">
           <label class="inline-flex items-center">
             <input type="checkbox" v-model="riskLevelFilters" value="low"
               class="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
-            <span class="ml-2 text-sm text-gray-700">{{ t('low') }}</span>
+            <span class="ml-2 text-sm text-gray-700">{{ t('audit.low') }}</span>
           </label>
           <label class="inline-flex items-center">
             <input type="checkbox" v-model="riskLevelFilters" value="medium"
               class="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
-            <span class="ml-2 text-sm text-gray-700">{{ t('medium') }}</span>
+            <span class="ml-2 text-sm text-gray-700">{{ t('audit.medium') }}</span>
           </label>
           <label class="inline-flex items-center">
             <input type="checkbox" v-model="riskLevelFilters" value="high"
               class="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
-            <span class="ml-2 text-sm text-gray-700">{{ t('high') }}</span>
+            <span class="ml-2 text-sm text-gray-700">{{ t('audit.high') }}</span>
           </label>
         </div>
       </div>
@@ -128,13 +140,13 @@
         <table class="w-full">
           <thead class="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">{{ t('time') }}</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-36">{{ t('auditType') }}</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">{{ t('actor') }}</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('target') }}</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">{{ t('riskLevel') }}</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">{{ t('status') }}</th>
-              <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32">{{ t('operation') }}</th>
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider w-32">{{ t('audit.time') }}</th>
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider w-36">{{ t('audit.auditType') }}</th>
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider w-28">{{ t('audit.actor') }}</th>
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">{{ t('audit.target') }}</th>
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider w-36">{{ t('audit.riskLevel') }}</th>
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider w-20">{{ t('audit.status') }}</th>
+              <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider w-32">{{ t('audit.operation') }}</th>
             </tr>
           </thead>
           <tbody class=" text-sm bg-white divide-y divide-gray-200">
@@ -147,30 +159,30 @@
                   {{ getAuditTypeName(audit.type) }}
                 </span>
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                {{ audit.actor || t('system') }}
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 min-w-30">
+                {{ audit.actor || t('common.system') }}
               </td>
               <td class="px-6 py-4 text-sm text-gray-700 ">
                 {{ audit.target || 'N/A' }}
               </td>
-              <td class="px-6 py-4 whitespace-nowrap">
-                <span :class="['px-2 py-1 text-xs rounded-full', getRiskLevelClass(audit.riskLevel)]">
+              <td class="px-6 py-4 whitespace-nowrap min-w-40">
+                <span :class="['px-2 py-1 text-xs rounded-full ', getRiskLevelClass(audit.riskLevel)]">
                   {{ getRiskLevelName(audit.riskLevel) }}
                 </span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
                 <span
                   :class="['px-2 py-1 text-xs rounded-full', audit.status === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800']">
-                  {{ audit.status === 'success' ? t('success') : t('failed') }}
+                  {{ audit.status === 'success' ? t('common.success') : t('common.failed') }}
                 </span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                 <button @click="showAuditDetails(audit)"
                   class="text-blue-600 hover:text-blue-900 transition-colors mr-3">
-                  <i class="fas fa-eye mr-1"></i>{{ t('details') }}
+                  <i class="fas fa-eye mr-1"></i>{{ t('common.details') }}
                 </button>
                 <button @click="generateReport(audit)" class="text-green-600 hover:text-green-900 transition-colors">
-                  <i class="fas fa-file-alt mr-1"></i>{{ t('report') }}
+                  <i class="fas fa-file-alt mr-1"></i>{{ t('common.report') }}
                 </button>
               </td>
             </tr>
@@ -182,19 +194,19 @@
         <div class="text-gray-400 mb-4">
           <i class="fas fa-file-audio text-4xl"></i>
         </div>
-        <h3 class="text-lg font-medium text-gray-900 mb-2">{{ t('noAuditRecords') }}</h3>
-        <p class="text-gray-500 mb-6">{{ t('systemAutomaticallyRecords') }}</p>
+        <h3 class="text-lg font-medium text-gray-900 mb-2">{{ t('audit.noAuditRecords') }}</h3>
+        <p class="text-gray-500 mb-6">{{ t('audit.systemAutomaticallyRecords') }}</p>
       </div>
     </div>
 
     <!-- 分页控件 -->
     <div v-if="totalPages > 0" class="flex items-center justify-between mt-4">
       <div class="flex items-center space-x-2">
-        <span class="text-sm text-gray-600">共 {{ filteredAudits.length }} 条记录</span>
+        <span class="text-sm text-gray-600">{{ t('common.totalRecords', {total: filteredAudits.length, size: pageSize}) }}</span>
         <select v-model="pageSize" @change="changePageSize" class="border border-gray-300 rounded-md text-sm">
-          <option value="10">10条/页</option>
-          <option value="20">20条/页</option>
-          <option value="50">50条/页</option>
+          <option value="10">{{ t('common.totalRecords', {total: 10, size: 10}) }}</option>
+          <option value="20">{{ t('common.totalRecords', {total: 20, size: 20}) }}</option>
+          <option value="50">{{ t('common.totalRecords', {total: 50, size: 50}) }}</option>
         </select>
       </div>
       <div class="flex items-center space-x-1">
@@ -223,7 +235,7 @@
       <div
         class="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-4 overflow-hidden animate-fadeIn max-h-[90vh] flex flex-col">
         <div class="p-5 border-b border-gray-100 flex items-center justify-between">
-          <h3 class="text-lg font-bold text-gray-800">审计详情</h3>
+          <h3 class="text-lg font-bold text-gray-800">{{ t('audit.detailsTitle') }}</h3>
           <button @click="closeDetails" class="text-gray-500 hover:text-gray-700 transition-colors" aria-label="关闭">
             <i class="fas fa-times"></i>
           </button>
@@ -231,58 +243,58 @@
         <div class="p-5 flex-grow overflow-y-auto">
           <div class="space-y-4">
             <div class="flex justify-between">
-              <span class="text-gray-500">时间:</span>
+              <span class="text-gray-500">{{ t('audit.time') }}:</span>
               <span class="font-medium">{{ formatDate(currentAudit.timestamp) }}</span>
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-500">API操作:</span>
+              <span class="text-gray-500">{{ t('audit.apiOperation') }}:</span>
               <span :class="['px-2 py-1 text-xs rounded-full', getAuditTypeClass(currentAudit.type)]">
                 {{ currentAudit.type }}
               </span>
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-500">操作描述:</span>
+              <span class="text-gray-500">{{ t('audit.operationDescription') }}:</span>
               <span class="font-medium">{{ getAuditTypeName(currentAudit.type) }}</span>
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-500">操作人:</span>
-              <span class="font-medium">{{ currentAudit.actor || '系统' }}</span>
+              <span class="text-gray-500">{{ t('audit.operator') }}:</span>
+              <span class="font-medium">{{ currentAudit.actor || t('common.system') }}</span>
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-500">源IP地址:</span>
+              <span class="text-gray-500">{{ t('audit.sourceIp') }}:</span>
               <span class="font-medium">{{ currentAudit.ipAddress || 'N/A' }}</span>
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-500">影响资源:</span>
+              <span class="text-gray-500">{{ t('audit.impactedResource') }}:</span>
               <span class="font-medium text-blue-600 hover:text-blue-800 cursor-pointer truncate max-w-[50%]">{{
                 currentAudit.target || 'N/A' }}</span>
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-500">风险级别:</span>
+              <span class="text-gray-500">{{ t('audit.riskLevel') }}:</span>
               <span :class="['px-2 py-1 text-xs rounded-full', getRiskLevelClass(currentAudit.riskLevel)]">
                 {{ getRiskLevelName(currentAudit.riskLevel) }}
               </span>
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-500">请求状态:</span>
+              <span class="text-gray-500">{{ t('audit.requestStatus') }}:</span>
               <span
                 :class="['px-2 py-1 text-xs rounded-full', currentAudit.status === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800']">
-                {{ currentAudit.status === 'success' ? '成功' : '失败' }}
+                {{ currentAudit.status === 'success' ? t('common.success') : t('common.failure') }}
               </span>
             </div>
             <div v-if="currentAudit.status === 'failure'" class="">
-              <div class="text-gray-500 mb-1">错误信息:</div>
+              <div class="text-gray-500 mb-1">{{ t('audit.errorMessage') }}:</div>
               <div class="p-3 bg-red-50 rounded-lg text-sm text-red-700">
-                <div><strong>错误代码:</strong> {{ currentAudit.errorCode }}</div>
-                <div><strong>错误描述:</strong> {{ currentAudit.errorMessage }}</div>
+                <div><strong>{{ t('audit.errorCode') }}:</strong> {{ currentAudit.errorCode }}</div>
+                <div><strong>{{ t('audit.errorDescription') }}:</strong> {{ currentAudit.errorMessage }}</div>
               </div>
             </div>
             <div class="">
-              <div class="text-gray-500 mb-1">详细描述:</div>
+              <div class="text-gray-500 mb-1">{{ t('audit.detailedDescription') }}:</div>
               <div class="p-3 bg-gray-50 rounded-lg text-sm">{{ currentAudit.description }}</div>
             </div>
             <div v-if="currentAudit.context" class="">
-              <div class="text-gray-500 mb-1">AWS上下文信息:</div>
+              <div class="text-gray-500 mb-1">{{ t('audit.awsContextInfo') }}:</div>
               <div class="p-3 bg-gray-50 rounded-lg text-sm font-mono whitespace-pre-wrap max-h-60 overflow-y-auto">
                 {{ JSON.stringify(currentAudit.context, null, 2) }}
               </div>
@@ -292,11 +304,11 @@
         <div class="p-5 border-t border-gray-100 flex items-center justify-end gap-3">
           <button @click="generateReport(currentAudit)"
             class="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
-            生成报告
+            {{ t('audit.generateReport') }}
           </button>
           <button @click="closeDetails"
             class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-            关闭
+            {{ t('common.close') }}
           </button>
         </div>
       </div>
@@ -317,6 +329,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { ElDatePicker } from 'element-plus';
 
 const { t } = useI18n();
 
@@ -759,9 +772,9 @@ const getAuditTypeClass = (type) => {
 // 获取风险级别名称
 const getRiskLevelName = (level) => {
   const levelNames = {
-    'low': '低',
-    'medium': '中',
-    'high': '高'
+    'low': t('riskLevel.low'),
+    'medium': t('riskLevel.medium'),
+    'high': t('riskLevel.high')
   };
   return levelNames[level] || level;
 };

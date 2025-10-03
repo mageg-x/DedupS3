@@ -2,17 +2,17 @@
   <div class="events-container">
     <!-- 页面标题和操作按钮 -->
     <div class="page-header flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-bold text-gray-800">事件日志</h1>
+      <h1 class="text-2xl font-bold text-gray-800">{{ t('event.pageTitle') }}</h1>
       <div class="flex items-center gap-3">
         <div class="relative">
           <select v-model="eventTypeFilter"
             class="appearance-none text-sm bg-white border border-gray-300 rounded-lg pl-4 pr-10 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
-            <option value="all">所有类型</option>
-            <option value="login">登录事件</option>
-            <option value="bucket">存储桶操作</option>
-            <option value="object">对象操作</option>
-            <option value="user">用户管理</option>
-            <option value="policy">策略管理</option>
+            <option value="all">{{ t('event.allTypes') }}</option>
+            <option value="login">{{ t('event.loginEvents') }}</option>
+            <option value="bucket">{{ t('event.bucketOperations') }}</option>
+            <option value="object">{{ t('event.objectOperations') }}</option>
+            <option value="user">{{ t('event.userManagement') }}</option>
+            <option value="policy">{{ t('event.policyManagement') }}</option>
           </select>
           <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
             <i class="fas fa-chevron-down text-xs"></i>
@@ -24,7 +24,7 @@
     <!-- 搜索框 -->
     <div class="search-container mb-6">
       <div class="relative">
-        <input type="text" v-model="searchKeyword" placeholder="搜索事件描述、用户名或资源..."
+        <input type="text" v-model="searchKeyword" :placeholder="t('event.searchPlaceholder')"
           class=" text-sm w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
         <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
       </div>
@@ -33,24 +33,32 @@
     <!-- 时间范围选择 -->
     <div class="date-filter mb-6 flex flex-wrap gap-4">
       <div class="flex items-center gap-2">
-        <label class="text-sm font-medium text-gray-700">开始时间:</label>
-        <input type="datetime-local" v-model="startDate"
-          class="border text-[0.8rem] border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
+        <label class="text-sm font-medium text-gray-700">{{ t('event.startTime') }}:</label>
+        <el-date-picker
+          v-model="startDate"
+          type="datetime"
+          :placeholder="t('event.selectStartTime')"
+          class="text-sm"
+          style="width: 200px"
+        />
       </div>
       <div class="flex items-center gap-2">
-        <label class="text-sm font-medium text-gray-700">结束时间:</label>
-        <input type="datetime-local" v-model="endDate"
-          class="border text-[0.8rem] border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
+        <label class="text-sm font-medium text-gray-700">{{ t('event.endTime') }}:</label>
+        <el-date-picker
+          v-model="endDate"
+          type="datetime"
+          :placeholder="t('event.selectEndTime')"
+          class="text-sm"
+          style="width: 200px"
+        />
       </div>
       <div class="flex-1 flex gap-2">
         <button @click="setToday"
-          class="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm">今日</button>
+          class="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm">{{ t('event.today') }}</button>
         <button @click="setYesterday"
-          class="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm">昨日</button>
+          class="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm">{{ t('event.yesterday') }}</button>
         <button @click="setLast7Days"
-          class="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm">近7天</button>
-        <button @click="setLast30Days"
-          class="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm">近30天</button>
+          class="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm">{{ t('event.last7Days') }}</button>
       </div>
     </div>
 
@@ -60,13 +68,13 @@
         <table class="w-full">
           <thead class="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">时间</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">事件类型</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">用户名</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">IP地址</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">描述</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
-              <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('event.time') }}</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('event.eventType') }}</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('event.username') }}</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('event.ipAddress') }}</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('event.description') }}</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('event.status') }}</th>
+              <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('event.operation') }}</th>
             </tr>
           </thead>
           <tbody class="text-sm bg-white divide-y divide-gray-200">
@@ -91,12 +99,12 @@
               <td class="px-6 py-4 whitespace-nowrap">
                 <span
                   :class="['px-2 py-1 text-xs rounded-full', event.status === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800']">
-                  {{ event.status === 'success' ? '成功' : '失败' }}
+                  {{ event.status === 'success' ? t('event.success') : t('event.failed') }}
                 </span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                 <button @click="showEventDetails(event)" class="text-blue-600 hover:text-blue-900 transition-colors">
-                  <i class="fas fa-eye mr-1"></i>详情
+                  <i class="fas fa-eye mr-1"></i>{{ t('event.detail') }}
                 </button>
               </td>
             </tr>
@@ -108,19 +116,19 @@
         <div class="text-gray-400 mb-4">
           <i class="fas fa-bell-slash text-4xl"></i>
         </div>
-        <h3 class="text-lg font-medium text-gray-900 mb-2">暂无事件记录</h3>
-        <p class="text-gray-500 mb-6">系统将自动记录各类操作事件</p>
+        <h3 class="text-lg font-medium text-gray-900 mb-2">{{ t('event.noEvents') }}</h3>
+          <p class="text-gray-500 mb-6">{{ t('event.systemWillRecord') }}</p>
       </div>
     </div>
 
     <!-- 分页控件 -->
     <div v-if="totalPages > 0" class="flex items-center justify-between mt-4">
       <div class="flex items-center space-x-2">
-        <span class="text-sm text-gray-600">共 {{ filteredEvents.length }} 条记录</span>
+        <span class="text-sm text-gray-600">{{ t('event.totalRecords', { total: filteredEvents.length }) }}</span>
         <select v-model="pageSize" @change="changePageSize" class="border border-gray-300 rounded-md text-sm">
-          <option value="10">10条/页</option>
-          <option value="20">20条/页</option>
-          <option value="50">50条/页</option>
+          <option value="10">{{ t('event.page10') }}</option>
+          <option value="20">{{ t('event.page20') }}</option>
+          <option value="50">{{ t('event.page50') }}</option>
         </select>
       </div>
       <div class="flex items-center space-x-1">
@@ -149,7 +157,7 @@
       <div
         class="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 overflow-hidden animate-fadeIn max-h-[90vh] flex flex-col">
         <div class="p-5 border-b border-gray-100 flex items-center justify-between">
-          <h3 class="text-lg font-bold text-gray-800">事件详情</h3>
+          <h3 class="text-lg font-bold text-gray-800">{{ t('event.eventDetails') }}</h3>
           <button @click="closeDetails" class="text-gray-500 hover:text-gray-700 transition-colors" aria-label="关闭">
             <i class="fas fa-times"></i>
           </button>
@@ -157,36 +165,36 @@
         <div class="p-5 flex-grow overflow-y-auto">
           <div class="space-y-4">
             <div class="flex justify-between">
-              <span class="text-gray-500">时间:</span>
+              <span class="text-gray-500">{{ t('event.time') }}:</span>
               <span class="font-medium">{{ formatDate(currentEvent.timestamp) }}</span>
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-500">事件类型:</span>
+              <span class="text-gray-500">{{ t('event.eventType') }}:</span>
               <span :class="['px-2 py-1 text-xs rounded-full', getEventTypeClass(currentEvent.type)]">
                 {{ getEventTypeName(currentEvent.type) }}
               </span>
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-500">用户名:</span>
+              <span class="text-gray-500">{{ t('event.username') }}:</span>
               <span class="font-medium">{{ currentEvent.username || '系统' }}</span>
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-500">IP地址:</span>
+              <span class="text-gray-500">{{ t('event.ipAddress') }}:</span>
               <span class="font-medium">{{ currentEvent.ipAddress || 'N/A' }}</span>
             </div>
             <div class="flex justify-between">
-              <span class="text-gray-500">状态:</span>
+              <span class="text-gray-500">{{ t('event.status') }}:</span>
               <span
                 :class="['px-2 py-1 text-xs rounded-full', currentEvent.status === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800']">
-                {{ currentEvent.status === 'success' ? '成功' : '失败' }}
+                {{ currentEvent.status === 'success' ? t('event.success') : t('event.failed') }}
               </span>
             </div>
             <div class="">
-              <div class="text-gray-500 mb-1">描述:</div>
+              <div class="text-gray-500 mb-1">{{ t('event.description') }}:</div>
               <div class="p-3 bg-gray-50 rounded-lg text-sm">{{ currentEvent.description }}</div>
             </div>
             <div v-if="currentEvent.details" class="">
-              <div class="text-gray-500 mb-1">详细信息:</div>
+              <div class="text-gray-500 mb-1">{{ t('event.detailInfo') }}:</div>
               <div class="p-3 bg-gray-50 rounded-lg text-sm font-mono whitespace-pre-wrap">
                 {{ JSON.stringify(currentEvent.details, null, 2) }}
               </div>
@@ -195,9 +203,9 @@
         </div>
         <div class="p-5 border-t border-gray-100 flex items-center justify-end">
           <button @click="closeDetails"
-            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-            关闭
-          </button>
+              class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+              {{ t('event.close') }}
+            </button>
         </div>
       </div>
     </div>
@@ -216,6 +224,10 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { ElDatePicker } from 'element-plus';
+
+const { t } = useI18n();
 
 // 模拟事件数据
 const eventsList = ref([]);
@@ -247,35 +259,36 @@ const generateMockEvents = () => {
   const ipAddresses = ['192.168.1.100', '10.0.0.5', '172.16.0.23', '127.0.0.1'];
   const statuses = ['success', 'failure'];
 
+  // 需要在语言文件中添加eventType对象和这些模板的翻译键
   const eventTemplates = {
     login: [
-      '{username} 成功登录系统',
-      '{username} 登录失败（密码错误）',
-      '{username} 登录失败（账号被锁定）'
+      t('eventTemplate.loginSuccess', { username: '{username}' }),
+      t('eventTemplate.loginFailedPassword', { username: '{username}' }),
+      t('eventTemplate.loginFailedLocked', { username: '{username}' })
     ],
     bucket: [
-      '{username} 创建了存储桶 "{resource}"',
-      '{username} 删除了存储桶 "{resource}"',
-      '{username} 列出了存储桶列表',
-      '{username} 修改了存储桶 "{resource}" 的 ACL'
+      t('eventTemplate.bucketCreated', { username: '{username}', resource: '{resource}' }),
+      t('eventTemplate.bucketDeleted', { username: '{username}', resource: '{resource}' }),
+      t('eventTemplate.bucketListed', { username: '{username}' }),
+      t('eventTemplate.bucketAclModified', { username: '{username}', resource: '{resource}' })
     ],
     object: [
-      '{username} 上传了对象 "{resource}" 到存储桶 "{bucket}"',
-      '{username} 下载了对象 "{resource}" 从存储桶 "{bucket}"',
-      '{username} 删除了对象 "{resource}" 从存储桶 "{bucket}"',
-      '{username} 列出了存储桶 "{bucket}" 中的对象列表'
+      t('eventTemplate.objectUploaded', { username: '{username}', resource: '{resource}', bucket: '{bucket}' }),
+      t('eventTemplate.objectDownloaded', { username: '{username}', resource: '{resource}', bucket: '{bucket}' }),
+      t('eventTemplate.objectDeleted', { username: '{username}', resource: '{resource}', bucket: '{bucket}' }),
+      t('eventTemplate.objectsListed', { username: '{username}', bucket: '{bucket}' })
     ],
     user: [
-      '{username} 创建了用户 "{resource}"',
-      '{username} 修改了用户 "{resource}" 的权限',
-      '{username} 删除了用户 "{resource}"',
-      '{username} 重置了用户 "{resource}" 的密码'
+      t('eventTemplate.userCreated', { username: '{username}', resource: '{resource}' }),
+      t('eventTemplate.userPermissionModified', { username: '{username}', resource: '{resource}' }),
+      t('eventTemplate.userDeleted', { username: '{username}', resource: '{resource}' }),
+      t('eventTemplate.userPasswordReset', { username: '{username}', resource: '{resource}' })
     ],
     policy: [
-      '{username} 创建了策略 "{resource}"',
-      '{username} 修改了策略 "{resource}"',
-      '{username} 删除了策略 "{resource}"',
-      '{username} 为用户 "{user}" 分配了策略 "{resource}"'
+      t('eventTemplate.policyCreated', { username: '{username}', resource: '{resource}' }),
+      t('eventTemplate.policyModified', { username: '{username}', resource: '{resource}' }),
+      t('eventTemplate.policyDeleted', { username: '{username}', resource: '{resource}' }),
+      t('eventTemplate.policyAssigned', { username: '{username}', user: '{user}', resource: '{resource}' })
     ]
   };
 
@@ -380,11 +393,11 @@ const formatDate = (date) => {
 // 获取事件类型名称
 const getEventTypeName = (type) => {
   const typeNames = {
-    'login': '登录',
-    'bucket': '存储桶',
-    'object': '对象',
-    'user': '用户管理',
-    'policy': '策略管理'
+    'login': t('eventType.login'),
+    'bucket': t('eventType.bucket'),
+    'object': t('eventType.object'),
+    'user': t('eventType.user'),
+    'policy': t('eventType.policy')
   };
   return typeNames[type] || type;
 };
@@ -477,8 +490,8 @@ const setToday = () => {
   const endOfDay = new Date(today);
   endOfDay.setHours(23, 59, 59, 999);
 
-  startDate.value = startOfDay.toISOString().slice(0, 16);
-  endDate.value = endOfDay.toISOString().slice(0, 16);
+  startDate.value = startOfDay;
+  endDate.value = endOfDay;
 };
 
 const setYesterday = () => {
@@ -489,8 +502,8 @@ const setYesterday = () => {
   const endOfDay = new Date(yesterday);
   endOfDay.setHours(23, 59, 59, 999);
 
-  startDate.value = startOfDay.toISOString().slice(0, 16);
-  endDate.value = endOfDay.toISOString().slice(0, 16);
+  startDate.value = startOfDay;
+  endDate.value = endOfDay;
 };
 
 const setLast7Days = () => {
@@ -501,8 +514,8 @@ const setLast7Days = () => {
   const endOfDay = new Date(today);
   endOfDay.setHours(23, 59, 59, 999);
 
-  startDate.value = sevenDaysAgo.toISOString().slice(0, 16);
-  endDate.value = endOfDay.toISOString().slice(0, 16);
+  startDate.value = sevenDaysAgo;
+  endDate.value = endOfDay;
 };
 
 const setLast30Days = () => {
@@ -513,8 +526,8 @@ const setLast30Days = () => {
   const endOfDay = new Date(today);
   endOfDay.setHours(23, 59, 59, 999);
 
-  startDate.value = thirtyDaysAgo.toISOString().slice(0, 16);
-  endDate.value = endOfDay.toISOString().slice(0, 16);
+  startDate.value = thirtyDaysAgo;
+  endDate.value = endOfDay;
 };
 
 // 清除筛选

@@ -3,8 +3,8 @@
     <!-- 头部操作区域 -->
     <div class="header-actions flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 sm:mb-3 gap-1 sm:gap-2 transition-all duration-300">
       <div class="page-title flex flex-col sm:flex-row items-start sm:items-center gap-1 sm:gap-2">
-        <h1 class="text-xl font-bold text-gray-800 transition-all duration-300 sm:text-2xl m-0">存储桶</h1>
-        <p class="text-gray-500 transition-all duration-300 text-xs sm:text-sm m-0">管理您的存储桶和对象</p>
+        <h1 class="text-xl font-bold text-gray-800 transition-all duration-300 sm:text-2xl m-0">{{ t('bucket.pageTitle') }}</h1>
+        <p class="text-gray-500 transition-all duration-300 text-xs sm:text-sm m-0">{{ t('bucket.pageSubtitle') }}</p>
       </div>
       
       <div class="search-create-container flex flex-col sm:flex-row gap-2 w-full md:w-auto transition-all duration-300">
@@ -13,7 +13,7 @@
           <input 
             v-model="searchQuery" 
             type="text" 
-            placeholder="搜索桶名称..." 
+            :placeholder="t('bucket.searchPlaceholder')" 
             class="w-full pl-9 pr-3 py-2.25 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all duration-300"
           >
           <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm"></i>
@@ -22,7 +22,7 @@
         <!-- 创建桶按钮 -->
         <button class="create-bucket-btn bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.25 rounded-lg font-medium flex items-center justify-center transition-all duration-300 transform hover:scale-105 hover:shadow-md whitespace-nowrap text-sm">
           <i class="fas fa-plus-circle mr-1.5 text-sm"></i>
-          创建桶
+          {{ t('bucket.createBucket') }}
         </button>
       </div>
     </div>
@@ -46,13 +46,13 @@
               
               <!-- 操作按钮 - 固定在右侧 -->
               <div class="actions flex space-x-2 flex-shrink-0">
-                <button class="action-btn p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-100 rounded-lg transition-all duration-300" title="查看详情">
+                <button class="action-btn p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-100 rounded-lg transition-all duration-300" :title="t('bucket.viewDetails')">
                   <i class="fas fa-info-circle"></i>
                 </button>
-                <button class="action-btn p-2 text-green-500 hover:text-green-700 hover:bg-green-100 rounded-lg transition-all duration-300" title="进入桶" @click="navigateToBucket(bucket.name)">
+                <button class="action-btn p-2 text-green-500 hover:text-green-700 hover:bg-green-100 rounded-lg transition-all duration-300" :title="t('bucket.enterBucket')" @click="navigateToBucket(bucket.name)">
                   <i class="fas fa-folder-open"></i>
                 </button>
-                <button class="action-btn p-2 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-lg transition-all duration-300" title="删除桶">
+                <button class="action-btn p-2 text-red-500 hover:text-red-700 hover:bg-red-100 rounded-lg transition-all duration-300" :title="t('bucket.deleteBucket')">
                   <i class="fas fa-trash-alt"></i>
                 </button>
               </div>
@@ -61,7 +61,7 @@
             <!-- 桶详情 -->
             <div class="bucketDetails px-4 pb-3">
               <span id="created-{{ bucket.name }}" class="mr-6">
-                <strong>创建于:</strong> {{ formatDate(bucket.createdAt) }}
+                <strong>{{ t('bucket.createdAt') }}:</strong> {{ formatDate(bucket.createdAt) }}
               </span>
             </div>
             
@@ -90,7 +90,7 @@
                       <path data-name="Rect\xE1ngulo 869" fill="none" d="M0 0h256v256H0z"/>
                     </g>
                   </svg>
-                  <span class="metricLabel">数据大小</span>
+                  <span class="metricLabel">{{ t('bucket.dataSize') }}</span>
                   <div class="metricText">{{ formatSize(bucket.size) }}</div>
                 </div>
                 
@@ -108,7 +108,7 @@
                       <path data-name="Rect\xE1ngulo 853" fill="none" d="M0 0h256v256H0z"/>
                     </g>
                   </svg>
-                  <span class="metricLabel">对象个数</span>
+                  <span class="metricLabel">{{ t('bucket.objectCount') }}</span>
                   <div class="metricText">{{ formatNumber(bucket.objectCount) }}</div>
                 </div>
               </div>
@@ -125,11 +125,11 @@
               </g>
             </svg>
           </div>
-          <h3 class="text-xl font-semibold text-gray-800 mb-2">暂无存储桶</h3>
-          <p class="text-gray-500 mb-6 max-w-md mx-auto">点击"创建桶"按钮开始创建您的第一个存储桶，或使用搜索功能查找现有存储桶。</p>
+          <h3 class="text-xl font-semibold text-gray-800 mb-2">{{ t('bucket.noBuckets') }}</h3>
+          <p class="text-gray-500 mb-6 max-w-md mx-auto">{{ t('bucket.noBucketsHint') }}</p>
           <button class="create-bucket-btn bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium flex items-center justify-center transition-all duration-300 mx-auto transform hover:scale-105 hover:shadow-md">
             <i class="fas fa-plus-circle mr-2"></i>
-            创建第一个桶
+            {{ t('bucket.createFirstBucket') }}
           </button>
         </div>
       </div>
@@ -165,7 +165,7 @@
           </button>
         </div>
         <div class="pagination-info text-sm text-gray-500 ml-4 hidden md:block">
-          共 {{ filteredBuckets.length }} 个存储桶
+          {{ t('bucket.totalBuckets', { count: filteredBuckets.length }) }}
         </div>
       </div>
     </div>
@@ -175,6 +175,9 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const router = useRouter();
 

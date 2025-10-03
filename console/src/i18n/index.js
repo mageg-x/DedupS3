@@ -1,5 +1,5 @@
 import { createI18n } from 'vue-i18n';
-import messages from './messages';
+import messages from './langs/index.js';
 
 // 创建i18n实例
 const i18n = createI18n({
@@ -10,3 +10,5 @@ const i18n = createI18n({
 });
 
 export default i18n;
+
+export { messages };

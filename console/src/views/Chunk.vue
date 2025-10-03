@@ -2,9 +2,9 @@
   <div class="chunk-config-container">
     <!-- 头部标题和说明 -->
     <div class="chunk-config-header">
-      <h2 class="text-2xl font-bold text-gray-800">数据切片配置</h2>
+      <h2 class="text-2xl font-bold text-gray-800">{{ t('chunk.pageTitle') }}</h2>
       <p class="text-gray-500 mt-2">
-        配置数据切片参数，包括切片长度、固定长度选项、加密和压缩设置
+        {{ t('chunk.configPlaceholder') }}
       </p>
     </div>
 
@@ -15,11 +15,11 @@
         <!-- 切片长度设置 -->
         <div class="form-section space-y-4">
           <h3 class="text-lg font-semibold text-gray-700 border-b border-gray-100 pb-2">
-            基础配置
+            {{ t('chunk.basicConfiguration') }}
           </h3>
           <div class="form-field space-y-2">
             <label for="chunkSize" class="block text-sm font-medium text-gray-700">
-              切片长度
+              {{ t('chunk.chunkLength') }}
             </label>
             <div class="flex items-center gap-3">
               <input id="chunkSize" v-model.number="chunkSize" type="number" min="1" max="1024"
@@ -31,7 +31,7 @@
               </select>
             </div>
             <p class="text-xs text-gray-500">
-              设置数据切片的大小，推荐值为 16-64MB
+              {{ t('chunk.recommendedValue') }}
             </p>
           </div>
         </div>
@@ -39,18 +39,18 @@
         <!-- 高级选项 -->
         <div class="form-section space-y-4">
           <h3 class="text-lg font-semibold text-gray-700 border-b border-gray-100 pb-2">
-            高级设置
+            {{ t('chunk.advancedSettings') }}
           </h3>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <!-- 固定长度选项 -->
             <div
               class="form-field space-y-2 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-200">
               <label class="flex items-center justify-between text-sm font-medium text-gray-700">
-                <span>使用固定长度切片</span>
+                <span>{{ t('chunk.useFixedLengthChunking') }}</span>
                 <el-switch v-model="useFixedLength" active-color="#409EFF" inactive-color="#DCDFE6" />
               </label>
               <p class="text-xs text-gray-500">
-                启用后，所有数据将被切分为相同大小的块
+                {{ t('chunk.configPlaceholder') }}
               </p>
             </div>
 
@@ -58,11 +58,11 @@
             <div
               class="form-field space-y-2 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-200">
               <label class="flex items-center justify-between text-sm font-medium text-gray-700">
-                <span>启用数据加密</span>
+                <span>{{ t('chunk.enableDataEncryption') }}</span>
                 <el-switch v-model="enableEncryption" active-color="#409EFF" inactive-color="#DCDFE6" />
               </label>
               <p class="text-xs text-gray-500">
-                启用后，所有切片数据将进行加密存储
+                {{ t('chunk.configPlaceholder') }}
               </p>
             </div>
 
@@ -70,11 +70,11 @@
             <div
               class="form-field space-y-2 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-200">
               <label class="flex items-center justify-between text-sm font-medium text-gray-700">
-                <span>启用数据压缩</span>
+                <span>{{ t('chunk.enableDataCompression') }}</span>
                 <el-switch v-model="enableCompression" active-color="#409EFF" inactive-color="#DCDFE6" />
               </label>
               <p class="text-xs text-gray-500">
-                启用后，所有切片数据将进行压缩存储
+                {{ t('chunk.configPlaceholder') }}
               </p>
             </div>
           </div>
@@ -85,7 +85,7 @@
           <button type="submit"
             class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow hover:shadow-lg transition-all duration-300 flex items-center gap-2">
             <i class="fas fa-save"></i>
-            <span>保存配置</span>
+            <span>{{ t('chunk.saveConfiguration') }}</span>
           </button>
         </div>
       </form>
@@ -104,6 +104,10 @@
 
 <script setup>
 import { ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+// 获取翻译函数
+const { t } = useI18n();
 
 // 切片长度设置
 const chunkSize = ref(32);
@@ -136,7 +140,7 @@ const handleSave = () => {
     };
 
     console.log('保存数据切片配置:', config);
-    showToastMessage('数据切片配置已成功保存！', 'success');
+    showToastMessage(t('chunk.saveSuccess'), 'success');
   } catch (error) {
     showToastMessage(error.message, 'error');
   }

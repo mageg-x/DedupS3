@@ -10,7 +10,7 @@
           {{ bucketName }}
         </h1>
         <div class="breadcrumb ml-3 text-sm text-gray-500">
-          <a href="#" class="hover:text-blue-600">存储桶</a>
+          <a href="#" class="hover:text-blue-600">{{ t('common.buckets') }}</a>
           <span class="mx-1">/</span>
           <span class="text-gray-700">{{ bucketName }}</span>
           <span v-if="currentPath !== ''" class="mx-1">/</span>
@@ -22,13 +22,13 @@
       
       <div class="header-actions flex items-center gap-2">
         <button class="upload-btn bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center justify-center transition-all duration-300 transform hover:scale-105 hover:shadow-md whitespace-nowrap text-sm">
-          <i class="fas fa-upload mr-1.5 text-sm"></i>
-          上传文件
-        </button>
-        <button class="create-folder-btn bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-medium flex items-center justify-center transition-all duration-300 transform hover:scale-105 hover:shadow-md whitespace-nowrap text-sm">
-          <i class="fas fa-folder-plus mr-1.5 text-sm"></i>
-          创建文件夹
-        </button>
+            <i class="fas fa-upload mr-1.5 text-sm"></i>
+            {{ t('browser.uploadFile') }}
+          </button>
+          <button class="create-folder-btn bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-medium flex items-center justify-center transition-all duration-300 transform hover:scale-105 hover:shadow-md whitespace-nowrap text-sm">
+            <i class="fas fa-folder-plus mr-1.5 text-sm"></i>
+            {{ t('browser.createFolder') }}
+          </button>
       </div>
     </div>
 
@@ -41,10 +41,10 @@
           <div class="col-span-1 sm:col-span-1 flex items-center justify-center">
             <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll" class="rounded text-blue-600 focus:ring-blue-500">
           </div>
-          <div class="col-span-5 sm:col-span-3">名称</div>
-          <div class="hidden sm:block col-span-2">类型</div>
-          <div class="hidden lg:block col-span-2">大小</div>
-          <div class="col-span-4 sm:col-span-4 lg:col-span-4">修改日期</div>
+          <div class="col-span-5 sm:col-span-3">{{ t('common.name') }}</div>
+          <div class="hidden sm:block col-span-2">{{ t('common.type') }}</div>
+          <div class="hidden lg:block col-span-2">{{ t('common.size') }}</div>
+          <div class="col-span-4 sm:col-span-4 lg:col-span-4">{{ t('common.modifiedDate') }}</div>
         </div>
       
       <!-- 对象列表 -->
@@ -59,7 +59,7 @@
             <span class="font-medium text-gray-700">..</span>
           </div>
           <div class="hidden sm:flex col-span-2 items-center justify-start">
-            <span class="text-gray-500">文件夹</span>
+            <span class="text-gray-500">{{ t('common.folder') }}</span>
           </div>
           <div class="hidden lg:flex col-span-2 items-center justify-start">
             <span class="text-gray-500">-</span>
@@ -79,7 +79,7 @@
             <span class="font-medium text-gray-700">{{ folder.name }}</span>
           </div>
           <div class="hidden sm:flex col-span-2 items-center justify-start">
-            <span class="text-gray-500">文件夹</span>
+            <span class="text-gray-500">{{ t('common.folder') }}</span>
           </div>
           <div class="hidden lg:flex col-span-2 items-center justify-start">
             <span class="text-gray-500">-</span>
@@ -118,11 +118,11 @@
               </g>
             </svg>
           </div>
-          <h3 class="text-xl font-semibold text-gray-800 mb-2">该存储桶为空</h3>
-          <p class="text-gray-500 mb-6 max-w-md mx-auto">点击"上传文件"按钮开始向此存储桶添加内容，或创建文件夹组织您的文件。</p>
+          <h3 class="text-xl font-semibold text-gray-800 mb-2">{{ t('browser.bucketEmpty') }}</h3>
+          <p class="text-gray-500 mb-6 max-w-md mx-auto">{{ t('browser.emptyBucketHint') }}</p>
           <button class="upload-btn bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium flex items-center justify-center transition-all duration-300 mx-auto transform hover:scale-105 hover:shadow-md">
             <i class="fas fa-upload mr-2"></i>
-            上传第一个文件
+            {{ t('browser.uploadFirstFile') }}
           </button>
         </div>
       </div>
@@ -131,7 +131,7 @@
       <!-- 对象详情侧边栏 -->
       <div v-if="selectedFile" class="object-sidebar w-full sm:w-96 bg-white shadow-lg transform transition-transform duration-300 ease-in-out show border-l border-gray-100">
         <div class="sidebar-header flex items-center justify-between p-4 border-b border-gray-200">
-        <h2 class="text-lg font-semibold text-gray-800 truncate">文件详情</h2>
+        <h2 class="text-lg font-semibold text-gray-800 truncate">{{ t('browser.fileDetails') }}</h2>
         <button class="close-btn p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all duration-300" @click="closeSidebar">
           <i class="fas fa-times"></i>
         </button>
@@ -143,8 +143,8 @@
           <div class="selection-icon w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <i class="fas fa-check-circle text-blue-600 text-4xl"></i>
           </div>
-          <h3 class="font-semibold text-gray-800 text-lg mb-2">{{ selectedFiles.length }} 个对象已选择</h3>
-          <p class="text-gray-500 text-sm mb-6">您可以对所选对象执行批量操作</p>
+          <h3 class="font-semibold text-gray-800 text-lg mb-2">{{ t('browser.selectedObjectsCount', { count: selectedFiles.length }) }}</h3>
+          <p class="text-gray-500 text-sm mb-6">{{ t('browser.selectedObjectsHint') }}</p>
         </div>
         
         <!-- 单文件预览 -->
@@ -161,45 +161,45 @@
         <!-- 操作按钮 -->
         <div class="action-buttons flex justify-center flex-wrap gap-2 mb-6">
           <button class="download-btn flex-1 sm:flex-none bg-green-600 hover:bg-green-700 text-white px-4 py-2.25 rounded-lg font-medium flex items-center justify-center transition-all duration-300 transform hover:scale-105 hover:shadow-md whitespace-nowrap text-sm">
-            <i class="fas fa-download mr-1.5 text-sm"></i>
-            下载
-          </button>
-          <button v-if="selectedFiles.length <= 1" class="preview-btn flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.25 rounded-lg font-medium flex items-center justify-center transition-all duration-300 transform hover:scale-105 hover:shadow-md whitespace-nowrap text-sm">
-            <i class="fas fa-eye mr-1.5 text-sm"></i>
-            预览
-          </button>
-          <button class="delete-btn flex-1 sm:flex-none bg-red-600 hover:bg-red-700 text-white px-4 py-2.25 rounded-lg font-medium flex items-center justify-center transition-all duration-300 transform hover:scale-105 hover:shadow-md whitespace-nowrap text-sm">
-            <i class="fas fa-trash-alt mr-1.5 text-sm"></i>
-            删除
-          </button>
+              <i class="fas fa-download mr-1.5 text-sm"></i>
+              {{ t('common.download') }}
+            </button>
+            <button v-if="selectedFiles.length <= 1" class="preview-btn flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.25 rounded-lg font-medium flex items-center justify-center transition-all duration-300 transform hover:scale-105 hover:shadow-md whitespace-nowrap text-sm">
+              <i class="fas fa-eye mr-1.5 text-sm"></i>
+              {{ t('common.preview') }}
+            </button>
+            <button class="delete-btn flex-1 sm:flex-none bg-red-600 hover:bg-red-700 text-white px-4 py-2.25 rounded-lg font-medium flex items-center justify-center transition-all duration-300 transform hover:scale-105 hover:shadow-md whitespace-nowrap text-sm">
+              <i class="fas fa-trash-alt mr-1.5 text-sm"></i>
+              {{ t('common.delete') }}
+            </button>
         </div>
         
         <!-- 单对象信息 -->
         <div v-if="!selectedFile.isMultipleSelection" class="object-info">
-          <h4 class="text-sm font-semibold text-gray-500 uppercase mb-3">Object Info</h4>
+          <h4 class="text-sm font-semibold text-gray-500 uppercase mb-3">{{ t('browser.objectInfo') }}</h4>
           <div class="info-grid grid grid-cols-1 gap-3">
             <div class="info-item">
-              <label class="text-xs text-gray-500 block mb-1">名称</label>
+              <label class="text-xs text-gray-500 block mb-1">{{ t('common.name') }}</label>
               <p class="text-gray-800 font-medium truncate">{{ selectedFile.name }}</p>
             </div>
             <div class="info-item">
-              <label class="text-xs text-gray-500 block mb-1">大小</label>
+              <label class="text-xs text-gray-500 block mb-1">{{ t('common.size') }}</label>
               <p class="text-gray-800">{{ formatSize(selectedFile.size) }} ({{ selectedFile.size }} bytes)</p>
             </div>
             <div class="info-item">
-              <label class="text-xs text-gray-500 block mb-1">创建时间</label>
+              <label class="text-xs text-gray-500 block mb-1">{{ t('common.createdAt') }}</label>
               <p class="text-gray-800">{{ formatDateTime(selectedFile.createdAt) }}</p>
             </div>
             <div class="info-item">
-              <label class="text-xs text-gray-500 block mb-1">最后修改时间</label>
+              <label class="text-xs text-gray-500 block mb-1">{{ t('common.lastModified') }}</label>
               <p class="text-gray-800">{{ formatDateTime(selectedFile.lastModified) }}</p>
             </div>
             <div class="info-item">
-              <label class="text-xs text-gray-500 block mb-1">ETag</label>
+              <label class="text-xs text-gray-500 block mb-1">{{ t('browser.etag') }}</label>
               <p class="text-gray-800 text-xs break-all">{{ selectedFile.etag }}</p>
             </div>
             <div class="info-item" v-if="selectedFile.tags && selectedFile.tags.length > 0">
-              <label class="text-xs text-gray-500 block mb-1">标签</label>
+              <label class="text-xs text-gray-500 block mb-1">{{ t('common.tags') }}</label>
               <div class="tags flex flex-wrap gap-1">
                 <span v-for="tag in selectedFile.tags" :key="tag.key" class="inline-block bg-blue-50 text-blue-600 px-2 py-0.5 rounded text-xs font-medium">
                   {{ tag.key }}: {{ tag.value }}
@@ -207,11 +207,11 @@
               </div>
             </div>
             <div class="info-item">
-              <label class="text-xs text-gray-500 block mb-1">块数量</label>
+              <label class="text-xs text-gray-500 block mb-1">{{ t('browser.chunkCount') }}</label>
               <p class="text-gray-800">{{ selectedFile.chunks || 1 }}</p>
             </div>
             <div class="info-item">
-              <label class="text-xs text-gray-500 block mb-1">存储路径</label>
+              <label class="text-xs text-gray-500 block mb-1">{{ t('browser.storagePath') }}</label>
               <p class="text-gray-800 text-xs truncate">{{ bucketName }}/{{ currentPath ? currentPath + '/' : '' }}{{ selectedFile.name }}</p>
             </div>
           </div>
@@ -225,6 +225,9 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const route = useRoute();
 const router = useRouter();

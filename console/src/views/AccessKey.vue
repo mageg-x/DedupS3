@@ -2,11 +2,11 @@
   <div class="access-keys-container">
     <!-- 头部搜索和创建按钮 -->
     <div class="access-keys-header flex items-center justify-between mb-6">
-      <h2 class="text-2xl font-bold text-gray-800">访问密钥</h2>
+      <h2 class="text-2xl font-bold text-gray-800">{{ t('accessKey.pageTitle') }}</h2>
       <div class="header-actions flex items-center gap-4">
         <!-- 搜索框 -->
         <div class="relative">
-          <input type="text" placeholder="搜索访问密钥..." v-model="searchQuery"
+          <input type="text" :placeholder="t('accessKey.searchPlaceholder')" v-model="searchQuery"
             class="search-input pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300 w-64" />
           <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
         </div>
@@ -14,7 +14,7 @@
         <button @click="handleCreateAccessKey"
           class="create-button bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg shadow-md hover:shadow-lg transition-all duration-300 flex items-center gap-2">
           <i class="fas fa-plus"></i>
-          <span>创建密钥</span>
+          <span>{{ t('accessKey.createKey') }}</span>
         </button>
       </div>
     </div>
@@ -24,10 +24,10 @@
       <!-- 列表头部 -->
         <div class="list-header grid grid-cols-5 gap-4 px-6 py-4 border-b border-gray-100 bg-gray-50">
           <div class="flex items-center justify-center"></div>
-          <div class="font-medium text-gray-700 flex items-center">访问密钥</div>
-          <div class="font-medium text-gray-700 flex items-center justify-center">是否过期</div>
-          <div class="font-medium text-gray-700 flex items-center justify-center">是否启用</div>
-          <div class="font-medium text-gray-700 flex items-center justify-center">操作</div>
+          <div class="font-medium text-sm text-gray-700 flex items-center">{{ t('accessKey.accessKey') }}</div>
+          <div class="font-medium text-sm text-gray-700 flex items-center justify-center">{{ t('accessKey.isExpired') }}</div>
+          <div class="font-medium text-sm text-gray-700 flex items-center justify-center">{{ t('accessKey.isEnabled') }}</div>
+          <div class="font-medium text-sm text-gray-700 flex items-center justify-center">{{ t('common.operation') }}</div>
         </div>
 
       <!-- 列表内容 -->
@@ -38,11 +38,11 @@
           <div class="empty-icon w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
             <i class="fas fa-key text-3xl text-gray-400"></i>
           </div>
-          <h3 class="text-lg font-medium text-gray-800 mb-2">暂无访问密钥</h3>
-          <p class="text-gray-500 mb-6">点击"创建密钥"按钮生成新的访问密钥</p>
+          <h3 class="text-lg font-medium text-gray-800 mb-2">{{ t('accessKey.noKeys') }}</h3>
+          <p class="text-gray-500 mb-6">{{ t('accessKey.clickCreateKey') }}</p>
           <button @click="handleCreateAccessKey"
             class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg shadow transition-all duration-300">
-            创建第一个密钥
+            {{ t('accessKey.createFirstKey') }}
           </button>
         </div>
 
@@ -61,8 +61,8 @@
           </div>
 
           <!-- 访问密钥 -->
-          <div class="flex-shrink-0 flex items-center">
-            <div class="key-id font-medium text-gray-800 truncate max-w-xs">
+          <div class="flex items-center">
+            <div class="font-medium text-xs text-gray-800 truncate min-w-fit">
               {{ key.accessKey }}
             </div>
           </div>
@@ -73,7 +73,7 @@
               'px-2 py-1 rounded-full text-xs font-medium',
               key.isExpired ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'
             ]">
-              {{ key.isExpired ? '已过期' : '未过期' }}
+              {{ key.isExpired ? t('accessKey.expired') : t('accessKey.notExpired') }}
             </span>
           </div>
 
@@ -83,18 +83,18 @@
               'px-2 py-1 rounded-full text-xs font-medium',
               key.enabled ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600'
             ]">
-              {{ key.enabled ? '已启用' : '已禁用' }}
+              {{ key.enabled ? t('accessKey.enabled') : t('accessKey.disabled') }}
             </span>
           </div>
 
           <!-- 操作按钮 -->
           <div class="flex items-center justify-center gap-2">
             <button @click.stop="handleEditKey(key.id)"
-              class="edit-button p-2 text-blue-500 hover:bg-blue-50 rounded-md transition-all duration-200" title="编辑">
+              class="edit-button p-2 text-blue-500 hover:bg-blue-50 rounded-md transition-all duration-200" :title="t('common.edit')">
               <i class="fas fa-edit"></i>
             </button>
             <button @click.stop="handleDeleteKey(key.id)"
-              class="delete-button p-2 text-red-500 hover:bg-red-50 rounded-md transition-all duration-200" title="删除">
+              class="delete-button p-2 text-red-500 hover:bg-red-50 rounded-md transition-all duration-200" :title="t('common.delete')">
               <i class="fas fa-trash-alt"></i>
             </button>
           </div>
@@ -105,7 +105,7 @@
       <div v-if="totalPages > 1"
         class="pagination px-6 py-4 flex items-center justify-between border-t border-gray-100 bg-gray-50">
         <div class="page-info text-sm text-gray-600">
-          共 {{ filteredKeys.length }} 条记录，每页显示 {{ pageSize }} 条
+          {{ t('common.totalRecords', { total: filteredKeys.length, size: pageSize }) }}
         </div>
         <div class="page-controls flex items-center gap-2">
           <button @click="currentPage = 1" :disabled="currentPage === 1"
@@ -136,41 +136,45 @@
       class="dialog-overlay fixed inset-0 bg-[rgba(0,0,0,0.5)] flex items-center justify-center z-50">
       <div class="dialog-container bg-white rounded-xl shadow-xl w-full max-w-md mx-4 overflow-hidden animate-fadeIn">
         <div class="dialog-header p-5 border-b border-gray-100 flex items-center justify-between">
-          <h3 class="text-lg font-bold text-gray-800">{{ editingKey ? '编辑访问密钥' : '创建访问密钥' }}</h3>
+          <h3 class="text-lg font-bold text-gray-800">{{ editingKey ? t('accessKey.editAccessKey') : t('accessKey.createAccessKey') }}</h3>
           <button @click="resetForm" class="close-button text-gray-500 hover:text-gray-700 transition-colors"
-            aria-label="关闭">
+            :aria-label="t('common.close')">
             <i class="fas fa-times"></i>
           </button>
         </div>
         <div class="dialog-body p-5">
           <div class="form-content space-y-4">
             <div class="form-group">
-              <label class="form-label block text-sm font-medium text-gray-700 mb-1"> Access Key </label>
-              <input v-model="formData.accessKey" type="text" placeholder="请输入Access Key"
+              <label class="form-label block text-sm font-medium text-gray-700 mb-1"> {{ t('accessKey.accessKey') }} </label>
+              <input v-model="formData.accessKey" type="text" :placeholder="t('accessKey.enterAccessKey')"
                 class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" :disabled="editingKey" />
             </div>
             <div class="form-group">
-              <label class="form-label block text-sm font-medium text-gray-700 mb-1"> Secret Key </label>
-              <input v-model="formData.secretKey" type="text" placeholder="请输入Secret Key"
+              <label class="form-label block text-sm font-medium text-gray-700 mb-1"> {{ t('accessKey.secretKey') }} </label>
+              <input v-model="formData.secretKey" type="text" :placeholder="t('accessKey.enterSecretKey')"
                 class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" :disabled="editingKey" />
             </div>
             <div class="form-group">
-              <label class="form-label block text-sm font-medium text-gray-700 mb-1"> 过期时间 </label>
-              <input v-model="formData.expiresAt" type="date"
-                class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
+              <label class="form-label block text-sm font-medium text-gray-700 mb-1"> {{ t('accessKey.expiryDate') }} </label>
+              <el-date-picker
+                v-model="formData.expiresAt"
+                type="date"
+                :placeholder="t('accessKey.enterDate')"
+                class="w-full"
+              />
             </div>
             <div class="form-group">
-              <label class="form-label block text-sm font-medium text-gray-700 mb-1"> 状态 </label>
+              <label class="form-label block text-sm font-medium text-gray-700 mb-1"> {{ t('common.status') }} </label>
               <div class="flex items-center space-x-4">
                 <label class="inline-flex items-center">
                   <input type="radio" v-model="formData.enabled" :value="true"
                     class="form-radio h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500" />
-                  <span class="ml-2 text-sm text-gray-700">启用</span>
+                  <span class="ml-2 text-sm text-gray-700">{{ t('accessKey.enabled') }}</span>
                 </label>
                 <label class="inline-flex items-center">
                   <input type="radio" v-model="formData.enabled" :value="false"
                     class="form-radio h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500" />
-                  <span class="ml-2 text-sm text-gray-700">禁用</span>
+                  <span class="ml-2 text-sm text-gray-700">{{ t('accessKey.disabled') }}</span>
                 </label>
               </div>
             </div>
@@ -179,11 +183,11 @@
         <div class="dialog-footer p-5 border-t border-gray-100 flex items-center justify-end gap-3">
           <button @click="resetForm"
             class="cancel-button px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
-            取消
+            {{ t('common.cancel') }}
           </button>
           <button @click="handleSubmit"
             class="confirm-button px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-            {{ editingKey ? '保存' : '创建' }}
+            {{ editingKey ? t('common.save') : t('common.create') }}
           </button>
         </div>
       </div>
@@ -193,20 +197,20 @@
     <div v-if="deleteDialogVisible" class="dialog-overlay fixed inset-0 bg-[rgba(0,0,0,0.5)]  flex items-center justify-center z-50">
       <div class="dialog-container bg-white rounded-xl shadow-xl w-full max-w-md mx-4 overflow-hidden animate-fadeIn">
         <div class="dialog-header p-5 border-b border-gray-100 flex items-center justify-between">
-          <h3 class="text-lg font-bold text-gray-800">删除确认</h3>
-          <button @click="deleteDialogVisible = false" class="close-button text-gray-500 hover:text-gray-700 transition-colors" aria-label="关闭">
+          <h3 class="text-lg font-bold text-gray-800">{{ t('common.confirmDelete') }}</h3>
+          <button @click="deleteDialogVisible = false" class="close-button text-gray-500 hover:text-gray-700 transition-colors" :aria-label="t('common.close')">
             <i class="fas fa-times"></i>
           </button>
         </div>
         <div class="dialog-body p-5">
-          <p class="text-gray-700">确定要删除这个访问密钥吗？此操作无法撤销。</p>
+          <p class="text-gray-700">{{ t('accessKey.confirmDeleteKey') }}</p>
         </div>
         <div class="dialog-footer p-5 border-t border-gray-100 flex items-center justify-end gap-3">
           <button @click="deleteDialogVisible = false" class="cancel-button px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
-            取消
+            {{ t('common.cancel') }}
           </button>
           <button @click="confirmDeleteKey" class="confirm-button px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
-            删除
+            {{ t('common.delete') }}
           </button>
         </div>
       </div>
@@ -217,36 +221,36 @@
       class="dialog-overlay fixed inset-0 bg-[rgba(0,0,0,0.5)] flex items-center justify-center z-50">
       <div class="dialog-container bg-white rounded-xl shadow-xl w-full max-w-md mx-4 overflow-hidden animate-fadeIn">
         <div class="dialog-header p-5 border-b border-gray-100 flex items-center justify-between">
-          <h3 class="text-lg font-bold text-gray-800">访问密钥详情</h3>
+          <h3 class="text-lg font-bold text-gray-800">{{ t('accessKey.keyDetails') }}</h3>
           <button @click="keyDetailsVisible = false"
-            class="close-button text-gray-500 hover:text-gray-700 transition-colors" aria-label="关闭">
+            class="close-button text-gray-500 hover:text-gray-700 transition-colors" :aria-label="t('common.close')">
             <i class="fas fa-times"></i>
           </button>
         </div>
         <div class="dialog-body p-5">
           <div class="key-details-content space-y-4">
             <div class="detail-item">
-              <label class="detail-label block text-sm font-medium text-gray-700 mb-1"> Access Key ID </label>
+              <label class="detail-label block text-sm font-medium text-gray-700 mb-1"> {{ t('accessKey.accessKeyId') }} </label>
               <div class="detail-value bg-gray-50 px-4 py-2 rounded-lg text-sm font-mono break-all">
                 {{ newKey.accessKey }}
               </div>
             </div>
             <div class="detail-item">
-              <label class="detail-label block text-sm font-medium text-gray-700 mb-1"> Secret Access Key </label>
+              <label class="detail-label block text-sm font-medium text-gray-700 mb-1"> {{ t('accessKey.secretAccessKey') }} </label>
               <div class="detail-value bg-gray-50 px-4 py-2 rounded-lg text-sm font-mono break-all">
                 {{ newKey.secretKey }}
               </div>
             </div>
             <div class="warning-message p-3 bg-yellow-50 border-l-4 border-yellow-400 text-sm text-yellow-700 mt-4">
               <i class="fas fa-exclamation-triangle mr-2"></i>
-              请妥善保存您的Secret Access Key，它只会显示一次。
+              {{ t('accessKey.saveSecretKeyWarning') }}
             </div>
           </div>
         </div>
         <div class="dialog-footer p-5 border-t border-gray-100 flex items-center justify-end">
           <button @click="keyDetailsVisible = false"
             class="confirm-button px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-            我已保存
+            {{ t('accessKey.iHaveSaved') }}
           </button>
         </div>
       </div>
@@ -256,6 +260,10 @@
 
 <script setup>
 import { ref, computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { ElDatePicker } from 'element-plus';
+
+const { t } = useI18n();
 
 // 选中的密钥ID
 const selectedKeyId = ref(null);

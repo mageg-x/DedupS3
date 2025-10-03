@@ -21,11 +21,11 @@
                                 d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
                         </svg>
                     </div>
-                    <div class="logo-text">磐石 (兼容S3对象存储)</div>
+                    <div class="logo-text">{{ t('login.brandName') }}</div>
                 </div>
 
-                <h1 class="tagline">高级云存储<span>管理平台</span></h1>
-                <p class="subtitle">通过我们直观的浏览器界面安全访问和管理您的S3兼容存储。企业级安全性与用户友好设计相结合。</p>
+                <h1 class="tagline">{{ t('login.tagline') }}</h1>
+                <p class="subtitle">{{ t('login.subtitleDescription') }}</p>
 
                 <div class="features">
                     <div class="feature flex flex-col items-center">
@@ -34,13 +34,11 @@
                                 <i class="fas fa-plug"></i>
                             </div>
                             <div class="feature-header">
-                                <div class="feature-title">完美兼容</div>
+                                <div class="feature-title">{{ t('login.feature1Title') }}</div>
                             </div>
                         </div>
                         <div class="feature-content">
-                            <p class="feature-description">
-                                完全兼容AWS接口规范，完美适配各种SDK和客户端工具，无缝迁移零成本。
-                            </p>
+                            <p class="feature-description">{{ t('login.feature1Description') }}</p>
                         </div>
                     </div>
 
@@ -50,14 +48,12 @@
                                 <i class="fas fa-piggy-bank"></i>
                             </div>
                             <div class="feature-header">
-                                <div class="feature-title">高效节省</div>
+                                <div class="feature-title">{{ t('login.feature2Title') }}</div>
                             </div>
                         </div>
 
                         <div class="feature-content">
-                            <p class="feature-description">
-                                采用智能复用重复内容和快速压缩算法，大比例节省存储空间，特别适合存储备份数据、镜像文件和文本文档。
-                            </p>
+                            <p class="feature-description">{{ t('login.feature2Description') }}</p>
                         </div>
                     </div>
 
@@ -67,14 +63,12 @@
                                 <i class="fas fa-balance-scale"></i>
                             </div>
                             <div class="feature-header">
-                                <div class="feature-title">无损性能</div>
+                                <div class="feature-title">{{ t('login.feature3Title') }}</div>
                             </div>
                         </div>
 
                         <div class="feature-content">
-                            <p class="feature-description">
-                                虽然系统采用极致去重和压缩技术，但读写接口性能几乎无损耗，用户仍可享受高速数据访问体验。
-                            </p>
+                            <p class="feature-description">{{ t('login.feature3Description') }}</p>
                         </div>
                     </div>
 
@@ -84,14 +78,12 @@
                                 <i class="fas fa-shield-alt"></i>
                             </div>
                             <div class="feature-header">
-                                <div class="feature-title">安全可靠</div>
+                                <div class="feature-title">{{ t('login.feature4Title') }}</div>
                             </div>
                         </div>
 
                         <div class="feature-content">
-                            <p class="feature-description">
-                                所有凭证在传输和存储过程中都经过AES-256加密处理，确保数据安全与隐私保护。
-                            </p>
+                            <p class="feature-description">{{ t('login.feature4Description') }}</p>
                         </div>
                     </div>
                 </div>
