@@ -10,6 +10,71 @@ const routes = [
     name: 'Login',
     component: () => import("@/views/Login.vue"),
   },
+  {
+    path: '/dashboard',
+    name: 'MainLayout',
+    component: () => import("@/views/Main.vue"),
+    children: [
+      {
+        path: '',
+        name: 'Dashboard',
+        component: () => import("@/views/Dashboard.vue")
+      },
+      {
+        path: '/buckets',
+        name: 'Buckets',
+        component: () => import("@/views/Bucket.vue")
+      },
+      {
+        path: '/bucket/:name',
+        name: 'BucketBrowser',
+        component: () => import("@/views/Browser.vue")
+      },
+      {
+        path: '/accesskey',
+        name: 'AccessKey',
+        component: () => import("@/views/AccessKey.vue")
+      },
+      {
+        path: '/endpoint',
+        name: 'EndPoint',
+        component: () => import("@/views/EndPoint.vue")
+      },
+      {
+        path: '/chunk',
+        name: 'Chunk',
+        component: () => import("@/views/Chunk.vue")
+      },
+      { path: '/quota',
+        name: 'Quota',
+        component: () => import("@/views/Quota.vue")
+      },
+      { path: '/user',
+        name: 'User',
+        component: () => import("@/views/User.vue")
+      },
+      { path: '/group',
+        name: 'Group',
+        component: () => import("@/views/Group.vue")
+      },
+      { path: '/policy',
+        name: 'Policy',
+        component: () => import("@/views/Policy.vue")
+      },
+      { path: '/role',
+        name: 'Role',
+        component: () => import("@/views/Role.vue")
+      },
+      { path: '/event',
+        name: 'Event',
+        component: () => import("@/views/Event.vue")
+      },
+      { path: '/audit',
+        name: 'Audit',
+        component: () => import("@/views/Audit.vue")
+      }
+    ]
+  }
 ]
 
 const router = createRouter({
@@ -17,5 +82,19 @@ const router = createRouter({
   routes
 })
 
+// 前端路由守卫
+router.beforeEach(async (to, from, next) => {
+  if (to.path === '/login') {
+    next();
+    return;
+  }
+
+  const res = await fetch('/api/auth/status', { credentials: 'include' });
+  if (res.ok) {
+    next();
+  } else {
+    next('/login');
+  }
+});
 
 export default router
