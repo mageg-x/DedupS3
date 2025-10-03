@@ -2,70 +2,70 @@
   <div class="audits-container">
     <!-- 页面标题和操作按钮 -->
     <div class="page-header flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-bold text-gray-800">审计记录</h1>
+      <h1 class="text-2xl font-bold text-gray-800">{{ t('auditRecords') }}</h1>
       <div class="flex items-center gap-3">
         <div class="relative">
           <select v-model="auditTypeFilter"
             class="appearance-none text-sm bg-white border border-gray-300 rounded-lg pl-4 pr-10 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
-            <option value="all">所有类型</option>
+            <option value="all">{{ t('auditTypes.all') }}</option>
             <!-- 对象操作 -->
-            <option value="s3:GetObject">下载对象</option>
-            <option value="s3:PutObject">上传对象</option>
-            <option value="s3:DeleteObject">删除对象</option>
-            <option value="s3:GetObjectAcl">获取对象ACL</option>
-            <option value="s3:PutObjectAcl">设置对象ACL</option>
-            <option value="s3:GetObjectTagging">获取对象标签</option>
-            <option value="s3:PutObjectTagging">设置对象标签</option>
-            <option value="s3:GetObjectVersion">获取对象版本</option>
-            <option value="s3:DeleteObjectVersion">删除对象版本</option>
-            <option value="s3:GetObjectAttributes">获取对象属性</option>
+            <option value="s3:GetObject">{{ t('auditTypes.s3:GetObject') }}</option>
+            <option value="s3:PutObject">{{ t('auditTypes.s3:PutObject') }}</option>
+            <option value="s3:DeleteObject">{{ t('auditTypes.s3:DeleteObject') }}</option>
+            <option value="s3:GetObjectAcl">{{ t('auditTypes.s3:GetObjectAcl') }}</option>
+            <option value="s3:PutObjectAcl">{{ t('auditTypes.s3:PutObjectAcl') }}</option>
+            <option value="s3:GetObjectTagging">{{ t('auditTypes.s3:GetObjectTagging') }}</option>
+            <option value="s3:PutObjectTagging">{{ t('auditTypes.s3:PutObjectTagging') }}</option>
+            <option value="s3:GetObjectVersion">{{ t('auditTypes.s3:GetObjectVersion') }}</option>
+            <option value="s3:DeleteObjectVersion">{{ t('auditTypes.s3:DeleteObjectVersion') }}</option>
+            <option value="s3:GetObjectAttributes">{{ t('auditTypes.s3:GetObjectAttributes') }}</option>
 
             <!-- 存储桶操作 -->
-            <option value="s3:CreateBucket">创建存储桶</option>
-            <option value="s3:DeleteBucket">删除存储桶</option>
-            <option value="s3:ListBucket">列出存储桶内容</option>
-            <option value="s3:ListBucketVersions">列出存储桶版本</option>
-            <option value="s3:GetBucketLocation">获取存储桶位置</option>
+            <option value="s3:CreateBucket">{{ t('auditTypes.s3:CreateBucket') }}</option>
+            <option value="s3:DeleteBucket">{{ t('auditTypes.s3:DeleteBucket') }}</option>
+            <option value="s3:ListBucket">{{ t('auditTypes.s3:ListBucket') }}</option>
+            <option value="s3:ListBucketVersions">{{ t('auditTypes.s3:ListBucketVersions') }}</option>
+            <option value="s3:GetBucketLocation">{{ t('auditTypes.s3:GetBucketLocation') }}</option>
 
             <!-- 访问控制操作 -->
-            <option value="s3:GetBucketAcl">获取存储桶ACL</option>
-            <option value="s3:PutBucketAcl">设置存储桶ACL</option>
-            <option value="s3:GetBucketPolicy">获取存储桶策略</option>
-            <option value="s3:PutBucketPolicy">设置存储桶策略</option>
-            <option value="s3:DeleteBucketPolicy">删除存储桶策略</option>
+            <option value="s3:GetBucketAcl">{{ t('auditTypes.s3:GetBucketAcl') }}</option>
+            <option value="s3:PutBucketAcl">{{ t('auditTypes.s3:PutBucketAcl') }}</option>
+            <option value="s3:GetBucketPolicy">{{ t('auditTypes.s3:GetBucketPolicy') }}</option>
+            <option value="s3:PutBucketPolicy">{{ t('auditTypes.s3:PutBucketPolicy') }}</option>
+            <option value="s3:DeleteBucketPolicy">{{ t('auditTypes.s3:DeleteBucketPolicy') }}</option>
 
             <!-- 高级配置操作 -->
-            <option value="s3:PutBucketVersioning">设置版本控制</option>
-            <option value="s3:GetBucketVersioning">获取版本控制状态</option>
-            <option value="s3:PutBucketCORS">设置CORS规则</option>
-            <option value="s3:GetBucketCORS">获取CORS规则</option>
-            <option value="s3:PutBucketLogging">设置访问日志</option>
-            <option value="s3:GetBucketLogging">获取访问日志配置</option>
-            <option value="s3:PutBucketNotification">设置事件通知</option>
-            <option value="s3:GetBucketNotification">获取事件通知配置</option>
-            <option value="s3:PutBucketReplication">设置复制规则</option>
-            <option value="s3:GetBucketReplication">获取复制规则配置</option>
-            <option value="s3:PutBucketEncryption">设置加密配置</option>
-            <option value="s3:GetBucketEncryption">获取加密配置</option>
+            <option value="s3:PutBucketVersioning">{{ t('auditTypes.s3:PutBucketVersioning') }}</option>
+            <option value="s3:GetBucketVersioning">{{ t('auditTypes.s3:GetBucketVersioning') }}</option>
+            <option value="s3:PutBucketCORS">{{ t('auditTypes.s3:PutBucketCORS') }}</option>
+            <option value="s3:GetBucketCORS">{{ t('auditTypes.s3:GetBucketCORS') }}</option>
+            <option value="s3:PutBucketLogging">{{ t('auditTypes.s3:PutBucketLogging') }}</option>
+            <option value="s3:GetBucketLogging">{{ t('auditTypes.s3:GetBucketLogging') }}</option>
+            <option value="s3:PutBucketNotification">{{ t('auditTypes.s3:PutBucketNotification') }}</option>
+            <option value="s3:GetBucketNotification">{{ t('auditTypes.s3:GetBucketNotification') }}</option>
+            <option value="s3:PutBucketReplication">{{ t('auditTypes.s3:PutBucketReplication') }}</option>
+            <option value="s3:GetBucketReplication">{{ t('auditTypes.s3:GetBucketReplication') }}</option>
+            <option value="s3:PutBucketEncryption">{{ t('auditTypes.s3:PutBucketEncryption') }}</option>
+            <option value="s3:GetBucketEncryption">{{ t('auditTypes.s3:GetBucketEncryption') }}</option>
 
             <!-- 生命周期配置操作 -->
-            <option value="s3:PutBucketLifecycleConfiguration">设置生命周期配置</option>
-            <option value="s3:GetBucketLifecycleConfiguration">获取生命周期配置</option>
-            <option value="s3:DeleteBucketLifecycle">删除生命周期配置</option>
+            <option value="s3:PutBucketLifecycleConfiguration">{{ t('auditTypes.s3:PutBucketLifecycleConfiguration') }}</option>
+            <option value="s3:GetBucketLifecycleConfiguration">{{ t('auditTypes.s3:GetBucketLifecycleConfiguration') }}</option>
+            <option value="s3:DeleteBucketLifecycle">{{ t('auditTypes.s3:DeleteBucketLifecycle') }}</option>
 
             <!-- IAM操作 -->
-            <option value="iam:CreateUser">创建IAM用户</option>
-            <option value="iam:DeleteUser">删除IAM用户</option>
-            <option value="iam:UpdateUser">更新IAM用户</option>
-            <option value="iam:CreateRole">创建IAM角色</option>
-            <option value="iam:DeleteRole">删除IAM角色</option>
-            <option value="iam:UpdateRole">更新IAM角色</option>
-            <option value="iam:AttachUserPolicy">附加用户策略</option>
-            <option value="iam:DetachUserPolicy">分离用户策略</option>
-            <option value="iam:AttachRolePolicy">附加角色策略</option>
-            <option value="iam:DetachRolePolicy">分离角色策略</option>
-            <option value="iam:CreateAccessKey">创建访问密钥</option>
-            <option value="iam:DeleteAccessKey">删除访问密钥</option>
+            <option value="iam:CreateUser">{{ t('auditTypes.iam:CreateUser') }}</option>
+            <option value="iam:DeleteUser">{{ t('auditTypes.iam:DeleteUser') }}</option>
+            <option value="iam:UpdateUser">{{ t('auditTypes.iam:UpdateUser') }}</option>
+            <option value="iam:CreateRole">{{ t('auditTypes.iam:CreateRole') }}</option>
+            <option value="iam:DeleteRole">{{ t('auditTypes.iam:DeleteRole') }}</option>
+            <option value="iam:UpdateRole">{{ t('auditTypes.iam:UpdateRole') }}</option>
+            <option value="iam:AttachUserPolicy">{{ t('auditTypes.iam:AttachUserPolicy') }}</option>
+            <option value="iam:DetachUserPolicy">{{ t('auditTypes.iam:DetachUserPolicy') }}</option>
+            <option value="iam:AttachRolePolicy">{{ t('auditTypes.iam:AttachRolePolicy') }}</option>
+            <option value="iam:DetachRolePolicy">{{ t('auditTypes.iam:DetachRolePolicy') }}</option>
+            <option value="iam:CreateAccessKey">{{ t('auditTypes.iam:CreateAccessKey') }}</option>
+            <option value="iam:DeleteAccessKey">{{ t('auditTypes.iam:DeleteAccessKey') }}</option>
           </select>
           <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
             <i class="fas fa-chevron-down text-xs"></i>
@@ -74,7 +74,7 @@
         <button @click="exportAudits"
           class="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
           <i class="fas fa-download"></i>
-          <span>导出</span>
+          <span>{{ t('export') }}</span>
         </button>
       </div>
     </div>
@@ -82,7 +82,7 @@
     <!-- 搜索框 -->
     <div class="search-container mb-6 text-sm">
       <div class="relative">
-        <input type="text" v-model="searchKeyword" placeholder="搜索审计描述、影响对象或操作人..."
+        <input type="text" v-model="searchKeyword" :placeholder="t('searchPlaceholder')"
           class=" text-sm w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
         <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
       </div>
@@ -91,32 +91,32 @@
     <!-- 时间范围选择和风险级别筛选 -->
     <div class="filter-row  mb-6 flex flex-wrap gap-4 items-center">
       <div class="flex items-center gap-2">
-        <label class="text-sm font-medium text-gray-700">开始时间:</label>
+        <label class="text-sm font-medium text-gray-700">{{ t('startTime') }}</label>
         <input type="datetime-local" v-model="startDate"
           class="border text-[0.8rem] border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
       </div>
       <div class="flex items-center gap-2">
-        <label class="text-sm font-medium text-gray-700">结束时间:</label>
+        <label class="text-sm font-medium text-gray-700">{{ t('endTime') }}</label>
         <input type="datetime-local" v-model="endDate"
           class="border text-[0.8rem] border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
       </div>
       <div class="flex items-center gap-2">
-        <label class="text-sm font-medium text-gray-700">风险级别:</label>
+        <label class="text-sm font-medium text-gray-700">{{ t('riskLevel') }}</label>
         <div class="flex gap-2">
           <label class="inline-flex items-center">
             <input type="checkbox" v-model="riskLevelFilters" value="low"
               class="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
-            <span class="ml-2 text-sm text-gray-700">低</span>
+            <span class="ml-2 text-sm text-gray-700">{{ t('low') }}</span>
           </label>
           <label class="inline-flex items-center">
             <input type="checkbox" v-model="riskLevelFilters" value="medium"
               class="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
-            <span class="ml-2 text-sm text-gray-700">中</span>
+            <span class="ml-2 text-sm text-gray-700">{{ t('medium') }}</span>
           </label>
           <label class="inline-flex items-center">
             <input type="checkbox" v-model="riskLevelFilters" value="high"
               class="form-checkbox h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
-            <span class="ml-2 text-sm text-gray-700">高</span>
+            <span class="ml-2 text-sm text-gray-700">{{ t('high') }}</span>
           </label>
         </div>
       </div>
@@ -128,13 +128,13 @@
         <table class="w-full">
           <thead class="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">时间</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-36">审计类型</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">操作人</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">影响对象</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">风险级别</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">状态</th>
-              <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32">操作</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">{{ t('time') }}</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-36">{{ t('auditType') }}</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">{{ t('actor') }}</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('target') }}</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">{{ t('riskLevel') }}</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">{{ t('status') }}</th>
+              <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32">{{ t('operation') }}</th>
             </tr>
           </thead>
           <tbody class=" text-sm bg-white divide-y divide-gray-200">
@@ -148,7 +148,7 @@
                 </span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                {{ audit.actor || '系统' }}
+                {{ audit.actor || t('system') }}
               </td>
               <td class="px-6 py-4 text-sm text-gray-700 ">
                 {{ audit.target || 'N/A' }}
@@ -161,16 +161,16 @@
               <td class="px-6 py-4 whitespace-nowrap">
                 <span
                   :class="['px-2 py-1 text-xs rounded-full', audit.status === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800']">
-                  {{ audit.status === 'success' ? '成功' : '失败' }}
+                  {{ audit.status === 'success' ? t('success') : t('failed') }}
                 </span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                 <button @click="showAuditDetails(audit)"
                   class="text-blue-600 hover:text-blue-900 transition-colors mr-3">
-                  <i class="fas fa-eye mr-1"></i>详情
+                  <i class="fas fa-eye mr-1"></i>{{ t('details') }}
                 </button>
                 <button @click="generateReport(audit)" class="text-green-600 hover:text-green-900 transition-colors">
-                  <i class="fas fa-file-alt mr-1"></i>报告
+                  <i class="fas fa-file-alt mr-1"></i>{{ t('report') }}
                 </button>
               </td>
             </tr>
@@ -182,8 +182,8 @@
         <div class="text-gray-400 mb-4">
           <i class="fas fa-file-audio text-4xl"></i>
         </div>
-        <h3 class="text-lg font-medium text-gray-900 mb-2">暂无审计记录</h3>
-        <p class="text-gray-500 mb-6">系统将自动记录各类审计事件</p>
+        <h3 class="text-lg font-medium text-gray-900 mb-2">{{ t('noAuditRecords') }}</h3>
+        <p class="text-gray-500 mb-6">{{ t('systemAutomaticallyRecords') }}</p>
       </div>
     </div>
 
@@ -316,6 +316,9 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 // 模拟审计数据
 const auditsList = ref([]);
@@ -678,69 +681,10 @@ const formatChangeValue = (value) => {
   return String(value);
 };
 
-// 获取审计类型名称（S3操作类型）
+// 获取审计类型名称
 const getAuditTypeName = (type) => {
-  const typeNames = {
-    // 对象操作
-    's3:GetObject': '下载对象',
-    's3:PutObject': '上传对象',
-    's3:DeleteObject': '删除对象',
-    's3:GetObjectAcl': '获取对象ACL',
-    's3:PutObjectAcl': '设置对象ACL',
-    's3:GetObjectTagging': '获取对象标签',
-    's3:PutObjectTagging': '设置对象标签',
-    's3:GetObjectVersion': '获取对象版本',
-    's3:DeleteObjectVersion': '删除对象版本',
-    's3:GetObjectAttributes': '获取对象属性',
-
-    // 存储桶操作
-    's3:CreateBucket': '创建存储桶',
-    's3:DeleteBucket': '删除存储桶',
-    's3:ListBucket': '列出存储桶内容',
-    's3:ListBucketVersions': '列出存储桶版本',
-    's3:GetBucketLocation': '获取存储桶位置',
-
-    // 访问控制操作
-    's3:GetBucketAcl': '获取存储桶ACL',
-    's3:PutBucketAcl': '设置存储桶ACL',
-    's3:GetBucketPolicy': '获取存储桶策略',
-    's3:PutBucketPolicy': '设置存储桶策略',
-    's3:DeleteBucketPolicy': '删除存储桶策略',
-
-    // 高级配置操作
-    's3:PutBucketVersioning': '设置版本控制',
-    's3:GetBucketVersioning': '获取版本控制状态',
-    's3:PutBucketCORS': '设置CORS规则',
-    's3:GetBucketCORS': '获取CORS规则',
-    's3:PutBucketLogging': '设置访问日志',
-    's3:GetBucketLogging': '获取访问日志配置',
-    's3:PutBucketNotification': '设置事件通知',
-    's3:GetBucketNotification': '获取事件通知配置',
-    's3:PutBucketReplication': '设置复制规则',
-    's3:GetBucketReplication': '获取复制规则配置',
-    's3:PutBucketEncryption': '设置加密配置',
-    's3:GetBucketEncryption': '获取加密配置',
-
-    // 生命周期配置操作
-    's3:PutBucketLifecycleConfiguration': '设置生命周期配置',
-    's3:GetBucketLifecycleConfiguration': '获取生命周期配置',
-    's3:DeleteBucketLifecycle': '删除生命周期配置',
-
-    // IAM操作
-    'iam:CreateUser': '创建IAM用户',
-    'iam:DeleteUser': '删除IAM用户',
-    'iam:UpdateUser': '更新IAM用户',
-    'iam:CreateRole': '创建IAM角色',
-    'iam:DeleteRole': '删除IAM角色',
-    'iam:UpdateRole': '更新IAM角色',
-    'iam:AttachUserPolicy': '附加用户策略',
-    'iam:DetachUserPolicy': '分离用户策略',
-    'iam:AttachRolePolicy': '附加角色策略',
-    'iam:DetachRolePolicy': '分离角色策略',
-    'iam:CreateAccessKey': '创建访问密钥',
-    'iam:DeleteAccessKey': '删除访问密钥'
-  };
-  return typeNames[type] || type;
+  // 使用i18n获取翻译后的审计类型名称
+  return t(`auditTypes.${type}`) || type;
 };
 
 // 获取审计类型样式（S3操作类型）

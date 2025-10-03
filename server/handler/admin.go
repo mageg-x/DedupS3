@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/mageg-x/boulder/internal/config"
 	xhttp "github.com/mageg-x/boulder/internal/http"
 	"net/http"
 	"strings"
@@ -63,19 +64,45 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sameSite := http.SameSiteStrictMode
+	if config.IsDev {
+		sameSite = http.SameSiteLaxMode
+	}
 	// 设置 Cookie
 	http.SetCookie(w, &http.Cookie{
-		Name:     "access_token",          // Cookie 名字
-		Value:    token,                   // Token 值
-		Path:     "/",                     // 作用路径
-		HttpOnly: true,                    // 关键：JS 无法读取，防 XSS
-		Secure:   true,                    // 仅 HTTPS（开发环境可设 false）
-		SameSite: http.SameSiteStrictMode, // 防 CSRF
-		MaxAge:   3600,                    // 有效期 1 小时（秒）
+		Name:     "access_token", // Cookie 名字
+		Value:    token,          // Token 值
+		Path:     "/",            // 作用路径
+		HttpOnly: true,           // 关键：JS 无法读取，防 XSS
+		Secure:   !config.IsDev,  // 仅 HTTPS（开发环境可设 false）
+		SameSite: sameSite,       // 防 CSRF
+		MaxAge:   3600,           // 有效期 1 小时（秒）
 		// Expires: time.Now().Add(1 * time.Hour), // 过期时间（旧方式）
 	})
 
 	w.Header().Set("Content-Type", "application/json")
 
 	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
+
+func LogoutHandler(w http.ResponseWriter, r *http.Request) {
+	sameSite := http.SameSiteStrictMode
+	if config.IsDev {
+		sameSite = http.SameSiteLaxMode
+	}
+
+	// 清除 Cookie：设置 Max-Age=-1 或空值
+	http.SetCookie(w, &http.Cookie{
+		Name:     "access_token",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   !config.IsDev, // 生产环境必须为 true
+		SameSite: sameSite,
+		MaxAge:   -1, // 表示立即过期
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+
 }

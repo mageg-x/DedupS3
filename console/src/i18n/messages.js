@@ -97,6 +97,35 @@ const messages = {
       'iam:CreateAccessKey': '创建访问密钥',
       'iam:DeleteAccessKey': '删除访问密钥',
       'all': '所有类型'
+    },
+    
+    // 登录页面
+    login: {
+      title: '安全连接',
+      subtitle: '选择登录方式以继续',
+      iamLogin: '用户名密码登录',
+      s3Login: 'S3凭证登录',
+      accessKeyId: 'Access Key ID',
+      accessKeyPlaceholder: 'AKIAIOSFODNN7EXAMPLE',
+      secretAccessKey: 'Secret Access Key',
+      secretKeyPlaceholder: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+      endpoint: 'Endpoint',
+      endpointPlaceholder: 'https://s3.amazonaws.com 或自定义端点',
+      username: '用户名',
+      usernamePlaceholder: '请输入用户名',
+      password: '密码',
+      passwordPlaceholder: '请输入密码',
+      rememberMe: '记住我',
+      forgotPassword: '忘记密码?',
+      connecting: '连接中...',
+      connectToS3: '连接到 S3',
+      loginSystem: '登录系统',
+      pleaseEnterAccessKeyId: '请输入Access Key ID',
+      pleaseEnterSecretAccessKey: '请输入Secret Access Key',
+      pleaseEnterEndpoint: '请输入 endpoint',
+      pleaseEnterUsername: '请输入用户名',
+      pleaseEnterPassword: '请输入密码',
+      passwordTooShort: '密码长度不能少于6位'
     }
   },
   en: {
@@ -196,6 +225,35 @@ const messages = {
       'iam:CreateAccessKey': 'Create Access Key',
       'iam:DeleteAccessKey': 'Delete Access Key',
       'all': 'All Types'
+    },
+    
+    // 登录页面
+    login: {
+      title: 'Secure Connection',
+      subtitle: 'Select login method to continue',
+      iamLogin: 'Username Password Login',
+      s3Login: 'S3 Credentials Login',
+      accessKeyId: 'Access Key ID',
+      accessKeyPlaceholder: 'AKIAIOSFODNN7EXAMPLE',
+      secretAccessKey: 'Secret Access Key',
+      secretKeyPlaceholder: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+      endpoint: 'Endpoint',
+      endpointPlaceholder: 'https://s3.amazonaws.com or custom endpoint',
+      username: 'Username',
+      usernamePlaceholder: 'Please enter username',
+      password: 'Password',
+      passwordPlaceholder: 'Please enter password',
+      rememberMe: 'Remember me',
+      forgotPassword: 'Forgot password?',
+      connecting: 'Connecting...',
+      connectToS3: 'Connect to S3',
+      loginSystem: 'Login System',
+      pleaseEnterAccessKeyId: 'Please enter Access Key ID',
+      pleaseEnterSecretAccessKey: 'Please enter Secret Access Key',
+      pleaseEnterEndpoint: 'Please enter endpoint',
+      pleaseEnterUsername: 'Please enter username',
+      pleaseEnterPassword: 'Please enter password',
+      passwordTooShort: 'Password length must be at least 6 characters'
     }
   }
 };

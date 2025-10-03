@@ -121,16 +121,19 @@
           </div>
 
           <!-- 右侧工具栏 -->
-          <div class="flex items-center gap-5">
-            <!-- 通知图标 -->
-            <button
-              class="relative p-2 text-gray-600 hover:text-blue-500 transition-all duration-300 rounded-full hover:bg-gray-100">
-              <i class="fas fa-bell text-lg"></i>
-              <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-            </button>
+            <div class="flex items-center gap-5">
+              <!-- 通知图标 -->
+              <button
+                class="relative p-2 text-gray-600 hover:text-blue-500 transition-all duration-300 rounded-full hover:bg-gray-100">
+                <i class="fas fa-bell text-lg"></i>
+                <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+              </button>
 
-            <!-- 用户信息 -->
-            <div class="flex items-center gap-3 cursor-pointer group relative">
+              <!-- 语言切换 -->
+              <LanguageSwitch :sidebar-collapsed="sidebarCollapsed" />
+
+              <!-- 用户信息 -->
+              <div class="flex items-center gap-3 cursor-pointer group relative">
               <div class="relative">
                 <img v-if="currentUser.avatar" :src="currentUser.avatar" alt="用户头像"
                   class="w-10 h-10 rounded-full border-2 border-transparent hover:border-blue-500 transition-all duration-300 shadow-sm">
@@ -174,6 +177,10 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { useRoute } from 'vue-router';
+import { useI18n } from 'vue-i18n';
+import LanguageSwitch from '@/components/LanguageSwitch.vue';
+
+const { t } = useI18n();
 
 const route = useRoute();
 
@@ -189,28 +196,28 @@ const currentUser = ref({
 
 // 菜单列表
 const menuItems = [
-  { path: '/dashboard', label: '数据概览', icon: 'fa-home' },
-  { path: '/buckets', label: '存储桶', icon: 'svg-bucket' },
-  { path: '/accesskey', label: '访问密钥', icon: 'fa-key' },
-  {
-    label: '账户&权限',
+  { path: '/dashboard', label: t('dashboard'), icon: 'fa-home' },
+  { path: '/buckets', label: t('buckets'), icon: 'svg-bucket' },
+  { path: '/accesskey', label: t('accessKey'), icon: 'fa-key' },
+  { 
+    label: t('accountsAndPermissions'),
     icon: 'fa-lock',
     children: [
-      { path: '/user', label: '子账户', icon: 'fa-user' },
-      { path: '/group', label: '账户组', icon: 'fa-user-group' },
-      { path: '/role', label: '角色', icon: 'fa-user-tag' },
-      { path: '/policy', label: '策略', icon: 'fa-file-signature' },
+      { path: '/user', label: t('subAccount'), icon: 'fa-user' },
+      { path: '/group', label: t('accountGroup'), icon: 'fa-user-group' },
+      { path: '/role', label: t('role'), icon: 'fa-user-tag' },
+      { path: '/policy', label: t('policy'), icon: 'fa-file-signature' },
     ]
   },
-  { path: '/event', label: '事件日志', icon: 'fa-bell' },
-  { path: '/audit', label: '审计记录', icon: 'fa-file-text' },
-  {
-    label: '配置管理',
+  { path: '/event', label: t('eventLogs'), icon: 'fa-bell' },
+  { path: '/audit', label: t('auditRecords'), icon: 'fa-file-text' },
+  { 
+    label: t('configurationManagement'),
     icon: 'fa-cog',
     children: [
-      { path: '/endpoint', label: '存储点', icon: 'fa-map-marker-alt' },
-      { path: '/quota', label: '配额管理', icon: 'fa-tachometer-alt' },
-      { path: '/chunk', label: '数据切片', icon: 'fa-chart-pie' },
+      { path: '/endpoint', label: t('endpoint'), icon: 'fa-map-marker-alt' },
+      { path: '/quota', label: t('quota'), icon: 'fa-tachometer-alt' },
+      { path: '/chunk', label: t('chunk'), icon: 'fa-chart-pie' },
     ]
   },
 ];
@@ -248,7 +255,7 @@ const isActiveMenuItem = (item) => {
 // 计算面包屑导航
 const breadcrumbs = computed(() => {
   const path = route.path;
-  const crumbs = [{ path: '/dashboard', label: '首页' }];
+  const crumbs = [{ path: '/dashboard', label: t('home') }];
 
   if (path !== '/dashboard') {
     // 查找当前路径对应的菜单项，包括子菜单

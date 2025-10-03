@@ -3,15 +3,14 @@ package router
 import (
 	"github.com/gorilla/mux"
 	"github.com/mageg-x/boulder/handler"
+	"github.com/mageg-x/boulder/internal/logger"
 	"github.com/mageg-x/boulder/middleware"
+	"github.com/mageg-x/boulder/web"
 	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/mageg-x/boulder/internal/logger"
-	"github.com/mageg-x/boulder/web"
 )
 
 // 自定义文件处理器 (解决目录浏览和SPA路由问题)
@@ -54,17 +53,6 @@ func registerAdminRouter(mr *mux.Router) {
 
 	// 创建admin路由子路由器
 	ar := mr.PathPrefix("/").Subrouter()
-	// 处理静态资源路由
-	ar.Methods(http.MethodGet).Path("/{path:.*}").
-		MatcherFunc(func(r *http.Request, rm *mux.RouteMatch) bool {
-			// 只有当路径不以 /api 开头时才匹配
-			return !strings.HasPrefix(r.URL.Path, "/api")
-		}).
-		HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			logger.GetLogger("boulder").Errorf("serving static: %s", r.URL.Path)
-			h := http.StripPrefix("/", http.FileServer(FS))
-			h.ServeHTTP(w, r)
-		})
 
 	api_router := ar.PathPrefix("/api").Subrouter()
 	api_router.Use(middleware.AdminAuthMiddleware)
@@ -72,7 +60,21 @@ func registerAdminRouter(mr *mux.Router) {
 	api_router.Methods(http.MethodOptions).Path("/{rest:.*}").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
+	api_router.Methods(http.MethodGet).Path("/auth/status").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
 	api_router.Methods(http.MethodPost).Path("/login").HandlerFunc(handler.LoginHandler)
+	api_router.Methods(http.MethodPost).Path("/logout").HandlerFunc(handler.LogoutHandler)
 
+	// 处理静态资源路由
+	ar.Methods(http.MethodGet).Path("/{path:.*}").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger.GetLogger("boulder").Errorf("serving static: %s", r.URL.Path)
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			http.NotFound(w, r)
+			return
+		}
+		h := http.StripPrefix("/", http.FileServer(FS))
+		h.ServeHTTP(w, r)
+	})
 	logger.GetLogger("boulder").Infof("Admin console routes registered with prefix /")
 }

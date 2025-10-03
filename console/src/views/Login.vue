@@ -144,63 +144,63 @@
                                     d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
                             </svg>
                         </div>
-                        <h2 class="login-title">安全连接</h2>
-                        <p class="login-subtitle">选择登录方式以继续</p>
+                        <h2 class="login-title">{{ t('login.title') }}</h2>
+                        <p class="login-subtitle">{{ t('login.subtitle') }}</p>
                     </div>
 
                     <!-- 登录方式切换 -->
                     <div class="login-method-toggle">
                         <div :class="['method-btn', { active: loginMethod === 'iam' }]" @click="loginMethod = 'iam'">
-                            用户名密码登录
-                        </div>
-                        <div :class="['method-btn', { active: loginMethod === 's3' }]" @click="loginMethod = 's3'">
-                            S3凭证登录
-                        </div>
+                                {{ t('login.iamLogin') }}
+                            </div>
+                            <div :class="['method-btn', { active: loginMethod === 's3' }]" @click="loginMethod = 's3'">
+                                {{ t('login.s3Login') }}
+                            </div>
                     </div>
 
                     <el-form ref="loginFormRef" :model="loginForm" :rules="rules" @submit.prevent="handleLogin"
                         label-position="top">
                         <!-- S3凭证登录表单 -->
                         <div v-if="loginMethod === 's3'">
-                            <el-form-item label="Access Key ID" prop="accessKeyId">
-                                <el-input v-model="loginForm.accessKeyId" placeholder="AKIAIOSFODNN7EXAMPLE"
+                            <el-form-item :label="t('login.accessKeyId')" prop="accessKeyId">
+                                <el-input v-model="loginForm.accessKeyId" :placeholder="t('login.accessKeyPlaceholder')"
                                     size="large" />
                             </el-form-item>
 
-                            <el-form-item label="Secret Access Key" prop="secretAccessKey">
+                            <el-form-item :label="t('login.secretAccessKey')" prop="secretAccessKey">
                                 <el-input v-model="loginForm.secretAccessKey" type="password"
-                                    placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" size="large" show-password />
+                                    :placeholder="t('login.secretKeyPlaceholder')" size="large" show-password />
                             </el-form-item>
 
-                            <el-form-item label="Endpoint" prop="endpoint">
-                                <el-input v-model="loginForm.endpoint" placeholder="https://s3.amazonaws.com 或自定义端点"
+                            <el-form-item :label="t('login.endpoint')" prop="endpoint">
+                                <el-input v-model="loginForm.endpoint" :placeholder="t('login.endpointPlaceholder')"
                                     size="large" />
                             </el-form-item>
                         </div>
 
                         <!-- 用户名密码登录表单 -->
                         <div v-if="loginMethod === 'iam'">
-                            <el-form-item label="用户名" prop="username">
-                                <el-input v-model="loginForm.username" placeholder="请输入用户名" size="large" />
+                            <el-form-item :label="t('login.username')" prop="username">
+                                <el-input v-model="loginForm.username" :placeholder="t('login.usernamePlaceholder')" size="large" />
                             </el-form-item>
 
-                            <el-form-item label="密码" prop="password">
-                                <el-input v-model="loginForm.password" type="password" placeholder="请输入密码" size="large"
+                            <el-form-item :label="t('login.password')" prop="password">
+                                <el-input v-model="loginForm.password" type="password" :placeholder="t('login.passwordPlaceholder')" size="large"
                                     show-password />
                             </el-form-item>
 
                             <div class="remember-forgot">
                                 <div class="remember-me">
                                     <input type="checkbox" id="remember" v-model="loginForm.remember">
-                                    <label for="remember">记住我</label>
+                                    <label for="remember">{{ t('login.rememberMe') }}</label>
                                 </div>
-                                <a href="#" class="forgot-password">忘记密码?</a>
+                                <a href="#" class="forgot-password">{{ t('login.forgotPassword') }}</a>
                             </div>
                         </div>
 
                         <el-form-item>
                             <el-button type="primary" @click="handleLogin" :loading="loading" size="large">
-                                {{ loading ? '连接中...' : loginMethod === 's3' ? '连接到 S3' : '登录系统' }}
+                                {{ loading ? t('login.connecting') : loginMethod === 's3' ? t('login.connectToS3') : t('login.loginSystem') }}
                             </el-button>
                         </el-form-item>
                     </el-form>
@@ -215,7 +215,10 @@
 import { ref, reactive, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { login, logout } from '../api/admin';
+
+const { t } = useI18n();
 
 const router = useRouter();
 const loginFormRef = ref(null);
@@ -233,20 +236,20 @@ const loginForm = reactive({
 
 const rules = {
     accessKeyId: [
-        { required: true, message: '请输入Access Key ID', trigger: 'blur' }
+        { required: true, message: t('login.pleaseEnterAccessKeyId'), trigger: 'blur' }
     ],
     secretAccessKey: [
-        { required: true, message: '请输入Secret Access Key', trigger: 'blur' }
+        { required: true, message: t('login.pleaseEnterSecretAccessKey'), trigger: 'blur' }
     ],
     endpoint: [
-        { required: true, message: '请输入 endpoint', trigger: 'blur' }
+        { required: true, message: t('login.pleaseEnterEndpoint'), trigger: 'blur' }
     ],
     username: [
-        { required: true, message: '请输入用户名', trigger: 'blur' }
+        { required: true, message: t('login.pleaseEnterUsername'), trigger: 'blur' }
     ],
     password: [
-        { required: true, message: '请输入密码', trigger: 'blur' },
-        { min: 6, message: '密码长度不能少于6位', trigger: 'blur' }
+        { required: true, message: t('login.pleaseEnterPassword'), trigger: 'blur' },
+        { min: 6, message: t('login.passwordTooShort'), trigger: 'blur' }
     ]
 };
 
