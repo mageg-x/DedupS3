@@ -674,8 +674,6 @@ const en = {
   // 审计页面
   audit: {
     pageTitle: "Audit Records",
-    // 导出功能
-    export: "Export",
     searchPlaceholder: "Search audit description, target or actor...",
     startTime: "Start Time:",
     endTime: "End Time:",
