@@ -12,6 +12,10 @@
         </div>
 
         <div class="content-wrapper">
+            <!-- Language switch -->
+            <div class="language-switch-container mr-16 mt-8 z-10">
+                <LanguageSwitch :sidebar-collapsed="false" />
+            </div>
             <!-- 介绍区域（PC端显示） -->
             <div class="intro-section">
                 <div class="logo">
@@ -143,11 +147,11 @@
                     <!-- 登录方式切换 -->
                     <div class="login-method-toggle">
                         <div :class="['method-btn', { active: loginMethod === 'iam' }]" @click="loginMethod = 'iam'">
-                                {{ t('login.iamLogin') }}
-                            </div>
-                            <div :class="['method-btn', { active: loginMethod === 's3' }]" @click="loginMethod = 's3'">
-                                {{ t('login.s3Login') }}
-                            </div>
+                            {{ t('login.iamLogin') }}
+                        </div>
+                        <div :class="['method-btn', { active: loginMethod === 's3' }]" @click="loginMethod = 's3'">
+                            {{ t('login.s3Login') }}
+                        </div>
                     </div>
 
                     <el-form ref="loginFormRef" :model="loginForm" :rules="rules" @submit.prevent="handleLogin"
@@ -173,12 +177,13 @@
                         <!-- 用户名密码登录表单 -->
                         <div v-if="loginMethod === 'iam'">
                             <el-form-item :label="t('login.username')" prop="username">
-                                <el-input v-model="loginForm.username" :placeholder="t('login.usernamePlaceholder')" size="large" />
+                                <el-input v-model="loginForm.username" :placeholder="t('login.usernamePlaceholder')"
+                                    size="large" />
                             </el-form-item>
 
                             <el-form-item :label="t('login.password')" prop="password">
-                                <el-input v-model="loginForm.password" type="password" :placeholder="t('login.passwordPlaceholder')" size="large"
-                                    show-password />
+                                <el-input v-model="loginForm.password" type="password"
+                                    :placeholder="t('login.passwordPlaceholder')" size="large" show-password />
                             </el-form-item>
 
                             <div class="remember-forgot">
@@ -192,7 +197,8 @@
 
                         <el-form-item>
                             <el-button type="primary" @click="handleLogin" :loading="loading" size="large">
-                                {{ loading ? t('login.connecting') : loginMethod === 's3' ? t('login.connectToS3') : t('login.loginSystem') }}
+                                {{ loading ? t('login.connecting') : loginMethod === 's3' ? t('login.connectToS3') :
+                                t('login.loginSystem') }}
                             </el-button>
                         </el-form-item>
                     </el-form>
@@ -209,6 +215,7 @@ import { ElMessage } from 'element-plus';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { login, logout } from '../api/admin';
+import LanguageSwitch from '@/components/LanguageSwitch.vue';
 
 const { t } = useI18n();
 
@@ -671,6 +678,13 @@ const handleLogin = async () => {
 .login-header {
     text-align: center;
     margin-bottom: 30px;
+    position: relative;
+}
+
+.language-switch-container {
+    position: absolute;
+    top: 0;
+    right: 0;
 }
 
 .login-icon {

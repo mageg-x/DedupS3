@@ -37,7 +37,7 @@
         <el-date-picker
           v-model="startDate"
           type="datetime"
-          :placeholder="t('event.selectStartTime')"
+          :placeholder="t('common.selectStartTime')"
           class="text-sm"
           style="width: 200px"
         />
@@ -47,7 +47,7 @@
         <el-date-picker
           v-model="endDate"
           type="datetime"
-          :placeholder="t('event.selectEndTime')"
+          :placeholder="t('common.selectEndTime')"
           class="text-sm"
           style="width: 200px"
         />

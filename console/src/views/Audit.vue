@@ -97,7 +97,7 @@
           type="datetime"
           format="YYYY-MM-DD HH:mm:ss"
           value-format="YYYY-MM-DDTHH:mm:ss"
-          :placeholder="t('audit.selectStartDate')"
+          :placeholder="t('common.selectStartTime')"
           class="w-full text-[0.8rem]"
         />
       </div>
@@ -108,7 +108,7 @@
           type="datetime"
           format="YYYY-MM-DD HH:mm:ss"
           value-format="YYYY-MM-DDTHH:mm:ss"
-          :placeholder="t('audit.selectEndDate')"
+          :placeholder="t('common.selectEndTime')"
           class="w-full text-[0.8rem]"
         />
       </div>
@@ -772,9 +772,9 @@ const getAuditTypeClass = (type) => {
 // 获取风险级别名称
 const getRiskLevelName = (level) => {
   const levelNames = {
-    'low': t('riskLevel.low'),
-    'medium': t('riskLevel.medium'),
-    'high': t('riskLevel.high')
+    'low': t('audit.low'),
+    'medium': t('audit.medium'),
+    'high': t('audit.high')
   };
   return levelNames[level] || level;
 };
