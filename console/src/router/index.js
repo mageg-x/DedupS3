@@ -69,9 +69,36 @@ const routes = [
         name: 'Event',
         component: () => import("@/views/Event.vue")
       },
-      { path: '/audit',
+      {
+        path: '/audit',
         name: 'Audit',
         component: () => import("@/views/Audit.vue")
+      },
+      // 高级功能路由
+      {
+        path: '/migration',
+        name: 'Migration',
+        component: () => import("@/views/Migration.vue")
+      },
+      {
+        path: '/defragment',
+        name: 'Defragment',
+        component: () => import("@/views/Defragment.vue")
+      },
+      {
+        path: '/snapshot',
+        name: 'SnapShot',
+        component: () => import("@/views/SnapShot.vue")
+      },
+      {
+        path: '/analysis',
+        name: 'Analysis',
+        component: () => import("@/views/Analysis.vue")
+      },
+      {
+        path: '/debugtool',
+        name: 'DebugTool',
+        component: () => import("@/views/DebugTool.vue")
       }
     ]
   }

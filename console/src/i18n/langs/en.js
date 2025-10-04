@@ -43,11 +43,17 @@ const en = {
   mainMenu: {
     dashboard: "Dashboard",
     buckets: "Buckets",
-    accessKey: "Access Keys",
+    accessKey: "Access Key",
     iam: "IAM",
     user: "User",
     group: "Group",
     role: "Role",
+    advancedFeatures: "Advanced Features",
+    migration: "Migration",
+    defragment: "Defragment",
+    snapshot: "SnapShot",
+    analysis: "Analysis",
+    debugTool: "Debug Tool",
     policy: "Policy",
     event: "Event",
     audit: "Audit",
@@ -553,6 +559,20 @@ const en = {
     policyModified: '{username} modified policy "{resource}"',
     policyDeleted: '{username} deleted policy "{resource}"',
     policyAssigned: '{username} assigned policy "{resource}" to user "{user}"',
+  },
+
+  // 高级功能页面
+  advancedFeatures: {
+      migration: "Migration",
+      migrationDescription: "Function to migrate data from one storage location to another.",
+      defragment: "Defragment",
+      defragmentDescription: "Optimize storage fragments to improve system performance and space utilization.",
+      snapshot: "SnapShot",
+      snapshotDescription: "SnapShot of data and storage structures.",
+      analysis: "Analysis",
+      analysisDescription: "Function to analyze data errors in storage and recover.",
+      debugTool: "Debug Tool",
+      debugToolDescription: "Advanced tools for system diagnosis and troubleshooting."
   },
 
   // 事件日志页面

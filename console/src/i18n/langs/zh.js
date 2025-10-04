@@ -48,6 +48,12 @@ const zh = {
     user: "子账户",
     group: "账户组",
     role: "角色",
+    advancedFeatures: "高级功能",
+    migration: "数据迁移",
+    defragment: "碎片重整",
+    snapshot: "数据快照",
+    analysis: "数据分析",
+    debugTool: "调试工具",
     policy: "策略",
     event: "事件日志",
     audit: "审计记录",
@@ -535,6 +541,20 @@ const zh = {
     policyDeleted: '{username} 删除了策略 "{resource}"',
     policyAssigned: '{username} 将策略 "{resource}" 分配给了用户 "{user}"',
   },
+  // 高级功能页面
+  advancedFeatures: {
+      migration: "数据迁移",
+      migrationDescription: "将数据从一个存储位置迁移到另一个存储位置的功能。",
+      defragment: "碎片重整",
+      defragmentDescription: "优化存储碎片，提高系统性能和空间利用率。",
+      snapshot: "数据快照",
+      snapshotDescription: "某个时间点数据快照，用于数据恢复。",
+      analysis: "数据分析",
+      analysisDescription: "分析存储中数据错误并恢复的功能。",
+      debugTool: "调试工具",
+      debugToolDescription: "用于系统诊断和问题排查的高级工具。"
+  },
+
   // 事件日志页面
   event: {
     pageTitle: "事件日志",
