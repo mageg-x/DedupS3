@@ -100,6 +100,7 @@ const zh = {
     pleaseEnterPassword: "请输入密码",
     passwordTooShort: "密码长度不能少于6位",
   },
+
   // 仪表盘页面翻译
   dashboard: {
     bucketCount: "存储桶数量",
@@ -651,8 +652,6 @@ const zh = {
   // 审计页面
   audit: {
     pageTitle: "审计记录",
-    // 导出功能
-    export: "导出",
     searchPlaceholder: "搜索审计描述、影响对象或操作人...",
     startTime: "开始时间:",
     endTime: "结束时间:",

@@ -74,7 +74,7 @@
         <button @click="exportAudits"
           class="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
           <i class="fas fa-download"></i>
-          <span>{{ t('audit.export') }}</span>
+          <span>{{ t('common.export') }}</span>
         </button>
       </div>
     </div>
