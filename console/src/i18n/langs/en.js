@@ -825,6 +825,22 @@ const en = {
       },
     },
   },
+  
+  // Browser page
+  browser: {
+    uploadFile: "Upload File",
+    createFolder: "Create Folder",
+    bucketEmpty: "Bucket Empty",
+    emptyBucketHint: "There are no objects in the current bucket",
+    uploadFirstFile: "Upload your first file",
+    fileDetails: "File Details",
+    selectedObjectsCount: "Selected {count} objects",
+    selectedObjectsHint: "Please select objects to operate",
+    objectInfo: "Object Info",
+    chunkCount: "Chunk Count",
+    storagePath: "Storage Path",
+    etag: "ETag"
+  },
 };
 
 export default en;

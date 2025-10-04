@@ -798,6 +798,22 @@ const zh = {
       },
     },
   },
+  
+  // 浏览器页面
+  browser: {
+    uploadFile: "上传文件",
+    createFolder: "创建文件夹",
+    bucketEmpty: "桶为空",
+    emptyBucketHint: "当前桶中没有任何对象",
+    uploadFirstFile: "上传您的第一个文件",
+    fileDetails: "文件详情",
+    selectedObjectsCount: "已选择 {count} 个对象",
+    selectedObjectsHint: "请选择要操作的对象",
+    objectInfo: "对象信息",
+    chunkCount: "分片数量",
+    storagePath: "存储路径",
+    etag: "ETag"
+  },
 };
 
 export default zh;

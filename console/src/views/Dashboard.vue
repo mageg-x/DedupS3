@@ -3,11 +3,8 @@
     <!-- 统计卡片区域 -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
       <!-- 使用v-for循环渲染所有卡片 -->
-      <div 
-        v-for="card in statCards" 
-        :key="card.id"
-        class="stat-card bg-white rounded-2xl shadow-card border border-gray-100 hover:shadow-card-hover p-6 transition-all duration-500"
-      >
+      <div v-for="card in statCards" :key="card.id"
+        class="stat-card bg-white rounded-2xl shadow-card border border-gray-100 hover:shadow-card-hover p-6 transition-all duration-500">
         <div class="flex items-start justify-between">
           <div>
             <p class="text-gray-500 text-sm font-medium mb-2">{{ card.title }}</p>
@@ -20,16 +17,19 @@
           </div>
         </div>
         <div class="mt-5 flex items-center text-sm">
-          <span v-if="card.footerType === 'growth'" class="text-green-500 font-medium flex items-center bg-green-50 px-2 py-1 rounded-lg">
+          <span v-if="card.footerType === 'growth'"
+            class="text-green-500 font-medium flex items-center bg-green-50 px-2 py-1 rounded-lg">
             <i class="fas fa-arrow-up w-3 h-3 mr-1.5"></i>
             +{{ card.growthValue }}%
             <span class="text-gray-400 ml-2 whitespace-nowrap">{{ t('dashboard.comparedToLastMonth') }}</span>
           </span>
-          <span v-else-if="card.footerType === 'saving'" class="text-green-500 font-medium flex items-center bg-green-50 px-2 py-1 rounded-lg">
+          <span v-else-if="card.footerType === 'saving'"
+            class="text-green-500 font-medium flex items-center bg-green-50 px-2 py-1 rounded-lg">
             <i class="fas fa-arrow-down w-3 h-3 mr-1.5"></i>
             {{ card.savingText }}
           </span>
-          <span v-else-if="card.footerType === 'reuse'" class="text-green-500 font-medium flex items-center bg-green-50 px-2 py-1 rounded-lg">
+          <span v-else-if="card.footerType === 'reuse'"
+            class="text-green-500 font-medium flex items-center bg-green-50 px-2 py-1 rounded-lg">
             <i class="fas fa-check w-3 h-3 mr-1.5"></i>
             {{ card.reuseText }}
           </span>
@@ -206,24 +206,31 @@ const statCards = computed(() => [
 .shadow-blue {
   box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3);
 }
+
 .shadow-purple {
   box-shadow: 0 4px 6px -1px rgba(139, 92, 246, 0.3);
 }
+
 .shadow-green {
   box-shadow: 0 4px 6px -1px rgba(34, 197, 94, 0.3);
 }
+
 .shadow-amber {
   box-shadow: 0 4px 6px -1px rgba(245, 158, 11, 0.3);
 }
+
 .shadow-red {
   box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.3);
 }
+
 .shadow-cyan {
   box-shadow: 0 4px 6px -1px rgba(6, 182, 212, 0.3);
 }
+
 .shadow-indigo {
   box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.3);
 }
+
 .shadow-pink {
   box-shadow: 0 4px 6px -1px rgba(236, 72, 153, 0.3);
 }
@@ -233,23 +240,23 @@ const statCards = computed(() => [
   .dashboard-container {
     padding: 1rem;
   }
-  
+
   .stat-card h3 {
     font-size: 1.8rem;
   }
-  
+
   .stat-card .w-14 {
     width: 3rem;
   }
-  
+
   .stat-card .h-14 {
     height: 3rem;
   }
-  
+
   .stat-card .w-10 {
     width: 2.5rem;
   }
-  
+
   .stat-card .h-10 {
     height: 2.5rem;
   }
@@ -261,6 +268,7 @@ const statCards = computed(() => [
     opacity: 0;
     transform: translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -272,12 +280,35 @@ const statCards = computed(() => [
 }
 
 /* 保持原有动画效果 */
-.stat-card:nth-child(1) { animation-delay: 0.1s; }
-.stat-card:nth-child(2) { animation-delay: 0.2s; }
-.stat-card:nth-child(3) { animation-delay: 0.3s; }
-.stat-card:nth-child(4) { animation-delay: 0.4s; }
-.stat-card:nth-child(5) { animation-delay: 0.5s; }
-.stat-card:nth-child(6) { animation-delay: 0.6s; }
-.stat-card:nth-child(7) { animation-delay: 0.7s; }
-.stat-card:nth-child(8) { animation-delay: 0.8s; }
+.stat-card:nth-child(1) {
+  animation-delay: 0.1s;
+}
+
+.stat-card:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.stat-card:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.stat-card:nth-child(4) {
+  animation-delay: 0.4s;
+}
+
+.stat-card:nth-child(5) {
+  animation-delay: 0.5s;
+}
+
+.stat-card:nth-child(6) {
+  animation-delay: 0.6s;
+}
+
+.stat-card:nth-child(7) {
+  animation-delay: 0.7s;
+}
+
+.stat-card:nth-child(8) {
+  animation-delay: 0.8s;
+}
 </style>

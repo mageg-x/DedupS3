@@ -226,7 +226,7 @@ const menuItems = [
     children: [
       { path: '/migration', label: t('mainMenu.migration'), icon: 'fa-exchange-alt' },
       { path: '/defragment', label: t('mainMenu.defragment'), icon: 'fa-puzzle-piece' },
-      { path: '/snapshot', label: t('mainMenu.snapshot'), icon: 'fa-wrench' },
+      { path: '/snapshot', label: t('mainMenu.snapshot'), icon: 'fa-images' },
       { path: '/analysis', label: t('mainMenu.analysis'), icon: 'fa-kit-medical' },
       { path: '/debugtool', label: t('mainMenu.debugTool'), icon: 'fa-bug' },
     ]
