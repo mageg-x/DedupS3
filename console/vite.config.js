@@ -2,10 +2,40 @@ import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import tailwindcss from "@tailwindcss/vite";
 import path from 'path';
+
+
 // https://vite.dev/config/
 export default defineConfig({
   root: "./src",
   plugins: [vue(), tailwindcss()],
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://172.17.179.50:3002',
+        changeOrigin: true,
+        secure: false,
+        // 👇 只代理非静态资源的请求
+        bypass: (req) => {
+          // 如果是静态资源，就不代理，让 Vite 自己处理
+          if (req.url.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg)$/)) {
+            return req.url;
+          }
+          // 否则继续代理
+        },
+        configure: (proxy, options) => {
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            // 修改响应头，重写 Set-Cookie 的 Domain
+            const cookies = proxyRes.headers['set-cookie'];
+            if (cookies && Array.isArray(cookies)) {
+              proxyRes.headers['set-cookie'] = cookies.map(cookie =>
+                cookie.replace(/Domain=[^;\s]*/i, 'Domain=localhost')
+              );
+            }
+          });
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),

@@ -425,15 +425,8 @@ func (b *BucketService) PutBucketTagging(params *BaseBucketParams) error {
 		}
 	}
 	// 设置标签
-	currentTime := time.Now().UTC()
-	bucket.Tagging = &meta.Tagging{
-		XMLName:   xml.Name{Local: "Tagging"},
-		XMLNS:     "http://s3.amazonaws.com/doc/2006-03-01/",
-		CreatedAt: currentTime,
-		UpdatedAt: currentTime,
-		TagSet: meta.TagSet{
-			Tags: params.Tags,
-		},
+	for _, tag := range params.Tags {
+		bucket.Tags[tag.Key] = tag.Value
 	}
 
 	err = txn.Set(bucketKey, &bucket)

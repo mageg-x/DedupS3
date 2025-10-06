@@ -22,11 +22,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-
 	tikverr "github.com/tikv/client-go/v2/error"
 	"github.com/tikv/client-go/v2/tikv"
 	"github.com/tikv/client-go/v2/txnkv/txnsnapshot"
 	pd "github.com/tikv/pd/client"
+	"time"
 
 	xconf "github.com/mageg-x/boulder/internal/config"
 	"github.com/mageg-x/boulder/internal/logger"
@@ -254,6 +254,94 @@ func (t *TiKVStore) BeginTxn(_ context.Context, opt *TxnOpt) (Txn, error) {
 	} else {
 		return &TiKVTxn{txn: txn}, nil
 	}
+}
+
+// TryLock 尝试获取锁，成功返回true，失败返回false
+func (t *TiKVStore) TryLock(key, owner string, ttl time.Duration) (bool, error) {
+	// 锁的实际键名，添加前缀避免冲突
+	lockKey := "lock:" + key
+
+	txn, err := t.BeginTxn(context.Background(), nil)
+	if err != nil {
+		return false, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if txn != nil {
+			txn.Rollback()
+		}
+	}()
+
+	// 检查锁是否存在且未过期
+	preVal := LockVal{}
+	exists, err := txn.Get(lockKey, &preVal)
+	if err != nil && !errors.Is(err, tikverr.ErrNotExist) {
+		return false, fmt.Errorf("failed to check lock: %w", err)
+	}
+
+	// 锁存在且未过期，获取失败
+	if exists && time.Now().Before(preVal.ExpiresAt) {
+		return false, nil
+	}
+
+	// 尝试设置锁
+	lockVal := LockVal{Owner: owner, ExpiresAt: time.Now().Add(ttl)}
+	err = txn.Set(lockKey, &lockVal)
+	if err != nil {
+		return false, fmt.Errorf("failed to set lock: %w", err)
+	}
+
+	// 提交事务
+	err = txn.Commit()
+	if err != nil {
+		return false, fmt.Errorf("failed to commit lock transaction: %w", err)
+	}
+	txn = nil
+	return true, nil
+}
+
+// Lock 获取锁，失败时会重试，直到成功或超时
+func (t *TiKVStore) UnLock(key, owner string) error {
+	// 锁的实际键名，添加前缀避免冲突
+	lockKey := "lock:" + key
+
+	txn, err := t.BeginTxn(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if txn != nil {
+			txn.Rollback()
+		}
+	}()
+
+	// 检查锁是否存在
+	preLockVal := LockVal{}
+	exists, err := txn.Get(key, &preLockVal)
+	if err != nil && !errors.Is(err, tikverr.ErrNotExist) {
+		return fmt.Errorf("failed to check lock: %w", err)
+	}
+
+	// 如果锁不存在，直接返回成功
+	if !exists {
+		return nil
+	}
+
+	// 检查是否是自己持有的锁
+	if preLockVal.Owner == owner {
+		// 是自己的锁，删除
+		err = txn.Delete(lockKey)
+		if err != nil {
+			return fmt.Errorf("failed to delete lock: %w", err)
+		}
+		// 提交事务
+		err = txn.Commit()
+		if err != nil {
+			return fmt.Errorf("failed to commit unlock transaction: %w", err)
+		}
+		txn = nil
+	}
+	// 不是自己的锁，不能释放
+	return fmt.Errorf("cannot unlock: not the lock owner")
 }
 
 // Close 关闭连接

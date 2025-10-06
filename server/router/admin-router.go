@@ -65,6 +65,7 @@ func registerAdminRouter(mr *mux.Router) {
 	})
 	api_router.Methods(http.MethodPost).Path("/login").HandlerFunc(handler.LoginHandler)
 	api_router.Methods(http.MethodPost).Path("/logout").HandlerFunc(handler.LogoutHandler)
+	api_router.Methods(http.MethodGet).Path("/stats").HandlerFunc(handler.GetStatsHandler)
 
 	// 处理静态资源路由
 	ar.Methods(http.MethodGet).Path("/{path:.*}").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

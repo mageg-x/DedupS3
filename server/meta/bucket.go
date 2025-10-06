@@ -34,14 +34,18 @@ type BucketMetadata struct {
 	ObjectLock   *ObjectLockConfiguration        `json:"objectLock" xml:"ObjectLockConfiguration"`
 	Versioning   *VersioningConfiguration        `json:"versioning" xml:"VersioningConfiguration"`
 	SSE          *BucketSSEConfiguration         `json:"sse" xml:"ServerSideEncryptionConfiguration"`
-	Tagging      *Tagging                        `json:"tags" xml:"Tagging"`
+	Tags         map[string]string               `json:"tags" xml:"TagSet"`
 	Quota        *BucketQuota                    `json:"quota" xml:"Quota"`
 	Replication  *ReplicationConfiguration       `json:"replication" xml:"ReplicationConfiguration"`
 	Targets      *BucketTargets                  `json:"targets" xml:"Targets"`
 }
 
+func GenBucketKey(accountID, bucketID string) string {
+	return "aws:bucket:" + accountID + ":" + bucketID
+}
+
 func (bm *BucketMetadata) GenBucketKey() string {
-	return "aws:bucket:" + bm.Owner.ID + ":" + bm.Name
+	return GenBucketKey(bm.Owner.ID, bm.Name)
 }
 
 // 设置桶策略
@@ -80,19 +84,14 @@ func (bm *BucketMetadata) AddLifecycleRule(rule LifecycleRule) {
 }
 
 // 设置标签
-func (bm *BucketMetadata) SetTags(tags Tagging) {
-	bm.Tagging = &tags
+func (bm *BucketMetadata) SetTags(tags map[string]string) {
+	bm.Tags = tags
 }
 
 // 获取标签值
 func (bm *BucketMetadata) GetTag(key string) (string, bool) {
-	if bm.Tagging == nil {
-		return "", false
-	}
-	for _, tag := range bm.Tagging.TagSet.Tags {
-		if tag.Key == key {
-			return tag.Value, true
-		}
+	if bm.Tags != nil && bm.Tags[key] != "" {
+		return bm.Tags[key], true
 	}
 	return "", false
 }

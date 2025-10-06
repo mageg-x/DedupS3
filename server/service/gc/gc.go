@@ -21,11 +21,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/mageg-x/boulder/internal/config"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/mageg-x/boulder/internal/config"
 	"github.com/mageg-x/boulder/internal/logger"
 	xcache "github.com/mageg-x/boulder/internal/storage/cache"
 	"github.com/mageg-x/boulder/internal/storage/kv"

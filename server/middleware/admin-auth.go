@@ -7,20 +7,23 @@ import (
 	"github.com/mageg-x/boulder/internal/logger"
 	"github.com/mageg-x/boulder/internal/utils"
 	"net/http"
+	"strings"
 )
 
 func AdminAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 允许跨域并支持凭据
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		logger.GetLogger("boulder").Errorf("access request %s %s", r.Method, r.URL.Path)
+
+		// 允许跨域并支持凭据
+		origin := r.Header.Get("Origin")
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+
 		if r.Method == "OPTIONS" {
 			// 预检请求：加 Methods 和 Headers
 			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, PUT, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-			w.Header().Set("Access-Control-Max-Age", "86400")
-			w.WriteHeader(http.StatusOK)
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 
@@ -52,6 +55,7 @@ func AdminAuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		// 将用户信息注入请求上下文（供后续 handler 使用）
+		username = strings.TrimSpace(username)
 		if username != "" {
 			ctx := context.WithValue(r.Context(), "username", username)
 			r = r.WithContext(ctx)
@@ -64,7 +68,7 @@ func AdminAuthMiddleware(next http.Handler) http.Handler {
 				sameSite = http.SameSiteLaxMode
 			}
 			// 设置 Cookie
-			http.SetCookie(w, &http.Cookie{
+			c := &http.Cookie{
 				Name:     "access_token", // Cookie 名字
 				Value:    newToken,       // Token 值
 				Path:     "/",            // 作用路径
@@ -72,7 +76,8 @@ func AdminAuthMiddleware(next http.Handler) http.Handler {
 				Secure:   !config.IsDev,  // 仅 HTTPS（开发环境可设 false）
 				SameSite: sameSite,       // 防 CSRF
 				MaxAge:   3600,           // 有效期 1 小时（秒）
-			})
+			}
+			http.SetCookie(w, c)
 		}
 
 		next.ServeHTTP(w, r)

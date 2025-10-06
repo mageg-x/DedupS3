@@ -21,6 +21,7 @@ import (
 	"errors"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/mageg-x/boulder/internal/config"
 )
@@ -32,6 +33,11 @@ var (
 	kvInstance KVStore
 	kvMutex    sync.RWMutex
 )
+
+type LockVal struct {
+	Owner     string
+	ExpiresAt time.Time
+}
 
 // GetKvStore 获取全局KV存储实例
 func GetKvStore() (KVStore, error) {
@@ -61,6 +67,9 @@ type KVStore interface {
 	Set(key string, value interface{}) error
 	Incr(key string) (uint64, error)
 	Delete(key string) error
+	TryLock(key, owner string, ttl time.Duration) (bool, error)
+	UnLock(key, owner string) error
+
 	// BeginTxn 开始一个新事务
 	BeginTxn(ctx context.Context, opt *TxnOpt) (Txn, error)
 	Close() error

@@ -21,6 +21,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	stats2 "github.com/mageg-x/boulder/service/stats"
 	"math/rand"
 	"net/http"
 	"os"
@@ -113,41 +114,59 @@ func startAdminSvr() error {
 	}
 }
 
-func main() {
-	rand.New(rand.NewSource(time.Now().UnixNano()))
-	// 1、 初始化配置和 日志部分
-	cli := parseCLI()
-	if cli.ShowHelp {
-		flag.Usage()
-		os.Exit(0)
-	}
-
-	if cli.ShowVersion {
-		fmt.Println("Boulder Server v1.0.0")
-		os.Exit(0)
-	}
-
-	// 配置文件路径从从 命令行参数 或者 环境变量获取
-	confPath := cli.ConfigPath
-	_ = config.Load(confPath)
+func startS3Server() ([]*xhttp.Server, error) {
 	cfg := config.Get()
-	if err := cfg.Validate(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+	mr := router.SetupS3Router()
+	tcpOpt := xhttp.TCPOptions{
+		DriveOPTimeout: func() time.Duration {
+			return 5 * time.Second
+		},
+		IdleTimeout: cfg.Server.IdleTimeout,
+		NoDelay:     true,
+		RecvBufSize: cfg.Server.RecvBufSize,
+		SendBufSize: cfg.Server.SendBufSize,
+		Trace: func(msg string) {
+			logger.GetLogger("boulder").Tracef(msg)
+		},
+		UserTimeout: int(cfg.Server.ConnUserTimeout.Milliseconds()),
 	}
+	listenCtx := context.Background()
+	listenErrCallback := func(addr string, err error) {
+		if err != nil {
+			logger.GetLogger("boulder").Fatalf("listen %s failed: %v", addr, err)
+		}
+	}
+	// 创建多个服务器实例
+	servers := make([]*xhttp.Server, cfg.Server.Listeners)
+	serveFuncs := make([]func() error, cfg.Server.Listeners)
+	for i := 0; i < cfg.Server.Listeners; i++ {
+		servers[i] = xhttp.NewServer([]string{cfg.Server.Address})
+		// 配置服务器参数
+		servers[i].UseHandler(mr).UseIdleTimeout(cfg.Server.IdleTimeout).UseReadTimeout(cfg.Server.ReadTimeout).UseWriteTimeout(cfg.Server.WriteTimeout)
+		servers[i].UseTCPOptions(tcpOpt).UseBaseContext(context.Background())
 
-	logger.Init(&logger.Config{
-		LogDir:     cfg.Log.Dir,
-		MaxSize:    cfg.Log.Size,
-		MaxBackups: cfg.Log.MaxBackups,
-		MaxAge:     cfg.Log.MaxAge,
-		Compress:   cfg.Log.Compress,
-	})
+		// 初始化服务器
+		serveFunc, err := servers[i].Init(listenCtx, listenErrCallback)
+		if err != nil {
+			logger.GetLogger("boulder").Fatalf("init server failed: %v", err)
+		}
+		serveFuncs[i] = serveFunc
+	}
+	logger.GetLogger("boulder").Infof("server starting")
+	// 启动所有服务器（在不同协程中）
+	for i := 0; i < cfg.Server.Listeners; i++ {
+		go func(idx int) {
+			if err := serveFuncs[idx](); err != nil {
+				logger.GetLogger("boulder").Errorf("server %d running failed: %v", idx, err)
+			}
+		}(i)
+	}
+	return servers, nil
+}
 
-	logger.GetLogger("boulder").SetLevel(logrus.Level(int(logrus.WarnLevel) + cli.Verbose))
-	logger.GetLogger("boulder").Tracef("get config %v", cfg)
+func initStorage() error {
+	cfg := config.Get()
 
-	// 2、初始化存储部分
 	// 初始kv， 初始meta数据地方
 	_, err := kv.GetKvStore()
 	if err != nil {
@@ -199,16 +218,47 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	return nil
+}
 
-	// 初始化 垃圾回收后台服务
-	gc := gc2.GetGCService()
-	if gc == nil {
-		logger.GetLogger("boulder").Error("failed to init gc service")
-		panic(err)
+func main() {
+	rand.New(rand.NewSource(time.Now().UnixNano()))
+	// 1、 初始化配置和 日志部分
+	cli := parseCLI()
+	if cli.ShowHelp {
+		flag.Usage()
+		os.Exit(0)
 	}
-	err = gc.Start()
+
+	if cli.ShowVersion {
+		fmt.Println("Boulder Server v1.0.0")
+		os.Exit(0)
+	}
+
+	// 配置文件路径从从 命令行参数 或者 环境变量获取
+	confPath := cli.ConfigPath
+	_ = config.Load(confPath)
+	cfg := config.Get()
+	if err := cfg.Validate(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	logger.Init(&logger.Config{
+		LogDir:     cfg.Log.Dir,
+		MaxSize:    cfg.Log.Size,
+		MaxBackups: cfg.Log.MaxBackups,
+		MaxAge:     cfg.Log.MaxAge,
+		Compress:   cfg.Log.Compress,
+	})
+
+	logger.GetLogger("boulder").SetLevel(logrus.Level(int(logrus.WarnLevel) + cli.Verbose))
+	logger.GetLogger("boulder").Tracef("get config %v", cfg)
+
+	// 2、初始化存储部分
+	err := initStorage()
 	if err != nil {
-		logger.GetLogger("boulder").Error("failed to start gc service", zap.Error(err))
+		logger.GetLogger("boulder").Error("failed to init storage", zap.Error(err))
 		panic(err)
 	}
 
@@ -228,53 +278,34 @@ func main() {
 		logger.GetLogger("boulder").Error("failed to start admin server", zap.Error(err))
 		panic(err)
 	}
-	// 3. 创建路由处理器
-	mr := router.SetupS3Router()
 
-	// 4. 创建服务器实例（监听 3000 端口）
-	tcpOpt := xhttp.TCPOptions{
-		DriveOPTimeout: func() time.Duration {
-			return 5 * time.Second
-		},
-		IdleTimeout: cfg.Server.IdleTimeout,
-		NoDelay:     true,
-		RecvBufSize: cfg.Server.RecvBufSize,
-		SendBufSize: cfg.Server.SendBufSize,
-		Trace: func(msg string) {
-			logger.GetLogger("boulder").Tracef(msg)
-		},
-		UserTimeout: int(cfg.Server.ConnUserTimeout.Milliseconds()),
+	// 启动S3 Server（监听 3000 端口）
+	servers, err := startS3Server()
+	if err != nil {
+		logger.GetLogger("boulder").Error("failed to start s3 server", zap.Error(err))
+		panic(err)
 	}
-	listenCtx := context.Background()
-	listenErrCallback := func(addr string, err error) {
-		if err != nil {
-			logger.GetLogger("boulder").Fatalf("listen %s failed: %v", addr, err)
-		}
-	}
-	// 创建多个服务器实例
-	servers := make([]*xhttp.Server, cfg.Server.Listeners)
-	serveFuncs := make([]func() error, cfg.Server.Listeners)
-	for i := 0; i < cfg.Server.Listeners; i++ {
-		servers[i] = xhttp.NewServer([]string{cfg.Server.Address})
-		// 配置服务器参数
-		servers[i].UseHandler(mr).UseIdleTimeout(cfg.Server.IdleTimeout).UseReadTimeout(cfg.Server.ReadTimeout).UseWriteTimeout(cfg.Server.WriteTimeout)
-		servers[i].UseTCPOptions(tcpOpt).UseBaseContext(context.Background())
 
-		// 初始化服务器
-		serveFunc, err := servers[i].Init(listenCtx, listenErrCallback)
-		if err != nil {
-			logger.GetLogger("boulder").Fatalf("init server failed: %v", err)
-		}
-		serveFuncs[i] = serveFunc
+	// 初始化 垃圾回收后台服务
+	gc := gc2.GetGCService()
+	if gc == nil {
+		logger.GetLogger("boulder").Error("failed to init gc service")
+		panic(err)
 	}
-	logger.GetLogger("boulder").Infof("server starting")
-	// 启动所有服务器（在不同协程中）
-	for i := 0; i < cfg.Server.Listeners; i++ {
-		go func(idx int) {
-			if err := serveFuncs[idx](); err != nil {
-				logger.GetLogger("boulder").Errorf("server %d running failed: %v", idx, err)
-			}
-		}(i)
+	if err = gc.Start(); err != nil {
+		logger.GetLogger("boulder").Error("failed to start gc service", zap.Error(err))
+		panic(err)
+	}
+
+	// 初始化数据统计后台服务
+	stats := stats2.GetStatsService()
+	if stats == nil {
+		logger.GetLogger("boulder").Error("failed to init stats service")
+		panic(err)
+	}
+	if err = stats.Start(); err != nil {
+		logger.GetLogger("boulder").Error("failed to start stats service", zap.Error(err))
+		panic(err)
 	}
 
 	// 创建一个通道来接收操作系统的中断信号
@@ -293,5 +324,6 @@ func main() {
 			logger.GetLogger("boulder").Errorf("stop server failed: %v", err)
 		}
 	}
+
 	logger.GetLogger("boulder").Infof("server ended")
 }

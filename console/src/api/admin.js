@@ -1,11 +1,13 @@
 import axios from 'axios';
 import md5 from 'blueimp-md5';
 
+axios.defaults.withCredentials = true;
 const api = axios.create({
-  baseURL: 'http://172.17.179.50:3002/api', // 自动相对于当前域名
+  baseURL: '/api', // 自动相对于当前域名
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true, 
 });
 
 api.interceptors.response.use(
@@ -66,5 +68,18 @@ export async function logout() {
   } finally {
     // 2. 无论后端是否成功，都跳转
     window.location.href = '/login';
+  }
+}
+
+export async function getstats() {
+  try {
+    const res = await api.get('/stats');
+    return res.data;
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    return {
+      success: false,
+      message: 'Failed to fetch stats',
+    };
   }
 }

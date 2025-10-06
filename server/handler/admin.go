@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"github.com/mageg-x/boulder/internal/config"
 	xhttp "github.com/mageg-x/boulder/internal/http"
+	"github.com/mageg-x/boulder/service/stats"
 	"net/http"
 	"strings"
 
@@ -69,7 +70,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		sameSite = http.SameSiteLaxMode
 	}
 	// 设置 Cookie
-	http.SetCookie(w, &http.Cookie{
+	cookie := &http.Cookie{
 		Name:     "access_token", // Cookie 名字
 		Value:    token,          // Token 值
 		Path:     "/",            // 作用路径
@@ -78,7 +79,8 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		SameSite: sameSite,       // 防 CSRF
 		MaxAge:   3600,           // 有效期 1 小时（秒）
 		// Expires: time.Now().Add(1 * time.Hour), // 过期时间（旧方式）
-	})
+	}
+	http.SetCookie(w, cookie)
 
 	w.Header().Set("Content-Type", "application/json")
 
@@ -104,5 +106,24 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
 
+func GetStatsHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Errorf("[Call GetStatsHandler] %#v", r.URL)
+	username, _ := r.Context().Value("username").(string)
+	if username == "" {
+		xhttp.AdminWriteJSONError(w, r, http.StatusUnauthorized, "invalid username", nil, http.StatusUnauthorized)
+		return
+	}
+
+	accountID := meta.GenerateAccountID(username)
+	ss := stats.GetStatsService()
+	_stats, err := ss.GetStats(accountID)
+	if err != nil || _stats == nil {
+		logger.GetLogger("boulder").Errorf("failed to get stats for account %s", username)
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "internal server error", nil, http.StatusInternalServerError)
+		return
+	}
+
+	xhttp.AdminWriteJSONError(w, r, 0, "success", _stats, http.StatusOK)
 }

@@ -815,8 +815,11 @@ func GetBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 如果桶有标签，添加到响应中
-	if _bucket.Tagging != nil && len(_bucket.Tagging.TagSet.Tags) > 0 {
-		result.TagSet.Tags = _bucket.Tagging.TagSet.Tags
+	if _bucket.Tags != nil && len(_bucket.Tags) > 0 {
+		result.TagSet.Tags = make([]meta.Tag, 0, len(_bucket.Tags))
+		for k, v := range _bucket.Tags {
+			result.TagSet.Tags = append(result.TagSet.Tags, meta.Tag{Key: k, Value: v})
+		}
 	}
 
 	// 写入成功响应

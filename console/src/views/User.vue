@@ -6,7 +6,7 @@
       <button @click="showAddUserDialog" 
               class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
         <i class="fas fa-plus"></i>
-        <span>{{ t('user.addSubAccount') }}</span>
+        <span>{{ t('user.addUser') }}</span>
       </button>
     </div>
 
@@ -21,13 +21,13 @@
       </div>
     </div>
 
-    <!-- 子账户列表 -->
+    <!-- 用户列表 -->
     <div class="card bg-white rounded-xl shadow-sm overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full">
           <thead class="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('user.subAccountName') }}</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('user.userName') }}</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('user.associatedRole') }}</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('user.associatedPolicy') }}</th>
               <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ t('user.associatedGroup') }}</th>
@@ -99,16 +99,16 @@
         <div class="text-gray-400 mb-4">
           <i class="fas fa-user-slash text-4xl"></i>
         </div>
-        <h3 class="text-lg font-medium text-gray-900 mb-2">{{ t('user.noSubAccounts') }}</h3>
-          <p class="text-gray-500 mb-6">{{ t('user.clickAddSubAccount') }}</p>
+        <h3 class="text-lg font-medium text-gray-900 mb-2">{{ t('user.noUsers') }}</h3>
+          <p class="text-gray-500 mb-6">{{ t('user.clickAddUser') }}</p>
       </div>
     </div>
 
-    <!-- 添加/编辑子账户对话框 -->
+    <!-- 添加/编辑用户对话框 -->
     <div v-if="dialogVisible" class="fixed inset-0 bg-[rgba(0,0,0,0.5)] flex items-center justify-center z-50">
           <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 overflow-hidden animate-fadeIn flex flex-col max-h-[90vh]">
             <div class="p-5 border-b border-gray-100 flex items-center justify-between">
-              <h3 class="text-lg font-bold text-gray-800">{{ isEditMode ? t('user.editSubAccount') : t('user.addNewSubAccount') }}</h3>
+              <h3 class="text-lg font-bold text-gray-800">{{ isEditMode ? t('user.editUser') : t('user.addNewUser') }}</h3>
               <button @click="closeDialog" class="text-gray-500 hover:text-gray-700 transition-colors" aria-label="关闭">
                 <i class="fas fa-times"></i>
               </button>
@@ -116,7 +116,7 @@
             <div class="p-5 overflow-y-auto flex-grow max-h-[60vh]">
           <form @submit.prevent="handleSubmit">
             <div class="mb-4">
-              <label for="username" class="block text-sm font-medium text-gray-700 mb-1">{{ t('user.subAccountName') }}</label>
+              <label for="username" class="block text-sm font-medium text-gray-700 mb-1">{{ t('user.userName') }}</label>
               <input type="text" id="username" v-model="formData.username" 
                      class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" 
                      :disabled="isEditMode" required>
@@ -129,7 +129,7 @@
             </div>
 
             <div class="mb-4">
-              <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('user.associatedSubAccountGroup') }}</label>
+              <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('user.associatedGroup') }}</label>
               <div class="space-y-2">
                 <div v-for="group in groupsList" :key="group.id" class="flex items-center">
                   <input type="checkbox" 
@@ -184,7 +184,7 @@
             <div class="mb-4">
               <label class="flex items-center">
                 <input type="checkbox" v-model="formData.active" class="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
-                <span class="ml-2 text-sm text-gray-700">{{ t('user.enableSubAccount') }}</span>
+                <span class="ml-2 text-sm text-gray-700">{{ t('user.enableUser') }}</span>
               </label>
             </div>
           </form>
@@ -273,7 +273,7 @@ const showToast = ref(false);
 const toastMessage = ref('');
 const toastType = ref('success');
 
-// 过滤子账户列表
+// 过滤用户列表
 const filteredUsers = computed(() => {
   if (!searchKeyword.value) {
     return usersList.value;
@@ -285,7 +285,7 @@ const filteredUsers = computed(() => {
 
 // 加载模拟数据
   const loadMockData = () => {
-    // 模拟子账户组数据
+    // 模拟用户组数据
     groupsList.value = [
       { id: 1, name: '开发组', description: '开发人员' },
       { id: 2, name: '测试组', description: '测试人员' },
@@ -301,13 +301,13 @@ const filteredUsers = computed(() => {
 
     // 模拟策略数据
     policiesList.value = [
-      { id: 1, name: '账户管理权限', description: '管理所有子账户' },
+      { id: 1, name: '账户管理权限', description: '管理所有用户' },
       { id: 2, name: '数据查看权限', description: '查看所有数据' },
       { id: 3, name: '内容编辑权限', description: '编辑系统内容' },
       { id: 4, name: '日志查看权限', description: '查看系统日志' }
     ];
 
-    // 模拟子账户数据
+    // 模拟用户数据
     usersList.value = [
       {
         id: 1,
@@ -347,7 +347,7 @@ const filteredUsers = computed(() => {
   nextUserId = 4;
 };
 
-// 显示添加子账户对话框
+// 显示添加用户对话框
   const showAddUserDialog = () => {
     isEditMode.value = false;
     formData.value = {
@@ -361,7 +361,7 @@ const filteredUsers = computed(() => {
     dialogVisible.value = true;
   };
 
-// 显示编辑子账户对话框
+// 显示编辑用户对话框
   const showEditUserDialog = (user) => {
     isEditMode.value = true;
     currentUserId.value = user.id;
@@ -388,7 +388,7 @@ const closeDeleteDialog = () => {
   currentUserId.value = null;
 };
 
-// 处理子账户组选择
+// 处理用户组选择
 const handleGroupToggle = (groupId) => {
   const index = formData.value.groups.indexOf(groupId);
   if (index > -1) {
@@ -421,7 +421,7 @@ const handleGroupToggle = (groupId) => {
 // 提交表单
 const handleSubmit = () => {
   if (!formData.value.username) {
-    showToastMessage('子账户名不能为空', 'error');
+    showToastMessage('用户名不能为空', 'error');
     return;
   }
 
@@ -430,7 +430,7 @@ const handleSubmit = () => {
     return;
   }
 
-  // 获取完整的子账户组信息
+  // 获取完整的用户组信息
     const selectedGroups = groupsList.value.filter(group => 
       formData.value.groups.includes(group.id)
     );
@@ -446,7 +446,7 @@ const handleSubmit = () => {
     );
 
   if (isEditMode) {
-    // 编辑子账户
+    // 编辑用户
     const index = usersList.value.findIndex(user => user.id === currentUserId.value);
     if (index !== -1) {
       usersList.value[index] = {
@@ -457,10 +457,10 @@ const handleSubmit = () => {
         active: formData.value.active
       };
       saveUsers();
-      showToastMessage('子账户已更新', 'success');
+      showToastMessage('用户已更新', 'success');
     }
   } else {
-    // 添加子账户
+    // 添加用户
     const newUser = {
         id: nextUserId++,
         username: formData.value.username,
@@ -473,41 +473,41 @@ const handleSubmit = () => {
       };
     usersList.value.push(newUser);
     saveUsers();
-    showToastMessage('子账户已创建', 'success');
+    showToastMessage('用户已创建', 'success');
   }
 
   closeDialog();
 };
 
-// 处理删除子账户
+// 处理删除用户
 const handleDeleteUser = (userId) => {
   currentUserId.value = userId;
   deleteDialogVisible.value = true;
 };
 
-// 确认删除子账户
+// 确认删除用户
 const confirmDeleteUser = () => {
   const index = usersList.value.findIndex(user => user.id === currentUserId.value);
   if (index !== -1) {
     usersList.value.splice(index, 1);
     saveUsers();
-    showToastMessage('子账户已删除', 'success');
+    showToastMessage('用户已删除', 'success');
   }
   closeDeleteDialog();
 };
 
-// 保存子账户数据到本地存储
+// 保存用户数据到本地存储
   const saveUsers = () => {
     try {
       localStorage.setItem('usersList', JSON.stringify(usersList.value));
       localStorage.setItem('rolesList', JSON.stringify(rolesList.value));
       localStorage.setItem('policiesList', JSON.stringify(policiesList.value));
     } catch (error) {
-      console.error('保存子账户列表失败:', error);
+      console.error('保存用户列表失败:', error);
     }
   };
 
-// 从本地存储加载子账户数据
+// 从本地存储加载用户数据
 const loadUsers = () => {
   try {
       const savedUsers = localStorage.getItem('usersList');
@@ -527,7 +527,7 @@ const loadUsers = () => {
       // 恢复日期对象
       usersList.value.forEach(user => {
         user.createdAt = new Date(user.createdAt);
-        // 恢复子账户组引用
+        // 恢复用户组引用
         user.groups = groupsList.value.filter(group => 
           user.groups.some(g => g.id === group.id || g === group.id)
         );
@@ -549,13 +549,13 @@ const loadUsers = () => {
           user.policies = [];
         }
       });
-      // 更新下一个子账户ID
+      // 更新下一个用户ID
       if (usersList.value.length > 0) {
         nextUserId = Math.max(...usersList.value.map(user => user.id)) + 1;
       }
     }
   } catch (error) {
-    console.error('加载子账户列表失败:', error);
+    console.error('加载用户列表失败:', error);
     loadMockData(); // 加载失败时使用模拟数据
   }
 };

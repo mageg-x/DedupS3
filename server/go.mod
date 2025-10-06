@@ -17,6 +17,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.19.6
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.88.1
 	github.com/creasty/defaults v1.8.0
+	github.com/davecgh/go-spew v1.1.1
 	github.com/dgraph-io/badger/v4 v4.8.0
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/fatih/color v1.18.0
