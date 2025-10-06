@@ -190,53 +190,53 @@ const fetchStats = async () => {
       const lastMonAccountStats = data.lastMonAccountStats || {};
 
       // 基本统计数据
-      stats.value.bucketCount = accountStats.BucketCount || 0;
-      stats.value.objectCount = accountStats.ObjectCount || 0;
-      stats.value.blockCount = accountStats.BlockCount || 0;
-      stats.value.chunkCount = accountStats.ChunkCount || 0;
+      stats.value.bucketCount = accountStats.bucketCount || 0;
+      stats.value.objectCount = accountStats.objectCount || 0;
+      stats.value.blockCount = accountStats.blockCount || 0;
+      stats.value.chunkCount = accountStats.chunkCount || 0;
 
       // 大小统计
-      stats.value.originalSize = accountStats.SizeOfObject || 0;
-      stats.value.actualSize = accountStats.SizeOfChunk || 0;
+      stats.value.originalSize = accountStats.sizeOfObject || 0;
+      stats.value.actualSize = accountStats.sizeOfChunk || 0;
       stats.value.savedSize = Math.max(0, stats.value.originalSize - stats.value.actualSize);
       stats.value.compressionRatio = stats.value.actualSize > 0 ?
         (stats.value.originalSize / stats.value.actualSize).toFixed(1) : 0;
 
       // 重用统计
-      stats.value.reusedChunkCount = Math.max(0, stats.value.chunkCount - (accountStats.ChunkCountOfDedup || 0));
+      stats.value.reusedChunkCount = Math.max(0, stats.value.chunkCount - (accountStats.chunkCountOfDedup || 0));
       stats.value.reusedSize = Math.max(0, stats.value.originalSize - stats.value.actualSize);
       stats.value.reuseRatio = stats.value.chunkCount > 0 ?
         ((stats.value.reusedChunkCount / stats.value.chunkCount) * 100).toFixed(1) : 0;
 
       // 增长率（与上月比较）
-      if (lastMonAccountStats.BucketCount) {
-        stats.value.bucketGrowth = lastMonAccountStats.BucketCount > 0 ?
-          Math.round(((stats.value.bucketCount - lastMonAccountStats.BucketCount) / lastMonAccountStats.BucketCount) * 100) : 0;
+      if (lastMonAccountStats.bucketCount) {
+        stats.value.bucketGrowth = lastMonAccountStats.bucketCount > 0 ?
+          Math.round(((stats.value.bucketCount - lastMonAccountStats.bucketCount) / lastMonAccountStats.bucketCount) * 100) : 0;
       }
 
-      if (lastMonAccountStats.ObjectCount) {
-        stats.value.objectGrowth = lastMonAccountStats.ObjectCount > 0 ?
-          Math.round(((stats.value.objectCount - lastMonAccountStats.ObjectCount) / lastMonAccountStats.ObjectCount) * 100) : 0;
+      if (lastMonAccountStats.objectCount) {
+        stats.value.objectGrowth = lastMonAccountStats.objectCount > 0 ?
+          Math.round(((stats.value.objectCount - lastMonAccountStats.objectCount) / lastMonAccountStats.objectCount) * 100) : 0;
       }
 
-      if (lastMonAccountStats.BlockCount) {
-        stats.value.blockGrowth = lastMonAccountStats.BlockCount > 0 ?
-          Math.round(((stats.value.blockCount - lastMonAccountStats.BlockCount) / lastMonAccountStats.BlockCount) * 100) : 0;
+      if (lastMonAccountStats.blockCount) {
+        stats.value.blockGrowth = lastMonAccountStats.blockCount > 0 ?
+          Math.round(((stats.value.blockCount - lastMonAccountStats.blockCount) / lastMonAccountStats.blockCount) * 100) : 0;
       }
 
-      if (lastMonAccountStats.ChunkCount) {
-        stats.value.chunkGrowth = lastMonAccountStats.ChunkCount > 0 ?
-          Math.round(((stats.value.chunkCount - lastMonAccountStats.ChunkCount) / lastMonAccountStats.ChunkCount) * 100) : 0;
+      if (lastMonAccountStats.chunkCount) {
+        stats.value.chunkGrowth = lastMonAccountStats.chunkCount > 0 ?
+          Math.round(((stats.value.chunkCount - lastMonAccountStats.chunkCount) / lastMonAccountStats.chunkCount) * 100) : 0;
       }
 
-      if (lastMonAccountStats.SizeOfObject) {
-        stats.value.sizeGrowth = lastMonAccountStats.SizeOfObject > 0 ?
-          Math.round(((stats.value.originalSize - lastMonAccountStats.SizeOfObject) / lastMonAccountStats.SizeOfObject) * 100) : 0;
+      if (lastMonAccountStats.sizeOfObject) {
+        stats.value.sizeGrowth = lastMonAccountStats.sizeOfObject > 0 ?
+          Math.round(((stats.value.originalSize - lastMonAccountStats.sizeOfObject) / lastMonAccountStats.sizeOfObject) * 100) : 0;
       }
 
       if (lastMonAccountStats.SizeOfChunk) {
-        stats.value.actualSizeGrowth = lastMonAccountStats.SizeOfChunk > 0 ?
-          Math.round(((stats.value.actualSize - lastMonAccountStats.SizeOfChunk) / lastMonAccountStats.SizeOfChunk) * 100) : 0;
+        stats.value.actualSizeGrowth = lastMonAccountStats.sizeOfChunk > 0 ?
+          Math.round(((stats.value.actualSize - lastMonAccountStats.sizeOfChunk) / lastMonAccountStats.sizeOfChunk) * 100) : 0;
       }
     }
   } catch (error) {

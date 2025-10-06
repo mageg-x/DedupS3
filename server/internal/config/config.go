@@ -259,6 +259,7 @@ type BlockConfig struct {
 type NodeConfig struct {
 	LocalNode string `mapstructure:"local_node" json:"localNode" env:"BOULDER_LOCAL_NODE" default:"http://127.0.0.1:3000"`
 	LocalDir  string `mapstructure:"local_dir" json:"localDir" env:"BOULDER_LOCAL_DIR" default:"./data"`
+	Region    string `mapstructure:"region" json:"region" env:"BOULDER_REGION" default:"us-east-1"`
 }
 
 type Config struct {

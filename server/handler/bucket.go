@@ -94,7 +94,7 @@ func ListBucketsHandler(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("Failed to list buckets: %v", err)
-		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
+		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 	}
 
 	var bucketList []types.Bucket

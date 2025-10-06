@@ -37,6 +37,7 @@ const zh = {
     status: "状态",
     selectStartTime: "选择开始时间",
     selectEndTime: "选择结束时间",
+    networkErrorPleaseRetry: "网络错误，请稍后重试",
   },
 
   // 菜单
@@ -198,6 +199,10 @@ const zh = {
     confirmDeleteMessage:
       '确定要删除存储桶 "{name}" 吗？存储桶中的所有对象也将被删除。',
     createdSuccess: "存储桶创建成功！",
+    loadingBuckets: "加载存储桶中",
+    pleaseWait: "请稍候...",
+    error: "错误",
+    retry: "重试",
     deletedSuccess: "存储桶删除成功！",
     bucketNameInvalid:
       "存储桶名称格式无效，请使用小写字母、数字和连字符（不能以连字符开头或结尾）",
@@ -222,6 +227,22 @@ const zh = {
     staticWebsite: "静态网站",
     metrics: "指标",
     tags: "标签",
+    bucketNameCannotBeEmpty: "桶名称不能为空",
+    bucketNameLengthError: "桶名称长度必须在3-63个字符之间",
+    bucketNameFormatError: "桶名称只能包含小写字母、数字和连字符，且不能以连字符开头或结尾",
+    bucketCreatedSuccessfully: "桶创建成功",
+    alreadyOwnThisBucket: "您已经拥有此名称的桶",
+    bucketNameAlreadyExists: "桶名称已存在",
+    bucketMetadataInitFailed: "桶元数据初始化失败",
+    createBucketFailed: "创建桶失败",
+    creating: "创建中...",
+    enterBucketName: "请输入桶名称",
+    bucketNameValidation: "桶名称长度必须在3-63个字符之间，只能包含小写字母、数字和连字符，且不能以连字符开头或结尾。",
+    failedToListBuckets: "获取桶列表失败",
+    noSuchBucket: "桶不存在",
+    bucketNotEmpty: "桶不为空",
+    accessDeniedToDelete: "没有权限删除此桶",
+    deleteBucketFailed: "删除桶失败",
   },
   // 用户管理页面
   user: {

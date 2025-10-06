@@ -37,6 +37,7 @@ const en = {
     status: "Status",
     selectStartTime: "Select start time",
     selectEndTime: "Select end time",
+    networkErrorPleaseRetry: "Network error, please try again later",
   },
 
   // 菜单
@@ -207,6 +208,10 @@ const en = {
     confirmDeleteMessage:
       'Are you sure you want to delete bucket "{name}"? All objects in the bucket will also be deleted.',
     createdSuccess: "Bucket created successfully!",
+    loadingBuckets: "Loading buckets",
+    pleaseWait: "Please wait...",
+    error: "Error",
+    retry: "Retry",
     deletedSuccess: "Bucket deleted successfully!",
     bucketNameInvalid:
       "Bucket name format is invalid, please use lowercase letters, numbers, and hyphens (cannot start or end with a hyphen)",
@@ -231,6 +236,22 @@ const en = {
     staticWebsite: "Static Website",
     metrics: "Metrics",
     tags: "Tags",
+    bucketNameCannotBeEmpty: "Bucket name cannot be empty",
+    bucketNameLengthError: "Bucket name length must be between 3-63 characters",
+    bucketNameFormatError: "Bucket name can only contain lowercase letters, numbers, and hyphens, and cannot start or end with a hyphen",
+    bucketCreatedSuccessfully: "Bucket created successfully",
+    alreadyOwnThisBucket: "You already own this bucket name",
+    bucketNameAlreadyExists: "Bucket name already exists",
+    bucketMetadataInitFailed: "Bucket metadata initialization failed",
+    createBucketFailed: "Failed to create bucket",
+    creating: "Creating...",
+    enterBucketName: "Please enter bucket name",
+    bucketNameValidation: "Bucket name must be between 3-63 characters long, can only contain lowercase letters, numbers and hyphens, and cannot start or end with a hyphen.",
+    failedToListBuckets: "Failed to list buckets",
+    noSuchBucket: "The bucket does not exist",
+    bucketNotEmpty: "The bucket is not empty",
+    accessDeniedToDelete: "You do not have permission to delete this bucket",
+    deleteBucketFailed: "Failed to delete bucket",
   },
   // 用户管理页面
   user: {

@@ -63,9 +63,12 @@ func registerAdminRouter(mr *mux.Router) {
 	api_router.Methods(http.MethodGet).Path("/auth/status").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	api_router.Methods(http.MethodPost).Path("/login").HandlerFunc(handler.LoginHandler)
-	api_router.Methods(http.MethodPost).Path("/logout").HandlerFunc(handler.LogoutHandler)
-	api_router.Methods(http.MethodGet).Path("/stats").HandlerFunc(handler.GetStatsHandler)
+	api_router.Methods(http.MethodPost).Path("/login").HandlerFunc(handler.AdminLoginHandler)
+	api_router.Methods(http.MethodPost).Path("/logout").HandlerFunc(handler.AdminLogoutHandler)
+	api_router.Methods(http.MethodGet).Path("/stats").HandlerFunc(handler.AdminGetStatsHandler)
+	api_router.Methods(http.MethodGet).Path("/listbuckets").HandlerFunc(handler.AdminListBucketsHandler)
+	api_router.Methods(http.MethodPut).Path("/createbucket").HandlerFunc(handler.AdminCreateBucketHandler)
+	api_router.Methods(http.MethodDelete).Path("/deletebucket").HandlerFunc(handler.AdminDeleteBucketHandler)
 
 	// 处理静态资源路由
 	ar.Methods(http.MethodGet).Path("/{path:.*}").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

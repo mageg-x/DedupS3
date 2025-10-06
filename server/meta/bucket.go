@@ -26,18 +26,18 @@ type BucketMetadata struct {
 	Name         string                          `json:"name" xml:"Name"`
 	CreationDate time.Time                       `json:"creationDate" xml:"CreationDate"`
 	Owner        Owner                           `json:"owner" xml:"Owner"`
-	ACL          *AccessControlPolicy            `json:"acl" xml:"AccessControlPolicy"`
-	Location     string                          `json:"location" xml:"LocationConstraint"`
-	Policy       *BucketPolicy                   `json:"policyConfig" xml:"Policy"`
-	Notification *EventNotificationConfiguration `json:"notification" xml:"NotificationConfiguration"`
-	Lifecycle    *LifecycleConfiguration         `json:"lifecycle" xml:"LifecycleConfiguration"`
-	ObjectLock   *ObjectLockConfiguration        `json:"objectLock" xml:"ObjectLockConfiguration"`
-	Versioning   *VersioningConfiguration        `json:"versioning" xml:"VersioningConfiguration"`
-	SSE          *BucketSSEConfiguration         `json:"sse" xml:"ServerSideEncryptionConfiguration"`
-	Tags         map[string]string               `json:"tags" xml:"TagSet"`
-	Quota        *BucketQuota                    `json:"quota" xml:"Quota"`
-	Replication  *ReplicationConfiguration       `json:"replication" xml:"ReplicationConfiguration"`
-	Targets      *BucketTargets                  `json:"targets" xml:"Targets"`
+	ACL          *AccessControlPolicy            `json:"acl,omitempty" xml:"AccessControlPolicy"`
+	Location     string                          `json:"location,omitempty" xml:"LocationConstraint"`
+	Policy       *BucketPolicy                   `json:"policyConfig,omitempty" xml:"Policy"`
+	Notification *EventNotificationConfiguration `json:"notification,omitempty" xml:"NotificationConfiguration"`
+	Lifecycle    *LifecycleConfiguration         `json:"lifecycle,omitempty" xml:"LifecycleConfiguration"`
+	ObjectLock   *ObjectLockConfiguration        `json:"objectLock,omitempty" xml:"ObjectLockConfiguration"`
+	Versioning   *VersioningConfiguration        `json:"versioning,omitempty" xml:"VersioningConfiguration"`
+	SSE          *BucketSSEConfiguration         `json:"sse,omitempty" xml:"ServerSideEncryptionConfiguration"`
+	Tags         map[string]string               `json:"tags,omitempty" xml:"TagSet"`
+	Quota        *BucketQuota                    `json:"quota,omitempty" xml:"Quota"`
+	Replication  *ReplicationConfiguration       `json:"replication,omitempty" xml:"ReplicationConfiguration"`
+	Targets      *BucketTargets                  `json:"targets,omitempty" xml:"Targets"`
 }
 
 func GenBucketKey(accountID, bucketID string) string {

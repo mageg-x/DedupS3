@@ -25,41 +25,41 @@ var (
 )
 
 type StatsOfGlobal struct {
-	UpdateAt time.Time
+	UpdateAt time.Time `json:"updateAt"`
 	// 统计全局
-	AccountCount int64
-	BucketCount  int64
-	ObjectCount  int64
-	ChunkCount   int64
-	BlockCount   int64
-	ObjectSize   int64
-	ChunkSize    int64
-	BlockSize1   int64
-	BlockSize2   int64
+	AccountCount int64 `json:"accountCount"`
+	BucketCount  int64 `json:"bucketCount"`
+	ObjectCount  int64 `json:"objectCount"`
+	ChunkCount   int64 `json:"chunkCount"`
+	BlockCount   int64 `json:"blockCount"`
+	ObjectSize   int64 `json:"objectSize"`
+	ChunkSize    int64 `json:"chunkSize"`
+	BlockSize1   int64 `json:"blockSize1"`
+	BlockSize2   int64 `json:"blockSize2"`
 }
 
 type StatsOfAccount struct {
-	UpdateAt time.Time
+	UpdateAt time.Time `json:"updateAt"`
 	// 统计Account
-	BucketCount       int64
-	ObjectCount       int64
-	BlockCount        int64
-	ChunkCount        int64
-	ChunkCountOfDedup int64 // 去重后的chunk数量
-	SizeOfObject      int64 // 根据object 统计的数据大小，=== 原始数据大小
-	SizeOfChunk       int64 // 根据chunk统计 ==  去重后的数据大小
-	SizeofBlock1      int64 // 没有压缩后根据block 统计的大小  ==== 近似 去重后的数据大小
-	SizeOfBlock2      int64 // 压缩后的block 统计大小
+	BucketCount       int64 `json:"bucketCount"`
+	ObjectCount       int64 `json:"objectCount"`
+	BlockCount        int64 `json:"blockCount"`
+	ChunkCount        int64 `json:"chunkCount"`
+	ChunkCountOfDedup int64 `json:"chunkCountOfDedup"` // 去重后的chunk数量
+	SizeOfObject      int64 `json:"sizeOfObject"`      // 根据object 统计的数据大小，=== 原始数据大小
+	SizeOfChunk       int64 `json:"sizeOfChunk"`       // 根据chunk统计 ==  去重后的数据大小
+	SizeofBlock1      int64 `json:"sizeofBlock1"`      // 没有压缩后根据block 统计的大小  ==== 近似 去重后的数据大小
+	SizeOfBlock2      int64 `json:"sizeOfBlock2"`      // 压缩后的block 统计大小
 }
 
 type StatsOfBucket struct {
-	UpdateAt          time.Time
-	ObjectCount       int64
-	BlockCount        int64
-	ChunkCount        int64
-	ChunkCountOfDedup int64
-	SizeOfObject      int64
-	SizeOfChunk       int64
+	UpdateAt          time.Time `json:"updateAt"`
+	ObjectCount       int64     `json:"objectCount"`
+	BlockCount        int64     `json:"blockCount"`
+	ChunkCount        int64     `json:"chunkCount"`
+	ChunkCountOfDedup int64     `json:"chunkCountOfDedup"`
+	SizeOfObject      int64     `json:"sizeOfObject"`
+	SizeOfChunk       int64     `json:"sizeOfChunk"`
 }
 
 type Stats struct {
@@ -123,14 +123,25 @@ func (s *StatsService) Stop() {
 	logger.GetLogger("boulder").Infof("stats service stopped successfully")
 }
 
-func (s *StatsService) GetStats(accountID string) (*Stats, error) {
+func (s *StatsService) GetBucketStats(bucketID string) (*StatsOfBucket, error) {
+	bKey := STATS_PREKEY + "bucket:" + bucketID + ":" + time.Now().Format("200601")
+	today_stats := &StatsOfBucket{}
+	if exists, err := s.kvstore.Get(bKey, today_stats); err != nil {
+		return nil, err
+	} else if !exists {
+		return nil, fmt.Errorf("stats key %s does not exist", bKey)
+	}
+	return today_stats, nil
+}
+
+func (s *StatsService) GetAccountStats(accountID string) (*Stats, error) {
 	// 获取已有的数据
 	uKey := STATS_PREKEY + "account:" + accountID + ":" + time.Now().Format("200601")
 	today_stats := &StatsOfAccount{}
 	if exists, err := s.kvstore.Get(uKey, today_stats); err != nil {
 		return nil, err
 	} else if !exists {
-		s.RunStats(accountID)
+		s.RefreshAccountStats(accountID)
 		return nil, fmt.Errorf("stats key %s does not exist", uKey)
 	}
 
@@ -146,7 +157,7 @@ func (s *StatsService) GetStats(accountID string) (*Stats, error) {
 	if exists, err := s.kvstore.Get(gKey, g_stats); err != nil {
 		return nil, err
 	} else if !exists {
-		s.RunStats("global")
+		s.RefreshAccountStats("global")
 		return nil, fmt.Errorf("stats key %s does not exist", gKey)
 	}
 
@@ -160,7 +171,7 @@ func (s *StatsService) GetStats(accountID string) (*Stats, error) {
 	return &Stats{AccountStats: today_stats, LastMonAccountStats: premon_stats, GlobalStats: g_stats, LastGlobalStats: g_premon_stats}, nil
 }
 
-func (s *StatsService) RunStats(accountID string) {
+func (s *StatsService) RefreshAccountStats(accountID string) {
 	if accountID != "global" {
 		s.taskQ.Push(&queue.MQItem{Key: accountID, Value: nil})
 	} else {
