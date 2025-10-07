@@ -21,6 +21,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"github.com/mageg-x/boulder/service/stats"
 	"sync"
 	"time"
 
@@ -114,13 +115,15 @@ func (b *BucketService) CreateBucket(params *BaseBucketParams) error {
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
 		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
-		return fmt.Errorf("failed to get access key %s: %w", params.AccessKeyID, err)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
+
 	ac, err := iamService.GetAccount(ak.AccountID)
 	if err != nil || ac == nil {
 		logger.GetLogger("boulder").Errorf("failed to get account %s", ak.AccountID)
-		return fmt.Errorf("failed to get account %s", ak.AccountID)
+		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
+
 	u, err := ac.GetUser(ak.Username)
 	if err != nil || u == nil {
 		logger.GetLogger("boulder").Errorf("failed to get user %s", ak.Username)
@@ -174,6 +177,12 @@ func (b *BucketService) CreateBucket(params *BaseBucketParams) error {
 	if cache, e := xcache.GetCache(); e == nil && cache != nil {
 		cache.Del(context.Background(), key)
 	}
+
+	_stats := stats.GetStatsService()
+	if _stats != nil {
+		_stats.RefreshAccountStats(ak.AccountID)
+	}
+
 	return nil
 }
 
@@ -187,7 +196,13 @@ func (b *BucketService) GetBucketInfo(params *BaseBucketParams) (*meta.BucketMet
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
 		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
-		return nil, fmt.Errorf("failed to get access key %s, %w", params.AccessKeyID, err)
+		return nil, xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	ac, err := iamService.GetAccount(ak.AccountID)
+	if err != nil || ac == nil {
+		logger.GetLogger("boulder").Errorf("failed to get account %s", ak.AccountID)
+		return nil, xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
 	key := "aws:bucket:" + ak.AccountID + ":" + params.BucketName
@@ -231,12 +246,13 @@ func (b *BucketService) ListBuckets(params *BaseBucketParams) ([]*meta.BucketMet
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
 		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
-		return nil, nil, fmt.Errorf("failed to get access key %s", params.AccessKeyID)
+		return nil, nil, xhttp.ToError(xhttp.ErrAccessDenied)
 	}
+
 	ac, err := iamService.GetAccount(ak.AccountID)
 	if err != nil || ac == nil {
 		logger.GetLogger("boulder").Errorf("failed to get account %s", ak.AccountID)
-		return nil, nil, fmt.Errorf("failed to get account %s", ak.AccountID)
+		return nil, nil, xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 	owner := meta.Owner{
 		ID:          ac.AccountID,
@@ -361,6 +377,11 @@ func (b *BucketService) DeleteBucket(params *BaseBucketParams) error {
 	// 清除缓存
 	if cache, e := xcache.GetCache(); e == nil && cache != nil {
 		cache.Del(context.Background(), bucketKey)
+	}
+
+	_stats := stats.GetStatsService()
+	if _stats != nil {
+		_stats.RefreshAccountStats(ak.AccountID)
 	}
 
 	logger.GetLogger("boulder").Tracef("successfully deleted bucket: %s", params.BucketName)

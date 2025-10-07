@@ -77,22 +77,38 @@ export async function logout() {
 
 // 包装代码（可多行，只写一次）
 const apicall = {
-  get: (url, defaultMsg) => async (config) => {
-    try {
-      const res = await api.get(url, config);
-      return res.data; // 假设 2xx 时 data 是 { success: true, ... }
-    } catch (error) {
-      // 网络错误 或 非 2xx 响应（axios 会 reject）
-      const response = error.response;
-      if (response && (response.status < 200 || response.status >= 300)) {
-        // 优先使用后端返回的 msg
-        const msg = response.data?.msg || response.data?.message || defaultMsg;
-        return { success: false, message: msg };
+  get:
+    (url, defaultMsg) =>
+    async (params, config = {}) => {
+      let finalUrl = url;
+
+      // 只有当 params 存在且有属性时才拼接 query
+      if (params && Object.keys(params).length > 0) {
+        const search = new URLSearchParams();
+        for (const [key, value] of Object.entries(params)) {
+          if (value !== null && value !== undefined) {
+            search.append(key, value);
+          }
+        }
+        const queryString = search.toString();
+        if (queryString) {
+          finalUrl = `${url}?${queryString}`;
+        }
       }
-      // 网络错误、超时等
-      return { success: false, message: defaultMsg };
-    }
-  },
+
+      try {
+        const res = await api.get(finalUrl, config);
+        return res.data;
+      } catch (error) {
+        const response = error.response;
+        if (response) {
+          const msg =
+            response.data?.msg || response.data?.message || defaultMsg;
+          return { success: false, message: msg };
+        }
+        return { success: false, message: defaultMsg };
+      }
+    },
 
   post: (url, defaultMsg) => async (data, config) => {
     try {
@@ -122,26 +138,134 @@ const apicall = {
     }
   },
 
- delete: (url, defaultMsg) => async (data, config) => {
-    try {
-      // 将 data 放在请求体中
-      const res = await api.delete(url, {
-        ...config,
-        data,
-      });
-      return res.data;
-    } catch (error) {
-      const response = error.response;
-      if (response) {
-        const msg = response.data?.msg || response.data?.message || defaultMsg;
+  delete:
+    (url, defaultMsg) =>
+    async (params, config = {}) => {
+      let finalUrl = url;
+
+      if (params && Object.keys(params).length > 0) {
+        const search = new URLSearchParams();
+        for (const [key, value] of Object.entries(params)) {
+          if (value !== null && value !== undefined) {
+            search.append(key, value);
+          }
+        }
+        const queryString = search.toString();
+        if (queryString) {
+          finalUrl = `${url}?${queryString}`;
+        }
+      }
+
+      try {
+        const res = await api.delete(finalUrl, config);
+        return res.data;
+      } catch (error) {
+        const response = error.response;
+        if (response) {
+          const msg =
+            response.data?.msg || response.data?.message || defaultMsg;
+          return { success: false, message: msg };
+        }
+        return { success: false, message: defaultMsg };
+      }
+    },
+  upload:
+    (url, defaultMsg) =>
+    async (formData, config = {}) => {
+      try {
+        // 确保 headers 正确设置为 multipart
+        const finalConfig = {
+          headers: {
+            "Content-Type": "multipart/form-data",
+            ...config.headers,
+          },
+          ...config,
+        };
+
+        const res = await api.post(url, formData, finalConfig);
+        return res.data;
+      } catch (error) {
+        const response = error.response;
+        const msg =
+          response?.data?.msg ||
+          response?.data?.message ||
+          defaultMsg ||
+          "File upload failed";
         return { success: false, message: msg };
       }
-      return { success: false, message: defaultMsg };
+    },
+download:
+  (url, defaultMsg) =>
+  async (params = {}, config = {}) => {
+    try {
+      const finalConfig = {
+        ...config,
+        responseType: "blob",
+      };
+
+      const res = await api.post(url, params, finalConfig);
+      const contentType = res.headers["content-type"];
+
+      // 处理后端返回的错误（JSON 或文本）
+      if (
+        contentType &&
+        (contentType.includes("application/json") ||
+          contentType.includes("text/plain"))
+      ) {
+        let errorMsg = defaultMsg || "Download failed";
+        try {
+          const text = await res.data.text();
+          try {
+            const errorObj = JSON.parse(text);
+            errorMsg = errorObj.msg || errorObj.message || errorMsg;
+          } catch {
+            // 非 JSON，直接使用文本（可选）
+            errorMsg = errorMsg; // 保持默认
+          }
+        } catch (e) {
+          // 读取失败
+        }
+        return { success: false, message: errorMsg };
+      }
+
+      // 提取文件名：优先从 header，其次 params.filename，最后默认
+      let filename = "download.zip";
+      const disposition = res.headers["content-disposition"];
+      if (disposition) {
+        const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (match != null && match[1]) {
+          filename = match[1].replace(/['"]/g, "");
+        }
+      } else if (params.filename) {
+        // 清理文件名：移除不安全字符
+        filename = params.filename.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_");
+      }
+
+      // 创建 Blob 并触发下载
+      const blob = new Blob([res.data], { type: contentType });
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = filename;
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl); // 立即释放
+
+      return { success: true, message: "Download started" };
+    } catch (error) {
+      return { success: false, message: defaultMsg || "Download failed" };
     }
   },
 };
 
 export const getstats = apicall.get("/stats", "Error fetching stats");
-export const listbuckets = apicall.get("/listbuckets", "Error listing buckets");
-export const createbucket = apicall.put("/createbucket","Error creating bucket");
-export const deletebucket = apicall.delete( "/deletebucket", "Error deleting bucket");
+export const listbuckets = apicall.get("/bucket/list", "Error listing buckets");
+export const createbucket = apicall.put("/bucket/create","Error creating bucket");
+export const deletebucket = apicall.delete("/bucket/delete", "Error deleting bucket");
+export const listobjects = apicall.get("/bucket/objects", "Error listing objects");
+export const createfolder = apicall.put("/bucket/folder", "Error creating folder");
+export const putobject = apicall.upload("/bucket/putobject", "Failed to put object");
+export const delobject = apicall.post("/bucket/deleteobject", "Failed to delete object");
+export const getobject = apicall.download("/bucket/getobject", "Failed to download file");

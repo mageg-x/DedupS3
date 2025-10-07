@@ -34,8 +34,8 @@ type StatsOfGlobal struct {
 	BlockCount   int64 `json:"blockCount"`
 	ObjectSize   int64 `json:"objectSize"`
 	ChunkSize    int64 `json:"chunkSize"`
-	BlockSize1   int64 `json:"blockSize1"`
-	BlockSize2   int64 `json:"blockSize2"`
+	BlockSize1   int64 `json:"blockSize1"` //没有压缩后根据block 统计的大小
+	BlockSize2   int64 `json:"blockSize2"` //压缩后的block 统计大小
 }
 
 type StatsOfAccount struct {
@@ -129,7 +129,7 @@ func (s *StatsService) GetBucketStats(bucketID string) (*StatsOfBucket, error) {
 	if exists, err := s.kvstore.Get(bKey, today_stats); err != nil {
 		return nil, err
 	} else if !exists {
-		return nil, fmt.Errorf("stats key %s does not exist", bKey)
+		return nil, fmt.Errorf("stats key %s does not found", bKey)
 	}
 	return today_stats, nil
 }
@@ -172,11 +172,7 @@ func (s *StatsService) GetAccountStats(accountID string) (*Stats, error) {
 }
 
 func (s *StatsService) RefreshAccountStats(accountID string) {
-	if accountID != "global" {
-		s.taskQ.Push(&queue.MQItem{Key: accountID, Value: nil})
-	} else {
-		_ = s.doStats4Global()
-	}
+	s.taskQ.Push(&queue.MQItem{Key: accountID, Value: nil})
 }
 
 func (s *StatsService) loop() {
@@ -185,11 +181,16 @@ func (s *StatsService) loop() {
 	defer hourlyTicker.Stop()
 	// 首次立即执行一次（可选）
 	_ = s.doStats4Global()
-	_ = s.doStats4Account("161078760635")
+
 	for s.running.Load() {
 		item := s.taskQ.Pop()
 		if item != nil {
-			_ = s.doStats4Account(item.Key)
+			switch item.Key {
+			case "global":
+				_ = s.doStats4Global()
+			default:
+				_ = s.doStats4Account(item.Key)
+			}
 		}
 
 		// 检查是否到整点（每小时执行一次）
@@ -204,6 +205,7 @@ func (s *StatsService) loop() {
 }
 
 func (s *StatsService) doStats4Account(accountID string) error {
+	logger.GetLogger("boulder").Errorf("doStats4Account %s", accountID)
 	// 避免多个并发统计同一accountID
 	lockKey := "aws:lock:stats:" + accountID
 	if ok, _ := s.kvstore.TryLock(lockKey, "StatsService", time.Hour); !ok {

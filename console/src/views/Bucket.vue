@@ -471,7 +471,8 @@ const fetchBuckets = async () => {
       name: bucket.base?.name || 'unknown',
       objectCount: bucket.stats?.objectCount || 0,
       size: bucket.stats?.sizeOfObject || 0,
-      region: bucket.base?.Location || 'unknown',
+      region: bucket.base?.location || 'unknown',
+      owner: bucket.base?.owner?.displayName || 'unknown',
       createdAt: bucket.base?.creationDate || new Date().toISOString()
     }));
   } catch (err) {

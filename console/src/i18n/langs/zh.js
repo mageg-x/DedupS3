@@ -38,6 +38,8 @@ const zh = {
     selectStartTime: "选择开始时间",
     selectEndTime: "选择结束时间",
     networkErrorPleaseRetry: "网络错误，请稍后重试",
+    loading: "加载中...",
+    error: "错误",
   },
 
   // 菜单
@@ -820,8 +822,19 @@ const zh = {
   browser: {
     uploadFile: "上传文件",
     createFolder: "创建文件夹",
+    createNewFolder: "创建新文件夹",
+    folderName: "文件夹名称",
+    enterFolderName: "请输入文件夹名称",
+    folderNameRequired: "请输入文件夹名称",
+    invalidFolderName: "文件夹名称不能包含斜杠",
+    folderAlreadyExists: "文件夹已存在",
+    accessDenied: "无权限创建文件夹",
+    createFolderFailed: "创建文件夹失败",
+    createFolderHint: "将在 {path} 中创建新文件夹",
     bucketEmpty: "桶为空",
+    folderEmpty: "文件夹为空",
     emptyBucketHint: "当前桶中没有任何对象",
+    emptyFolderHint: "当前文件夹中没有任何对象",
     uploadFirstFile: "上传您的第一个文件",
     fileDetails: "文件详情",
     selectedObjectsCount: "已选择 {count} 个对象",
@@ -829,7 +842,13 @@ const zh = {
     objectInfo: "对象信息",
     chunkCount: "分片数量",
     storagePath: "存储路径",
-    etag: "ETag"
+    etag: "ETag",
+    bucketNotFound: "桶不存在",
+    loadingObjects: "加载对象中...",
+    failedToLoadObjects: "加载对象失败",
+    deleteSuccess: "成功删除{count}个对象",
+    deleteFailed: "删除失败",
+    downloadFailed: "下载失败"
   },
 };
 

@@ -34,7 +34,7 @@ func DumpCaller(depth int) {
 	fmt.Printf("[CALLER STACK]\n")
 	for i := 1; i <= depth; i++ {
 		if pc, file, line, ok := runtime.Caller(i); ok {
-			_, filename := filepath.Split(file)
+			_, filename := path.Split(file)
 			fn := runtime.FuncForPC(pc)
 			fmt.Printf("  [%d] %s:%d %s\n", i, filename, line, fn.Name())
 		}

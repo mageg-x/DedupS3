@@ -351,6 +351,17 @@ func CheckValidObjectNamePrefix(objectName string) error {
 	if len(objectName) > 1024 {
 		return errors.New("Object name cannot be longer than 1024 characters")
 	}
+	// 禁止 ../、./、以 / 开头等危险路径
+	if objectName == "." || objectName == ".." || objectName == "" || strings.HasPrefix(objectName, "/") {
+		return errors.New("Object name  contains invalid characters")
+	}
+
+	parts := strings.Split(objectName, "/")
+	for _, part := range parts {
+		if part == "." || part == ".." {
+			return errors.New("Object name contains invalid characters")
+		}
+	}
 	if !utf8.ValidString(objectName) {
 		return errors.New("Object name with non UTF-8 strings are not supported")
 	}

@@ -38,6 +38,8 @@ const en = {
     selectStartTime: "Select start time",
     selectEndTime: "Select end time",
     networkErrorPleaseRetry: "Network error, please try again later",
+    loading: "Loading...",
+    error: "Error",
   },
 
   // 菜单
@@ -847,8 +849,19 @@ const en = {
   browser: {
     uploadFile: "Upload File",
     createFolder: "Create Folder",
+    createNewFolder: "Create New Folder",
+    folderName: "Folder Name",
+    enterFolderName: "Please enter folder name",
+    folderNameRequired: "Please enter folder name",
+    invalidFolderName: "Folder name cannot contain slashes",
+    folderAlreadyExists: "Folder already exists",
+    accessDenied: "No permission to create folder",
+    createFolderFailed: "Failed to create folder",
+    createFolderHint: "Will create new folder in {path}",
     bucketEmpty: "Bucket Empty",
+    folderEmpty: "Folder Empty",
     emptyBucketHint: "There are no objects in the current bucket",
+    emptyFolderHint: "There are no objects in the current folder",
     uploadFirstFile: "Upload your first file",
     fileDetails: "File Details",
     selectedObjectsCount: "Selected {count} objects",
@@ -856,7 +869,11 @@ const en = {
     objectInfo: "Object Info",
     chunkCount: "Chunk Count",
     storagePath: "Storage Path",
-    etag: "ETag"
+    etag: "ETag",
+    bucketNotFound: "Bucket not found",
+    loadingObjects: "Loading objects...",
+    failedToLoadObjects: "Failed to load objects",
+    downloadFailed: "Failed to download objects"
   },
 };
 

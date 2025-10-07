@@ -26,6 +26,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"github.com/mageg-x/boulder/service/stats"
 	"io"
 	"net/http"
 	"strings"
@@ -454,6 +455,10 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 		logger.GetLogger("boulder").Errorf("failed to chunk object: %v", err)
 	}
 
+	_stats := stats.GetStatsService()
+	if _stats != nil {
+		_stats.RefreshAccountStats(ak.AccountID)
+	}
 	return objectInfo, err
 }
 
@@ -980,7 +985,7 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 	// 提前关闭事务
 	txn.Rollback()
 	txn = nil
-	logger.GetLogger("boulder").Debugf("get commonPrefixs %d object %d", len(commonPrefixes), len(objects))
+	logger.GetLogger("boulder").Errorf("get commonPrefixs %#v object %d", commonPrefixes, len(objects))
 	return objects, commonPrefixes, isTruncated, nextMarker, nil
 }
 
@@ -1083,6 +1088,11 @@ func (o *ObjectService) DeleteObject(params *BaseObjectParams) error {
 			chunkKeys = append(chunkKeys, chunkKey)
 		}
 		_ = cache.MDel(context.Background(), chunkKeys)
+	}
+
+	_stats := stats.GetStatsService()
+	if _stats != nil {
+		_stats.RefreshAccountStats(ak.AccountID)
 	}
 	return nil
 }
@@ -1245,8 +1255,13 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 		txn = nil
 
 		logger.GetLogger("boulder").Infof("write object %s/%s  all meta data finish", dstobj.Bucket, dstobj.Key)
+
 		if cache, err := xcache.GetCache(); err == nil && cache != nil {
 			_ = cache.Del(context.Background(), dstobjKey)
+		}
+		_stats := stats.GetStatsService()
+		if _stats != nil {
+			_stats.RefreshAccountStats(ak.AccountID)
 		}
 		return dstobj, nil
 	} else {
