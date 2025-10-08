@@ -21,11 +21,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/mageg-x/boulder/internal/config"
-	"github.com/mageg-x/boulder/internal/logger"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"github.com/mageg-x/boulder/internal/config"
+	"github.com/mageg-x/boulder/internal/logger"
 )
 
 // Redis 基于 go-redis 的实现
@@ -79,8 +80,8 @@ func (r *Redis) Set(ctx context.Context, key string, value interface{}, ttl time
 }
 
 // Get 获取值
-func (r *Redis) Get(ctx context.Context, key string) (interface{}, bool, error) {
-	val, err := r.client.Get(ctx, key).Result()
+func (r *Redis) Get(ctx context.Context, key string) ([]byte, bool, error) {
+	val, err := r.client.Get(ctx, key).Bytes()
 	if err == redis.Nil {
 		logger.GetLogger("boulder").Debugf("Key not found in Redis: %s", key)
 		return nil, false, nil
@@ -90,14 +91,8 @@ func (r *Redis) Get(ctx context.Context, key string) (interface{}, bool, error) 
 		return nil, false, fmt.Errorf("failed to get key: %w", err)
 	}
 
-	var value interface{}
-	if err := json.Unmarshal([]byte(val), &value); err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to deserialize value for key %s: %v", key, err)
-		return nil, false, fmt.Errorf("failed to deserialize value: %w", err)
-	}
-
 	logger.GetLogger("boulder").Debugf("Successfully got key from Redis: %s", key)
-	return value, true, nil
+	return val, true, nil
 }
 
 // Del 删除
@@ -139,10 +134,11 @@ func (r *Redis) MSet(ctx context.Context, items map[string]Item) error {
 }
 
 // MGet 批量获取
-func (r *Redis) MGet(ctx context.Context, keys []string) (map[string]interface{}, error) {
+func (r *Redis) MGet(ctx context.Context, keys []string) (map[string][]byte, error) {
+	values := make(map[string][]byte, 0)
 	if len(keys) == 0 {
 		logger.GetLogger("boulder").Debugf("No keys provided for batch get")
-		return map[string]interface{}{}, nil
+		return values, nil
 	}
 
 	vals, err := r.client.MGet(ctx, keys...).Result()
@@ -151,19 +147,18 @@ func (r *Redis) MGet(ctx context.Context, keys []string) (map[string]interface{}
 		return nil, fmt.Errorf("mget failed: %w", err)
 	}
 
-	values := make(map[string]interface{})
 	for i, v := range vals {
 		if v == nil {
 			logger.GetLogger("boulder").Debugf("Key not found in batch get: %s", keys[i])
 			continue
 		}
 		// v 是 string 类型
-		var value interface{}
-		if err := json.Unmarshal([]byte(v.(string)), &value); err != nil {
-			logger.GetLogger("boulder").Errorf("Unmarshal failed for key %s: %v", keys[i], err)
-			return nil, fmt.Errorf("unmarshal failed for key %s: %w", keys[i], err)
+		data, ok := v.([]byte)
+		if !ok {
+			return nil, fmt.Errorf("cached value is not []byte")
 		}
-		values[keys[i]] = value
+
+		values[keys[i]] = data
 	}
 
 	logger.GetLogger("boulder").Debugf("Successfully batch got %d keys from Redis", len(values))

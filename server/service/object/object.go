@@ -252,14 +252,11 @@ func (o *ObjectService) HeadObject(params *BaseObjectParams) (*meta.Object, erro
 	objkey := "aws:object:" + ak.AccountID + ":" + params.BucketName + "/" + params.ObjKey
 	var object *meta.Object
 	if cache, err := xcache.GetCache(); err == nil && cache != nil {
-		data, ok, e := cache.Get(context.Background(), objkey)
+		_object, ok, e := xcache.Get[meta.Object](cache, context.Background(), objkey)
 		if e == nil && ok {
-			_object, yes := data.(*meta.Object)
-			if yes {
-				object = _object
-			} else {
-				// 缓存的数据类型错误，删除缓存
-			}
+			object = _object
+		} else {
+			cache.Del(context.Background(), objkey)
 		}
 	}
 	if object == nil {
@@ -299,12 +296,11 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 	key := "aws:bucket:" + ak.AccountID + ":" + params.BucketName
 	var bucket *meta.BucketMetadata
 	if cache, err := xcache.GetCache(); err == nil && cache != nil {
-		data, ok, e := cache.Get(context.Background(), key)
-		if e == nil && ok {
-			_bucket, yes := data.(*meta.BucketMetadata)
-			if yes {
-				bucket = _bucket
-			}
+		_bucket, ok, e := xcache.Get[meta.BucketMetadata](cache, context.Background(), key)
+		if e == nil && ok && bucket != nil {
+			bucket = _bucket
+		} else {
+			cache.Del(context.Background(), key)
 		}
 	}
 	if bucket == nil {
@@ -511,15 +507,12 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 	objkey := "aws:object:" + ak.AccountID + ":" + params.BucketName + "/" + params.ObjKey
 	var object *meta.Object
 	if cache, err := xcache.GetCache(); err == nil && cache != nil {
-		data, ok, e := cache.Get(context.Background(), objkey)
+		_object, ok, e := xcache.Get[meta.Object](cache, context.Background(), objkey)
 		if e == nil && ok {
-			_object, yes := data.(*meta.Object)
-			if yes {
-				object = _object
-			} else {
-				// 缓存的数据类型错误，删除缓存
-				_ = cache.Del(context.Background(), objkey)
-			}
+			object = _object
+		} else {
+			// 缓存的数据类型错误，删除缓存
+			_ = cache.Del(context.Background(), objkey)
 		}
 	}
 	if object == nil {
@@ -1368,12 +1361,11 @@ func (o *ObjectService) PutObjectTagging(params *BaseObjectParams, tags map[stri
 	bucketKey := "aws:bucket:" + ak.AccountID + ":" + params.BucketName
 	var bucket *meta.BucketMetadata
 	if cache, err := xcache.GetCache(); err == nil && cache != nil {
-		data, ok, e := cache.Get(context.Background(), bucketKey)
+		_bucket, ok, e := xcache.Get[meta.BucketMetadata](cache, context.Background(), bucketKey)
 		if e == nil && ok {
-			_bucket, yes := data.(*meta.BucketMetadata)
-			if yes {
-				bucket = _bucket
-			}
+			bucket = _bucket
+		} else {
+			cache.Del(context.Background(), bucketKey)
 		}
 	}
 	if bucket == nil {
@@ -1452,12 +1444,11 @@ func (o *ObjectService) PutObjectAcl(params *BaseObjectParams, acp *meta.AccessC
 	bucketKey := "aws:bucket:" + ak.AccountID + ":" + params.BucketName
 	var bucket *meta.BucketMetadata
 	if cache, err := xcache.GetCache(); err == nil && cache != nil {
-		data, ok, e := cache.Get(context.Background(), bucketKey)
+		_bucket, ok, e := xcache.Get[meta.BucketMetadata](cache, context.Background(), bucketKey)
 		if e == nil && ok {
-			_bucket, yes := data.(*meta.BucketMetadata)
-			if yes {
-				bucket = _bucket
-			}
+			bucket = _bucket
+		} else {
+			cache.Del(context.Background(), bucketKey)
 		}
 	}
 	if bucket == nil {

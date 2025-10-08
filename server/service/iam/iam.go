@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	xhttp "github.com/mageg-x/boulder/internal/http"
 
 	"sync"
 	"time"
@@ -135,14 +136,11 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IamAccount,
 func (s *IamService) GetAccount(accountID string) (*meta.IamAccount, error) {
 	key := "aws:iam:account:id:" + accountID
 	if cache, err := xcache.GetCache(); err == nil && cache != nil {
-		account, ok, e := cache.Get(context.Background(), key)
+		account, ok, e := xcache.Get[meta.IamAccount](cache, context.Background(), key)
 		if e == nil && ok {
-			obj, yes := account.(*meta.IamAccount)
-			if !yes {
-				logger.GetLogger("boulder").Errorf("cached account %s is not of type *meta.iamaccount", accountID)
-				cache.Del(context.Background(), key)
-			}
-			return obj, nil
+			return account, nil
+		} else {
+			cache.Del(context.Background(), key)
 		}
 	}
 	var account meta.IamAccount
@@ -414,14 +412,11 @@ func (s *IamService) GetAccessKey(accessKeyID string) (*meta.AccessKey, error) {
 
 	key := "aws:iam:account:ak:" + accessKeyID
 	if cache, err := xcache.GetCache(); err == nil && cache != nil {
-		ak, ok, e := cache.Get(context.Background(), key)
+		ak, ok, e := xcache.Get[meta.AccessKey](cache, context.Background(), key)
 		if e == nil && ok {
-			obj, yes := ak.(*meta.AccessKey)
-			if !yes {
-				logger.GetLogger("boulder").Errorf("invalid type in cache for access key %s ak %T", accessKeyID, ak)
-				return nil, errors.New("invalid access key type in cache")
-			}
-			return obj, nil
+			return ak, nil
+		} else {
+			cache.Del(context.Background(), key)
 		}
 	}
 
@@ -435,4 +430,118 @@ func (s *IamService) GetAccessKey(accessKeyID string) (*meta.AccessKey, error) {
 		cache.Set(context.Background(), key, &ak, time.Second*600)
 	}
 	return &ak, nil
+}
+
+func (s *IamService) CreatePolicy(accountID, username, policyname, desc, doc string) error {
+	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
+		if a == nil {
+			return fmt.Errorf("account %s not found", accountID)
+		}
+		user, err := a.GetUser(username)
+		if err != nil || user == nil {
+			return xhttp.ToError(xhttp.ErrAdminNoSuchUser)
+		}
+		_, err = a.CreatePolicy(user, policyname, desc, doc)
+		return err
+	})
+
+	if err != nil || !ok {
+		return err
+	}
+	return nil
+}
+
+func (s *IamService) UpdatePolicy(accountID, username, policyname, desc, doc string) error {
+	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
+		if a == nil {
+			return fmt.Errorf("account %s not found", accountID)
+		}
+		user, err := a.GetUser(username)
+		if err != nil || user == nil {
+			return xhttp.ToError(xhttp.ErrAdminNoSuchUser)
+		}
+		_, err = a.UpdatePolicy(user, policyname, desc, doc)
+		return err
+	})
+
+	if err != nil || !ok {
+		return err
+	}
+	return nil
+}
+
+func (s *IamService) DeletePolicy(accountID, username, policyname string) error {
+	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
+		if a == nil {
+			return fmt.Errorf("account %s not found", accountID)
+		}
+		user, err := a.GetUser(username)
+		if err != nil || user == nil {
+			return xhttp.ToError(xhttp.ErrAdminNoSuchUser)
+		}
+		err = a.DeletePolicy(user, policyname)
+		return err
+	})
+
+	if err != nil || !ok {
+		return err
+	}
+	return nil
+}
+
+func (s *IamService) CreateRole(accountID, username, rolename, desc, assumeRolePolicy string, attachPolicies []string) error {
+	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
+		if a == nil {
+			return fmt.Errorf("account %s not found", accountID)
+		}
+		user, err := a.GetUser(username)
+		if err != nil || user == nil {
+			return xhttp.ToError(xhttp.ErrAdminNoSuchUser)
+		}
+		_, err = a.CreateRole(user, rolename, desc, assumeRolePolicy, attachPolicies)
+		return err
+	})
+
+	if err != nil || !ok {
+		return err
+	}
+	return nil
+}
+
+func (s *IamService) UpdateRole(accountID, username, rolename, desc, assumeRolePolicy string, attachPolicies []string) error {
+	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
+		if a == nil {
+			return fmt.Errorf("account %s not found", accountID)
+		}
+		user, err := a.GetUser(username)
+		if err != nil || user == nil {
+			return xhttp.ToError(xhttp.ErrAdminNoSuchUser)
+		}
+		_, err = a.UpdateRole(user, rolename, desc, assumeRolePolicy, attachPolicies)
+		return err
+	})
+
+	if err != nil || !ok {
+		return err
+	}
+	return nil
+}
+
+func (s *IamService) DeleteRole(accountID, username, rolename string) error {
+	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
+		if a == nil {
+			return fmt.Errorf("account %s not found", accountID)
+		}
+		user, err := a.GetUser(username)
+		if err != nil || user == nil {
+			return xhttp.ToError(xhttp.ErrAdminNoSuchUser)
+		}
+		err = a.DeleteRole(user, rolename)
+		return err
+	})
+
+	if err != nil || !ok {
+		return err
+	}
+	return nil
 }

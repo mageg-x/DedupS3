@@ -209,16 +209,11 @@ func (b *BucketService) GetBucketInfo(params *BaseBucketParams) (*meta.BucketMet
 
 	// 先从cache 中查找
 	if cache, err := xcache.GetCache(); err == nil && cache != nil {
-		data, ok, e := cache.Get(context.Background(), key)
+		_bucket, ok, e := xcache.Get[meta.BucketMetadata](cache, context.Background(), key)
 		if e == nil && ok {
-			_bucket, yes := data.(*meta.BucketMetadata)
-			if yes {
-				logger.GetLogger("boulder").Tracef("get bucket %s from cache", params.BucketName)
-				return _bucket, nil
-			} else {
-				logger.GetLogger("boulder").Errorf("failed to get bucket %s metadata from cache", params.BucketName)
-				cache.Del(context.Background(), key)
-			}
+			return _bucket, nil
+		} else {
+			cache.Del(context.Background(), key)
 		}
 	}
 

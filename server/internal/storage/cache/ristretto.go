@@ -18,7 +18,9 @@ package cache
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/mageg-x/boulder/internal/logger"
 	"time"
 
@@ -62,12 +64,19 @@ func (r *Ristretto) Set(ctx context.Context, key string, value interface{}, ttl 
 		return ctx.Err()
 	}
 
+	// 序列化value
+	serialized, err := json.Marshal(value)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("Failed to serialize value for key %s: %v", key, err)
+		return fmt.Errorf("failed to serialize value: %w", err)
+	}
+
 	// 对于Ristretto，我们将TTL转换为成本
 	// 这里简单使用1作为成本
 	cost := int64(1)
 
 	// 设置缓存项
-	ok := r.client.SetWithTTL(key, value, cost, ttl)
+	ok := r.client.SetWithTTL(key, serialized, cost, ttl)
 	if !ok {
 		logger.GetLogger("boulder").Errorf("failed to set cache item: %s", key)
 		return errors.New("failed to set cache item")
@@ -78,20 +87,23 @@ func (r *Ristretto) Set(ctx context.Context, key string, value interface{}, ttl 
 }
 
 // Get 获取缓存值
-func (r *Ristretto) Get(ctx context.Context, key string) (interface{}, bool, error) {
+func (r *Ristretto) Get(ctx context.Context, key string) ([]byte, bool, error) {
 	if ctx.Err() != nil {
 		logger.GetLogger("boulder").Errorf("context error when getting cache item %s: %v", key, ctx.Err())
 		return nil, false, ctx.Err()
 	}
 
 	value, found := r.client.Get(key)
-	if found {
-		logger.GetLogger("boulder").Debugf("successfully got cache item: %s", key)
-	} else {
+	if !found {
 		logger.GetLogger("boulder").Infof("failed got cache item: %s", key)
-		return value, found, nil
+		return nil, false, nil
 	}
-	return value, found, nil
+	data, ok := value.([]byte)
+	if !ok {
+		return nil, false, errors.New("cached value is not []byte")
+	}
+	logger.GetLogger("boulder").Debugf("successfully got cache item: %s", key)
+	return data, found, nil
 }
 
 // Del 删除缓存
@@ -114,8 +126,15 @@ func (r *Ristretto) MSet(ctx context.Context, items map[string]Item) error {
 	}
 
 	for key, item := range items {
+		// 序列化value
+		serialized, err := json.Marshal(item.Value)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("Failed to serialize value for key %s: %v", key, err)
+			return fmt.Errorf("failed to serialize value for key %s: %w", key, err)
+		}
+
 		cost := int64(1)
-		r.client.SetWithTTL(key, item.Value, cost, item.TTL)
+		r.client.SetWithTTL(key, serialized, cost, item.TTL)
 		logger.GetLogger("boulder").Debugf("set cache item in batch: %s", key)
 	}
 
@@ -124,21 +143,29 @@ func (r *Ristretto) MSet(ctx context.Context, items map[string]Item) error {
 }
 
 // MGet 批量获取缓存值
-func (r *Ristretto) MGet(ctx context.Context, keys []string) (map[string]interface{}, error) {
+func (r *Ristretto) MGet(ctx context.Context, keys []string) (map[string][]byte, error) {
 	if ctx.Err() != nil {
 		logger.GetLogger("boulder").Errorf("context error when batch getting cache items: %v", ctx.Err())
 		return nil, ctx.Err()
 	}
 
-	result := make(map[string]interface{})
+	result := make(map[string][]byte)
 
 	for _, key := range keys {
-		if value, found := r.client.Get(key); found {
-			result[key] = value
-			logger.GetLogger("boulder").Debugf("got cache item in batch: %s", key)
-		} else {
+		value, found := r.client.Get(key)
+		if !found {
 			logger.GetLogger("boulder").Debugf("cache item not found in batch: %s", key)
+			continue
 		}
+
+		data, ok := value.([]byte)
+		if !ok {
+			logger.GetLogger("boulder").Debugf("cache item is not []byte: %s", key)
+			return nil, errors.New("cached value is not []byte")
+		}
+
+		result[key] = data
+		logger.GetLogger("boulder").Debugf("got cache item in batch: %s", key)
 	}
 
 	logger.GetLogger("boulder").Debugf("successfully batch got %d cache items", len(result))

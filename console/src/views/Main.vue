@@ -39,12 +39,12 @@
       <!-- 菜单列表 -->
       <nav class="py-4">
         <ul>
-          <li v-for="(item, index) in menuItems" :key="item.path || `menu-${index}`"
-            :class="{ 'has-children': item.children && item.children.length > 0 }">
+          <li v-for="(item, index) in filteredMenuItems" :key="item.path || `menu-${index}`"
+            :class="{ 'has-children': item.children && item.children.length > 0, 'disabled': item.disabled }">
             <!-- 有子菜单的菜单项 -->
             <div v-if="item.children && item.children.length > 0" :class="['relative']">
               <button @click="toggleSubmenu(index)"
-                :class="['flex items-center p-3.5 transition-all duration-300 w-full text-left', isActiveMenuItem(item) ? 'bg-blue-50 text-blue-600 border-r-4 border-blue-500 shadow-sm' : 'hover:bg-gray-50 hover:text-blue-500']"
+                :class="['flex items-center p-3.5 transition-all duration-300 w-full text-left', item.disabled ? 'opacity-50 cursor-not-allowed' : isActiveMenuItem(item) ? 'bg-blue-50 text-blue-600 border-r-4 border-blue-500 shadow-sm' : 'hover:bg-gray-50 hover:text-blue-500']"
                 :style="{ animationDelay: index * 0.05 + 's' }">
                 <div class="flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-300"
                   :class="isActiveMenuItem(item) ? 'bg-blue-100' : 'hover:bg-gray-100'">
@@ -65,7 +65,8 @@
               <ul v-if="isSubmenuOpen[index] && !sidebarCollapsed" class="pl-12 py-1 bg-white animate-fadeIn">
                 <li v-for="subItem in item.children" :key="subItem.path">
                   <router-link :to="subItem.path"
-                    :class="['flex items-center py-3.5 transition-all duration-300', isActiveRoute(subItem.path) ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50 hover:text-blue-500']">
+                    :class="['flex items-center py-3.5 transition-all duration-300', subItem.disabled ? 'opacity-50 cursor-not-allowed' : isActiveRoute(subItem.path) ? 'bg-blue-50 text-blue-600' : 'hover:bg-gray-50 hover:text-blue-500']"
+                    @click="handleMenuClick(subItem)">
                     <div class="flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-300"
                       :class="isActiveRoute(subItem.path) ? 'bg-blue-100' : 'hover:bg-gray-100'">
                       <i v-if="subItem.icon !== 'svg-bucket'" :class="['fas', subItem.icon, 'w-5 h-5']"></i>
@@ -84,8 +85,8 @@
             </div>
             <!-- 没有子菜单的菜单项 -->
             <router-link v-else :to="item.path"
-              :class="['flex items-center p-3.5 transition-all duration-300', isActiveRoute(item.path) ? 'bg-blue-50 text-blue-600 border-r-4 border-blue-500 shadow-sm' : 'hover:bg-gray-50 hover:text-blue-500']"
-              :style="{ animationDelay: index * 0.05 + 's' }">
+              :class="['flex items-center p-3.5 transition-all duration-300', item.disabled ? 'opacity-50 cursor-not-allowed' : isActiveRoute(item.path) ? 'bg-blue-50 text-blue-600 border-r-4 border-blue-500 shadow-sm' : 'hover:bg-gray-50 hover:text-blue-500']"
+              :style="{ animationDelay: index * 0.05 + 's' }" @click="handleMenuClick(item)">
               <div class="flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-300"
                 :class="isActiveRoute(item.path) ? 'bg-blue-100' : 'hover:bg-gray-100'">
                 <i v-if="item.icon !== 'svg-bucket'" :class="['fas', item.icon, 'w-6 h-6']"></i>
@@ -135,11 +136,11 @@
             <!-- 用户信息 -->
             <div class="flex items-center gap-3 cursor-pointer group relative">
               <div class="relative">
-                <img v-if="currentUser.avatar" :src="currentUser.avatar" alt="用户头像"
+                <img v-if="userInfo.avatar" :src="userInfo.avatar" alt="用户头像"
                   class="w-10 h-10 rounded-full border-2 border-transparent hover:border-blue-500 transition-all duration-300 shadow-sm">
                 <div v-else
                   class="w-10 h-10 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center text-gray-700 font-medium shadow-sm">
-                  {{ currentUser.name ? currentUser.name.charAt(0) : '?' }}
+                  {{ userInfo.name ? userInfo.name.charAt(0) : '?' }}
                 </div>
                 <div
                   class="absolute inset-0 rounded-full bg-blue-500 opacity-0 group-hover:opacity-10 transition-opacity duration-300">
@@ -147,10 +148,10 @@
               </div>
               <div v-if="!sidebarCollapsed" class="hidden md:block">
                 <div class="text-sm font-medium text-gray-800 group-hover:text-blue-600 transition-colors">
-                  {{ currentUser.name || '未登录' }}
+                  {{ userInfo.name || '未登录' }}
                 </div>
                 <div class="text-xs text-gray-500">
-                  {{ currentUser.role === 'admin' ? t('brand.admin') : t('brand.regularUser') }}
+                  {{ userInfo.role === 'admin' ? t('common.admin') : t('common.regularUser') }}
                 </div>
               </div>
               <i
@@ -175,60 +176,66 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
-import { useRoute } from 'vue-router';
+import { ref, computed, onMounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
+import { ElMessage } from 'element-plus';
 import LanguageSwitch from '@/components/LanguageSwitch.vue';
+import { getuser} from '@/api/admin';
 
 const { t } = useI18n();
-
 const route = useRoute();
+const router = useRouter();
 
 // 侧边栏状态
 const sidebarCollapsed = ref(false);
 
-// 当前用户信息 - 添加默认mock数据
-const currentUser = ref({
+// 当前用户信息
+const userInfo = ref({
   name: '管理员',
   role: 'admin',
-  avatar: null
+  avatar: null,
+  permissions: []
 });
 
-// 菜单列表
+// 原始菜单项 - 添加权限标识
 const menuItems = [
-  { path: '/dashboard', label: t('mainMenu.dashboard'), icon: 'fa-home' },
-  { path: '/buckets', label: t('mainMenu.buckets'), icon: 'svg-bucket' },
-  { path: '/accesskey', label: t('mainMenu.accessKey'), icon: 'fa-key' },
+  { path: '/dashboard', label: t('mainMenu.dashboard'), icon: 'fa-home', permission: 'console:Stats' },
+  { path: '/buckets', label: t('mainMenu.buckets'), icon: 'svg-bucket', permission: 'console:Bucket' },
+  { path: '/accesskey', label: t('mainMenu.accessKey'), icon: 'fa-key', permission: 'console:AccessKey' },
   {
     label: t('mainMenu.iam'),
     icon: 'fa-lock',
+    permission: 'console:User',
     children: [
-      { path: '/user', label: t('mainMenu.user'), icon: 'fa-user' },
-      { path: '/group', label: t('mainMenu.group'), icon: 'fa-user-group' },
-      { path: '/role', label: t('mainMenu.role'), icon: 'fa-user-tag' },
-      { path: '/policy', label: t('mainMenu.policy'), icon: 'fa-file-signature' },
+      { path: '/user', label: t('mainMenu.user'), icon: 'fa-user', permission: 'console:User' },
+      { path: '/group', label: t('mainMenu.group'), icon: 'fa-user-group', permission: 'console:Group' },
+      { path: '/role', label: t('mainMenu.role'), icon: 'fa-user-tag', permission: 'console:Role' },
+      { path: '/policy', label: t('mainMenu.policy'), icon: 'fa-file-signature', permission: 'console:Policy' },
     ]
   },
-  { path: '/event', label: t('mainMenu.event'), icon: 'fa-bell' },
-  { path: '/audit', label: t('mainMenu.audit'), icon: 'fa-file-text' },
+  { path: '/event', label: t('mainMenu.event'), icon: 'fa-bell', permission: 'console:Event' },
+  { path: '/audit', label: t('mainMenu.audit'), icon: 'fa-file-text', permission: 'console:Audit' },
   {
     label: t('mainMenu.configuration'),
     icon: 'fa-cog',
+    permission: 'console:Storage',
     children: [
-      { path: '/endpoint', label: t('mainMenu.endpoint'), icon: 'fa-map-marker-alt' },
-      { path: '/quota', label: t('mainMenu.quota'), icon: 'fa-tachometer-alt' },
-      { path: '/chunk', label: t('mainMenu.chunk'), icon: 'fa-chart-pie' },
+      { path: '/endpoint', label: t('mainMenu.endpoint'), icon: 'fa-map-marker-alt', permission: 'console:Storage' },
+      { path: '/quota', label: t('mainMenu.quota'), icon: 'fa-tachometer-alt', permission: 'console:Quota' },
+      { path: '/chunk', label: t('mainMenu.chunk'), icon: 'fa-chart-pie', permission: 'console:Chunk' },
     ]
   },
   {
     label: t('mainMenu.advancedFeatures'),
     icon: 'fa-tools',
+    permission: 'console:Storage',
     children: [
-      { path: '/migration', label: t('mainMenu.migration'), icon: 'fa-exchange-alt' },
-      { path: '/defragment', label: t('mainMenu.defragment'), icon: 'fa-puzzle-piece' },
-      { path: '/snapshot', label: t('mainMenu.snapshot'), icon: 'fa-images' },
-      { path: '/analysis', label: t('mainMenu.analysis'), icon: 'fa-kit-medical' },
-      { path: '/debugtool', label: t('mainMenu.debugTool'), icon: 'fa-bug' },
+      { path: '/migration', label: t('mainMenu.migration'), icon: 'fa-exchange-alt', permission: 'console:Migrate' },
+      { path: '/defragment', label: t('mainMenu.defragment'), icon: 'fa-puzzle-piece', permission: 'console:Defragment' },
+      { path: '/snapshot', label: t('mainMenu.snapshot'), icon: 'fa-images', permission: 'console:Snapshot' },
+      { path: '/analysis', label: t('mainMenu.analysis'), icon: 'fa-kit-medical', permission: 'console:Analysis' },
+      { path: '/debugtool', label: t('mainMenu.debugTool'), icon: 'fa-bug', permission: 'console:Debug' },
     ]
   },
 ];
@@ -247,8 +254,60 @@ const toggleSidebar = () => {
 // 子菜单展开状态
 const isSubmenuOpen = ref([]);
 
+// 检查用户是否有指定权限
+const hasPermission = (permission) => {
+  // 如果没有指定权限，则默认允许访问
+  if (!permission) {
+    return true;
+  }
+  // 检查用户权限列表中是否包含该权限
+  return userInfo.value.permissions && userInfo.value.permissions.includes(permission);
+};
+
+// 过滤菜单项，根据用户权限禁用或显示菜单
+const filterMenuItems = (items) => {
+  if (!items) return [];
+
+  return items.map(item => {
+    // 复制项目以避免修改原始数据
+    const menuItem = { ...item };
+
+    // 递归过滤子菜单
+    if (menuItem.children && menuItem.children.length > 0) {
+      menuItem.children = filterMenuItems(menuItem.children);
+      // 检查子菜单中是否有未被禁用的项
+      const hasEnabledChildren = menuItem.children.some(child => !child.disabled);
+
+      // 设置父菜单的禁用状态
+      menuItem.disabled = !hasPermission(menuItem.permission) ||
+        (menuItem.children.length > 0 && !hasEnabledChildren);
+    } else {
+      // 无子菜单的项目，直接根据权限设置禁用状态
+      menuItem.disabled = !hasPermission(menuItem.permission);
+    }
+
+    return menuItem;
+  }).filter(item => {
+    // 如果是有子菜单的项目，即使被禁用也保留
+    if (item.children && item.children.length > 0) {
+      return true;
+    }
+    // 无子菜单的项目，如果未被禁用则保留
+    return !item.disabled;
+  });
+};
+
+// 计算属性，根据权限过滤菜单项
+const filteredMenuItems = computed(() => {
+  return filterMenuItems(menuItems);
+});
+
 // 切换子菜单
 const toggleSubmenu = (index) => {
+  const item = filteredMenuItems.value[index];
+  if (!item || item.disabled) {
+    return;
+  }
   isSubmenuOpen.value[index] = !isSubmenuOpen.value[index];
 };
 
@@ -261,6 +320,145 @@ const isActiveRoute = (path) => {
 const isActiveMenuItem = (item) => {
   if (!item.children) return false;
   return item.children.some(subItem => isActiveRoute(subItem.path));
+};
+
+// 处理菜单点击
+const handleMenuClick = (item) => {
+  if (item.path && !item.disabled) {
+    router.push(item.path);
+  } else if (item.disabled) {
+    ElMessage.warning(t('common.noPermission'));
+  }
+};
+
+// 获取用户信息和权限
+const getUserInfo = async () => {
+  try {
+    // 调用API获取用户信息和权限
+    const response = await getuser();
+
+    if (response.success && response.data) {
+      // 从API返回的结果中获取用户信息和权限
+      userInfo.value = {
+        name: response.data.name || 'Unknown',
+        role: response.data.role || 'user',
+        avatar: response.data.avatar,
+        permissions: response.data.permissions || []
+      };
+    } else if (response.message) {
+      // 如果API返回了错误信息，显示它
+      ElMessage.error(response.message);
+      // 使用模拟数据作为备份
+      setMockUserInfo();
+    } else {
+      // 如果API调用失败但没有返回具体信息，使用模拟数据
+      setMockUserInfo();
+    }
+  } catch (error) {
+    console.error('Failed to get user info:', error);
+    ElMessage.error(t('common.fetchUserInfoFailed'));
+    // API调用出错时，使用模拟数据
+    setMockUserInfo();
+  }
+};
+
+// 设置模拟用户信息（当API不可用时使用）
+const setMockUserInfo = () => {
+  userInfo.value = {
+    name: '管理员',
+    role: 'admin',
+    avatar: null,
+    permissions: [
+      'console:Login',
+      'console:Stats',
+      'console:Bucket',
+      'console:AccessKey',
+      'console:User',
+      'console:Role',
+      'console:Group',
+      'console:Policy',
+      'console:Event',
+      'console:Audit',
+      'console:Storage',
+      'console:Quota',
+      'console:Chunk',
+      'console:Migrate',
+      'console:Defragment',
+      'console:Snapshot',
+      'console:Analysis',
+      'console:Debug'
+    ]
+  };
+};
+
+// 测试不同权限级别的用户（开发调试用）
+const testUserPermission = (userType) => {
+  // 在实际项目中，此函数可以删除或注释掉
+  if (process.env.NODE_ENV !== 'development') return;
+
+  console.log(`切换到${userType}权限测试模式`);
+
+  let permissions = [];
+  let name = '';
+  let role = '';
+
+  switch (userType) {
+    case 'admin':
+      name = '超级管理员';
+      role = 'admin';
+      permissions = [
+        'console:Login',
+        'console:Stats',
+        'console:Bucket',
+        'console:AccessKey',
+        'console:User',
+        'console:Role',
+        'console:Group',
+        'console:Policy',
+        'console:Event',
+        'console:Audit',
+        'console:Storage',
+        'console:Quota',
+        'console:Chunk',
+        'console:Migrate',
+        'console:Defragment',
+        'console:Snapshot',
+        'console:Analysis',
+        'console:Debug'
+      ];
+      break;
+    case 'readOnly':
+      name = '只读用户';
+      role = 'readOnly';
+      permissions = [
+        'console:Login',
+        'console:Stats',
+        'console:Bucket'
+      ];
+      break;
+    case 'limited':
+      name = '普通用户';
+      role = 'user';
+      permissions = [
+        'console:Login',
+        'console:Stats',
+        'console:Bucket',
+        'console:AccessKey',
+        'console:Event'
+      ];
+      break;
+    default:
+      name = '访客';
+      role = 'guest';
+      permissions = ['console:Login'];
+  }
+
+  userInfo.value = {
+    name,
+    role,
+    avatar: null,
+    permissions
+  };
 };
 
 // 计算面包屑导航
@@ -301,6 +499,11 @@ const handleLogout = () => {
   console.log('用户退出登录');
 };
 
+onMounted(() => {
+  // 获取用户信息和权限
+  getUserInfo();
+});
+
 </script>
 
 
@@ -324,6 +527,11 @@ const handleLogout = () => {
 /* 带有子菜单的菜单项 */
 .has-children>div>button {
   position: relative;
+}
+
+.has-children.disabled>div>button:hover {
+  background-color: transparent;
+  color: inherit;
 }
 
 /* 子菜单箭头动画 */

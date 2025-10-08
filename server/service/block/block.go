@@ -546,10 +546,9 @@ func (s *BlockService) BatchGet(storageID string, blockIds []string) ([]*meta.Bl
 
 		batchKeys := keys[i:end]
 		if cache, err := xcache.GetCache(); err == nil && cache != nil {
-			result, err := cache.MGet(context.Background(), batchKeys)
+			result, err := xcache.MGet[meta.Block](cache, context.Background(), batchKeys)
 			if err == nil {
-				for k, item := range result {
-					block := item.(*meta.Block)
+				for k, block := range result {
 					if block != nil {
 						blockMap[block.ID] = block
 					} else {

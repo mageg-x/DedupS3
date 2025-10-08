@@ -716,12 +716,11 @@ func (c *ChunkService) BatchGet(storageID string, chunkIDs []string) ([]*meta.Ch
 
 		batchKeys := keys[i:end]
 		if cache, err := xcache.GetCache(); err == nil && cache != nil {
-			result, err := cache.MGet(context.Background(), batchKeys)
+			result, err := xcache.MGet[meta.Chunk](cache, context.Background(), batchKeys)
 			if err == nil {
-				for k, item := range result {
-					chunk := item.(*meta.Chunk)
-					if chunk != nil {
-						chunkMap[chunk.Hash] = chunk
+				for k, _chunk := range result {
+					if _chunk != nil {
+						chunkMap[_chunk.Hash] = _chunk
 					} else {
 						_ = cache.Del(context.Background(), k)
 					}

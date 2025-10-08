@@ -162,8 +162,7 @@ const apicall = {
       } catch (error) {
         const response = error.response;
         if (response) {
-          const msg =
-            response.data?.msg || response.data?.message || defaultMsg;
+          const msg = response.data?.msg || response.data?.message || defaultMsg;
           return { success: false, message: msg };
         }
         return { success: false, message: defaultMsg };
@@ -269,3 +268,16 @@ export const createfolder = apicall.put("/bucket/folder", "Error creating folder
 export const putobject = apicall.upload("/bucket/putobject", "Failed to put object");
 export const delobject = apicall.post("/bucket/deleteobject", "Failed to delete object");
 export const getobject = apicall.download("/bucket/getobject", "Failed to download file");
+export const getuser = apicall.get("/user/info", "Failed to get user info");
+export const listuser = apicall.get("/user/list", "Failed to list user info");
+export const listgroup = apicall.get("/group/list", "Failed to list group info");
+export const listrole = apicall.get("/role/list", "Failed to list role info");
+export const getrole = apicall.get("/role/get", "Failed to get role info");
+export const createrole = apicall.post("/role/create", "Failed to create role info");
+export const setrole = apicall.post("/role/update", "Failed to update role info");
+export const delrole = apicall.delete("/role/delete", "Failed to delete role info");
+export const listpolicy = apicall.get("/policy/list", "Failed to list policy info");
+export const getpolicy = apicall.get("/policy/get", "Failed to get policy info");
+export const createpolicy = apicall.post("/policy/create", "Failed to create policy info");
+export const setpolicy = apicall.post("/policy/update", "Failed to update policy info");
+export const delpolicy = apicall.delete("/policy/delete", "Failed to delete policy info");

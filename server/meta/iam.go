@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/twmb/murmur3"
 	"strconv"
 	"strings"
@@ -66,6 +67,7 @@ type IamUser struct {
 	PermissionsBoundary string            `json:"permissionsBoundary"` // 权限边界
 	Tags                map[string]string `json:"tags"`                // 用户标签
 	IsRoot              bool              `json:"isRoot"`              // 是否是根用户
+	Enabled             bool              `json:"enabled"`             // 是否启用
 	CreatedAt           time.Time         `json:"createdAt"`           // 创建时间
 }
 
@@ -77,7 +79,7 @@ type AccessKey struct {
 	CreatedAt       time.Time `json:"createdAt"`
 	ExpiredAt       time.Time `json:"expiredAt"`
 	AccountID       string    `json:"accountId"`
-	Username        string    `json:"username"` // 用户名
+	Username        string    `json:"username"` // 创建者
 }
 
 // MFADevice 表示 MFA 设备
@@ -97,10 +99,12 @@ type IamGroup struct {
 
 // IamRole 表示 IAM 角色
 type IamRole struct {
-	ARN              string   `json:"arn"`
-	Name             string   `json:"name"`
-	AssumeRolePolicy string   `json:"assumeRolePolicy"` // 信任策略JSON字符串
-	AttachedPolicies []string `json:"attachedPolicies"` // 附加策略名称列表
+	ARN              string    `json:"arn"`
+	Name             string    `json:"name"`
+	Description      string    `json:"description"`
+	AssumeRolePolicy string    `json:"assumeRolePolicy,omitempty"` // 信任策略JSON字符串
+	AttachedPolicies []string  `json:"attachedPolicies"`           // 附加策略名称列表
+	CreateAt         time.Time `json:"createAt"`
 }
 
 // IamPolicy 表示 IAM 策略
@@ -228,6 +232,7 @@ func (a *IamAccount) CreateUser(username, password string) (*IamUser, error) {
 		Groups:     make([]string, 0),
 		Roles:      make([]string, 0),
 		Tags:       make(map[string]string, 0),
+		Enabled:    true,
 	}
 
 	a.Users[username] = user
@@ -433,17 +438,44 @@ func (a *IamAccount) AddUserToGroup(username, groupName string) error {
 // CreatePolicy 创建新策略
 func (a *IamAccount) CreatePolicy(caller *IamUser, name, description, document string) (*IamPolicy, error) {
 	// 检查调用者是否有创建策略的权限
-	if !a.canManageIAM(caller) {
-		return nil, errors.New("unauthorized to create policies")
-	}
+	//if !a.canManageIAM(caller) {
+	//	return nil, xhttp.ToError(xhttp.ErrAccessDenied)
+	//}
 
 	if _, exists := a.Policies[name]; exists {
-		return nil, errors.New("policy already exists")
+		return nil, xhttp.ToError(xhttp.ErrPolicyAlreadyExists)
 	}
 
 	// 验证策略文档
 	if err := ValidatePolicyDocument(document); err != nil {
-		return nil, fmt.Errorf("invalid policy document: %w", err)
+		return nil, xhttp.ToError(xhttp.ErrInvalidPolicyDocument)
+	}
+
+	policy := &IamPolicy{
+		ARN:         FormatPolicyARN(a.AccountID, name),
+		Name:        name,
+		Description: description,
+		Document:    document,
+	}
+
+	a.Policies[name] = policy
+	return policy, nil
+}
+
+// UpdatePolicy 更新策略
+func (a *IamAccount) UpdatePolicy(caller *IamUser, name, description, document string) (*IamPolicy, error) {
+	// 检查调用者是否有创建策略的权限
+	//if !a.canManageIAM(caller) {
+	//	return nil, xhttp.ToError(xhttp.ErrAccessDenied)
+	//}
+
+	if p, exists := a.Policies[name]; !exists || p == nil {
+		return nil, xhttp.ToError(xhttp.ErrNoSuchIamPolicy)
+	}
+
+	// 验证策略文档
+	if err := ValidatePolicyDocument(document); err != nil {
+		return nil, xhttp.ToError(xhttp.ErrInvalidPolicyDocument)
 	}
 
 	policy := &IamPolicy{
@@ -458,11 +490,16 @@ func (a *IamAccount) CreatePolicy(caller *IamUser, name, description, document s
 }
 
 // DeletePolicy 删除策略
-func (a *IamAccount) DeletePolicy(policyName string) error {
+func (a *IamAccount) DeletePolicy(caller *IamUser, policyName string) error {
+	// 检查调用者是否有创建策略的权限
+	//if !a.canManageIAM(caller) {
+	//	return xhttp.ToError(xhttp.ErrAccessDenied)
+	//}
+
 	// 检查策略是否存在
 	_, exists := a.Policies[policyName]
 	if !exists {
-		return errors.New("policy not found")
+		return xhttp.ToError(xhttp.ErrNoSuchIamPolicy)
 	}
 
 	// 从所有用户中移除该策略
@@ -506,10 +543,10 @@ func (a *IamAccount) DeletePolicy(policyName string) error {
 // AttachPolicyToUser 附加策略到用户
 func (a *IamAccount) AttachPolicyToUser(caller *IamUser, username, policyName string) error {
 	// 检查特定 IAM 权限
-	allowed, _ := a.CheckPermission(caller.Username, "iam:AttachUserPolicy", "*")
-	if !allowed {
-		return errors.New("unauthorized to attach policies")
-	}
+	//allowed, _ := a.CheckPermission(caller.Username, "iam:AttachUserPolicy", "*")
+	//if !allowed {
+	//	return xhttp.ToError(xhttp.ErrAccessDenied)
+	//}
 
 	user, exists := a.Users[username]
 	if !exists {
@@ -551,28 +588,70 @@ func (a *IamAccount) canManageIAM(user *IamUser) bool {
 // ============================== 角色操作 ==============================
 
 // CreateRole 创建新角色
-func (a *IamAccount) CreateRole(caller *IamUser, name, assumeRolePolicy string) (*IamRole, error) {
-	if !a.canManageIAM(caller) {
-		return nil, errors.New("unauthorized to create roles")
-	}
+func (a *IamAccount) CreateRole(caller *IamUser, name, desc, assumeRolePolicy string, attachPolicies []string) (*IamRole, error) {
+	//if !a.canManageIAM(caller) {
+	//	return nil, xhttp.ToError(xhttp.ErrAccessDenied)
+	//}
 
 	if _, exists := a.Roles[name]; exists {
-		return nil, errors.New("role already exists")
+		return nil, xhttp.ToError(xhttp.ErrRoleAlreadyExists)
 	}
 
 	// 验证信任策略是否是有效的 JSON
-	if !isValidJSON(assumeRolePolicy) {
-		return nil, errors.New("assumeRolePolicy must be valid JSON")
+	if assumeRolePolicy != "" && !isValidJSON(assumeRolePolicy) {
+		return nil, xhttp.ToError(xhttp.ErrInvalidPolicyDocument)
 	}
 
 	role := &IamRole{
 		ARN:              FormatRoleARN(a.AccountID, name),
 		Name:             name,
+		Description:      desc,
 		AssumeRolePolicy: assumeRolePolicy,
-		AttachedPolicies: make([]string, 0),
+		CreateAt:         time.Now().UTC(),
 	}
 
 	a.Roles[name] = role
+	for _, policyName := range attachPolicies {
+		if err := a.AttachPolicyToRole(name, policyName); err != nil {
+			return nil, err
+		}
+	}
+	return role, nil
+}
+
+// UpdateRole 创建新角色
+func (a *IamAccount) UpdateRole(caller *IamUser, name, desc, assumeRolePolicy string, attachPolicies []string) (*IamRole, error) {
+	//if !a.canManageIAM(caller) {
+	//	return nil, xhttp.ToError(xhttp.ErrAccessDenied)
+	//}
+	oldrole, exists := a.Roles[name]
+	if !exists || oldrole == nil {
+		return nil, xhttp.ToError(xhttp.ErrNoSuchRole)
+	}
+
+	// 验证信任策略是否是有效的 JSON
+	if assumeRolePolicy != "" && !isValidJSON(assumeRolePolicy) {
+		return nil, xhttp.ToError(xhttp.ErrInvalidPolicyDocument)
+	}
+
+	role := &IamRole{
+		ARN:              FormatRoleARN(a.AccountID, name),
+		Name:             name,
+		Description:      desc,
+		AssumeRolePolicy: assumeRolePolicy,
+		CreateAt:         time.Now().UTC(),
+	}
+
+	if oldrole != nil {
+		role.CreateAt = oldrole.CreateAt
+	}
+
+	a.Roles[name] = role
+	for _, policyName := range attachPolicies {
+		if err := a.AttachPolicyToRole(name, policyName); err != nil {
+			return nil, err
+		}
+	}
 	return role, nil
 }
 
@@ -580,19 +659,12 @@ func (a *IamAccount) CreateRole(caller *IamUser, name, assumeRolePolicy string) 
 func (a *IamAccount) AttachPolicyToRole(roleName, policyName string) error {
 	role, exists := a.Roles[roleName]
 	if !exists {
-		return errors.New("role not found")
+		return xhttp.ToError(xhttp.ErrNoSuchRole)
 	}
 
 	// 检查策略是否存在
 	if _, pExists := a.Policies[policyName]; !pExists {
-		return errors.New("policy not found")
-	}
-
-	// 检查是否已附加
-	for _, p := range role.AttachedPolicies {
-		if p == policyName {
-			return errors.New("policy already attached to role")
-		}
+		return xhttp.ToError(xhttp.ErrNoSuchIamPolicy)
 	}
 
 	role.AttachedPolicies = append(role.AttachedPolicies, policyName)
@@ -603,7 +675,7 @@ func (a *IamAccount) AttachPolicyToRole(roleName, policyName string) error {
 func (a *IamAccount) UpdateAssumeRolePolicy(roleName, assumeRolePolicy string) error {
 	role, exists := a.Roles[roleName]
 	if !exists {
-		return errors.New("role not found")
+		return xhttp.ToError(xhttp.ErrNoSuchRole)
 	}
 
 	// 验证新的信任策略
@@ -619,17 +691,21 @@ func (a *IamAccount) UpdateAssumeRolePolicy(roleName, assumeRolePolicy string) e
 func (a *IamAccount) ListAttachedRolePolicies(roleName string) ([]string, error) {
 	role, exists := a.Roles[roleName]
 	if !exists {
-		return nil, errors.New("role not found")
+		return nil, xhttp.ToError(xhttp.ErrNoSuchRole)
 	}
 	return role.AttachedPolicies, nil
 }
 
 // DeleteRole 删除角色
-func (a *IamAccount) DeleteRole(roleName string) error {
+func (a *IamAccount) DeleteRole(caller *IamUser, roleName string) error {
+	//if !a.canManageIAM(caller) {
+	//	return nil, xhttp.ToError(xhttp.ErrAccessDenied)
+	//}
+
 	// 检查角色是否存在
 	_, exists := a.Roles[roleName]
 	if !exists {
-		return errors.New("role not found")
+		return xhttp.ToError(xhttp.ErrNoSuchRole)
 	}
 
 	// 从所有用户中移除该角色
@@ -704,7 +780,7 @@ func (a *IamAccount) CheckPermission(username, action, resource string) (bool, e
 	}
 
 	// 2. 收集用户所有策略（直接附加+通过组附加+通过角色附加）
-	allPolicies := a.getUserAllPolicies(user)
+	allPolicies := a.GetUserAllPolicies(user)
 
 	// 3. 检查权限边界（如果设置了）
 	if user.PermissionsBoundary != "" {
@@ -759,7 +835,7 @@ func (a *IamAccount) IsAllow(username, action, resource string) bool {
 }
 
 // 获取用户所有策略（直接附加+通过组附加+通过角色附加）
-func (a *IamAccount) getUserAllPolicies(user *IamUser) []*IamPolicy {
+func (a *IamAccount) GetUserAllPolicies(user *IamUser) []*IamPolicy {
 	var policies []*IamPolicy
 
 	// 直接附加的策略
@@ -858,7 +934,7 @@ func (a *IamAccount) ListUserPermissions(username string) ([]string, error) {
 	}
 
 	permissions := make(map[string]struct{})
-	allPolicies := a.getUserAllPolicies(user)
+	allPolicies := a.GetUserAllPolicies(user)
 
 	for _, policy := range allPolicies {
 		var doc PolicyDocument

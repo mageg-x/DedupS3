@@ -40,6 +40,8 @@ const en = {
     networkErrorPleaseRetry: "Network error, please try again later",
     loading: "Loading...",
     error: "Error",
+    noPermission: "You do not have permission to access this feature",
+    fetchUserInfoFailed: "Failed to fetch user information"
   },
 
   // 菜单
@@ -383,6 +385,8 @@ const en = {
     searchPlaceholder: "Search role name...",
     confirmDeleteTitle: "Confirm Delete",
     confirmDeleteMessage: 'Are you sure you want to delete role "{name}"?',
+    confirmDeleteDescription: "This action cannot be undone.",
+    confirmDeletePolicyWarning: 'Note: This role is associated with {count} policies, which will be removed after deletion.',
     createdSuccess: "Role created successfully!",
     updatedSuccess: "Role updated successfully!",
     deletedSuccess: "Role deleted successfully!",
@@ -398,6 +402,8 @@ const en = {
     associatedPolicies: "Associated Policies",
     associatedUsers: "Associated Users",
     creationTime: "Creation Time",
+    noAssociatedPolicies: "No associated policies",
+    noDescription: "No Description",
     operation: "Actions",
     noDescription: "No Description",
     view: "View",
@@ -410,6 +416,9 @@ const en = {
     cancel: "Cancel",
     save: "Save",
     create: "Create",
+    policyAssociation: "Associated Policies",
+    noAvailablePolicies: "No available policies, please create policies first",
+    roleDetails: "Role Details",
   },
   // 策略管理页面
   policy: {
@@ -461,8 +470,10 @@ const en = {
     pleaseEnterPolicyName: "Please enter policy name",
     pleaseEnterPolicyDescription: "Please enter policy description",
     validateJSON: "Validate JSON",
+    formatJSON: "Format JSON",
     jsonFormatError: "JSON format error",
     formatCorrect: "Format correct",
+    formatSuccess: "JSON formatted successfully",
     useStandardS3Format: "Please use standard S3 policy format",
     cancel: "Cancel",
     update: "Update",

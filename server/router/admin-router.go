@@ -76,6 +76,20 @@ func registerAdminRouter(mr *mux.Router) {
 	api_router.Methods(http.MethodPost).Path("/bucket/deleteobject").HandlerFunc(handler.AdminDelObjectHandler)
 	api_router.Methods(http.MethodPost).Path("/bucket/getobject").HandlerFunc(handler.AdminGetObjectHandler)
 
+	api_router.Methods(http.MethodGet).Path("/user/info").HandlerFunc(handler.AdminGetUserHandler)
+	api_router.Methods(http.MethodGet).Path("/user/list").HandlerFunc(handler.AdminListUserHandler)
+	api_router.Methods(http.MethodGet).Path("/group/list").HandlerFunc(handler.AdminListGroupHandler)
+	api_router.Methods(http.MethodGet).Path("/role/list").HandlerFunc(handler.AdminListRoleHandler)
+	api_router.Methods(http.MethodGet).Path("/role/get").HandlerFunc(handler.AdminGetRoleHandler)
+	api_router.Methods(http.MethodPost).Path("/role/create").HandlerFunc(handler.AdminCreateRoleHandler)
+	api_router.Methods(http.MethodPost).Path("/role/update").HandlerFunc(handler.AdminUpdateRoleHandler)
+	api_router.Methods(http.MethodDelete).Path("/role/delete").HandlerFunc(handler.AdminDeleteRoleHandler)
+	api_router.Methods(http.MethodGet).Path("/policy/list").HandlerFunc(handler.AdminListPolicyHandler)
+	api_router.Methods(http.MethodGet).Path("/policy/get").HandlerFunc(handler.AdminGetPolicyHandler)
+	api_router.Methods(http.MethodPost).Path("/policy/create").HandlerFunc(handler.AdminCreatePolicyHandler)
+	api_router.Methods(http.MethodPost).Path("/policy/update").HandlerFunc(handler.AdminSetPolicyHandler)
+	api_router.Methods(http.MethodDelete).Path("/policy/delete").HandlerFunc(handler.AdminDeletePolicyHandler)
+
 	// 处理静态资源路由
 	ar.Methods(http.MethodGet).Path("/{path:.*}").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.GetLogger("boulder").Errorf("serving static: %s", r.URL.Path)

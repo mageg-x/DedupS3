@@ -47,7 +47,7 @@ func AdminAuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		// 调用 VerifyToken 校验并可能返回新 token ===
-		username, newToken, err := utils.VerifyToken(tokenString)
+		loginname, newToken, err := utils.VerifyToken(tokenString)
 		if err != nil {
 			logger.GetLogger("boulder").Errorf("Error verifying token: %v", err)
 			xhttp.AdminWriteJSONError(w, r, http.StatusUnauthorized, "invalid token", nil, http.StatusUnauthorized)
@@ -55,11 +55,20 @@ func AdminAuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		// 将用户信息注入请求上下文（供后续 handler 使用）
-		username = strings.TrimSpace(username)
-		if username != "" {
-			ctx := context.WithValue(r.Context(), "username", username)
-			r = r.WithContext(ctx)
+		loginname = strings.TrimSpace(loginname)
+
+		//account 登录 直接account
+		//user 登录 为 username@account
+		//提取account 和 username
+		username, account := ParseLoginUsername(loginname)
+		if account == "" || username == "" {
+			logger.GetLogger("boulder").Errorf("failed get account name %s", loginname)
+			xhttp.AdminWriteJSONError(w, r, http.StatusUnauthorized, "invalid token", nil, http.StatusUnauthorized)
 		}
+		ctx := r.Context()
+		ctx = context.WithValue(ctx, "username", username)
+		ctx = context.WithValue(ctx, "account", account)
+		r = r.WithContext(ctx)
 
 		// 如果有新 token，通过响应头返回 ===
 		if newToken != "" {
@@ -82,4 +91,22 @@ func AdminAuthMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// ParseLoginUsername 解析登录输入，返回 username 和 account
+func ParseLoginUsername(input string) (username, account string) {
+	if input == "" {
+		return "", ""
+	}
+
+	if strings.Contains(input, "@") {
+		parts := strings.SplitN(input, "@", 2) // 分成两部分，避免多个@出问题
+		username = parts[0]
+		account = parts[1]
+	} else {
+		// 只有 account，username 留空 或 设为 "admin" / account，视业务而定
+		username = input // 或者 username = input （如果是主账号用户）
+		account = input
+	}
+	return username, account
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/mageg-x/boulder/middleware"
 	"io"
 	"net/http"
 	"net/url"
@@ -31,19 +32,41 @@ type PrepareEnv struct {
 	accountID string
 	accessKey string
 	ac        *meta.IamAccount
+	user      *meta.IamUser
+	iam       *iam2.IamService
 	bs        *sb.BucketService
 	os        *object.ObjectService
+	bi        *meta.BucketMetadata
 }
 
-func Prepare(w http.ResponseWriter, r *http.Request, bucketName string) *PrepareEnv {
+// IamUserInfo 构建返回的用户信息
+type IamUserInfo struct {
+	Username       string           `json:"username"`
+	Account        string           `json:"account"`
+	Group          []string         `json:"group"`
+	Role           []string         `json:"role"`
+	AttachPolicies []string         `json:"attachPolicies"`
+	AllPolicies    []meta.Statement `json:"allPolicies"`
+	Enabled        bool             `json:"enabled"`
+	CreatedAt      time.Time        `json:"createdAt"`
+}
+
+func Prepare4Iam(w http.ResponseWriter, r *http.Request) *PrepareEnv {
 	// 获取用户名信息
 	username, _ := r.Context().Value("username").(string)
 	if username == "" {
 		xhttp.AdminWriteJSONError(w, r, http.StatusUnauthorized, "invalid username", nil, http.StatusUnauthorized)
 		return nil
 	}
+
+	account, _ := r.Context().Value("account").(string)
+	if account == "" {
+		xhttp.AdminWriteJSONError(w, r, http.StatusUnauthorized, "invalid account", nil, http.StatusUnauthorized)
+		return nil
+	}
+
 	// 获取访问密钥
-	accountID := meta.GenerateAccountID(username)
+	accountID := meta.GenerateAccountID(account)
 	iamService := iam2.GetIamService()
 	if iamService == nil {
 		logger.GetLogger("boulder").Errorf("failed to get iam service")
@@ -54,19 +77,34 @@ func Prepare(w http.ResponseWriter, r *http.Request, bucketName string) *Prepare
 	ac, err := iamService.GetAccount(accountID)
 	if err != nil || ac == nil {
 		logger.GetLogger("boulder").Errorf("failed to get account %s", accountID)
-		xhttp.AdminWriteJSONError(w, r, http.StatusServiceUnavailable, "service unavailable", nil, http.StatusServiceUnavailable)
+		xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "account not found", nil, http.StatusForbidden)
 		return nil
 	}
 
-	adminUser, err := ac.GetUser("root")
-	if err != nil || adminUser == nil || len(adminUser.AccessKeys) == 0 {
+	user, err := ac.GetUser(username)
+	if err != nil || user == nil || len(user.AccessKeys) == 0 {
 		logger.GetLogger("boulder").Errorf("failed to get root user for account %s", accountID)
 		xhttp.AdminWriteJSONError(w, r, http.StatusServiceUnavailable, "service unavailable", nil, http.StatusServiceUnavailable)
 		return nil
 	}
 
-	accessKeyID := adminUser.AccessKeys[0].AccessKeyID
+	accessKeyID := user.AccessKeys[0].AccessKeyID
+	logger.GetLogger("boulder").Errorf("account %s  user %s has access key %s", accountID, username, accessKeyID)
+	return &PrepareEnv{
+		username:  username,
+		accountID: accountID,
+		accessKey: accessKeyID,
+		ac:        ac,
+		user:      user,
+		iam:       iamService,
+	}
+}
 
+func Prepare4S3(w http.ResponseWriter, r *http.Request, bucketName string) *PrepareEnv {
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
+		return nil
+	}
 	// 先检查bucket是否存在
 	bs := sb.GetBucketService()
 	if bs == nil {
@@ -74,9 +112,9 @@ func Prepare(w http.ResponseWriter, r *http.Request, bucketName string) *Prepare
 		xhttp.AdminWriteJSONError(w, r, http.StatusServiceUnavailable, "service unavailable", nil, http.StatusServiceUnavailable)
 		return nil
 	}
-	_, err = bs.GetBucketInfo(&sb.BaseBucketParams{
+	bi, err := bs.GetBucketInfo(&sb.BaseBucketParams{
 		BucketName:  bucketName,
-		AccessKeyID: accessKeyID,
+		AccessKeyID: pe.accessKey,
 	})
 	if err != nil {
 		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
@@ -100,14 +138,11 @@ func Prepare(w http.ResponseWriter, r *http.Request, bucketName string) *Prepare
 		xhttp.AdminWriteJSONError(w, r, http.StatusServiceUnavailable, "service unavailable", nil, http.StatusServiceUnavailable)
 		return nil
 	}
-	return &PrepareEnv{
-		username:  username,
-		accountID: accountID,
-		accessKey: accessKeyID,
-		ac:        ac,
-		bs:        bs,
-		os:        _os,
-	}
+
+	pe.os = _os
+	pe.bs = bs
+	pe.bi = bi
+	return pe
 }
 
 func AdminLoginHandler(w http.ResponseWriter, r *http.Request) {
@@ -121,13 +156,14 @@ func AdminLoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	username := strings.TrimSpace(req.Username)
+	loginname := strings.TrimSpace(req.Username)
+	username, account := middleware.ParseLoginUsername(loginname)
 	if err := meta.ValidateUsername(username); err != nil {
 		logger.GetLogger("boulder").Errorf("username %s is invalid format", username)
 		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid username", nil, http.StatusBadRequest)
 		return
 	}
-	accountID := meta.GenerateAccountID(req.Username)
+	accountID := meta.GenerateAccountID(account)
 
 	iam := iam2.GetIamService()
 	ac, err := iam.GetAccount(accountID)
@@ -145,7 +181,7 @@ func AdminLoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	password := strings.TrimSpace(req.Password)
-	inputStr := user.Password + ":" + user.Username
+	inputStr := user.Password + ":" + loginname
 	outputStr := md5.Sum([]byte(inputStr))
 	expectStr := hex.EncodeToString(outputStr[:])
 	if expectStr != password {
@@ -155,7 +191,7 @@ func AdminLoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 生成 JWT
-	token, err := utils.GenerateToken(username)
+	token, err := utils.GenerateToken(loginname)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to generate token for user %s", username)
 		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "internal server error", nil, http.StatusInternalServerError)
@@ -207,17 +243,15 @@ func AdminLogoutHandler(w http.ResponseWriter, r *http.Request) {
 
 func AdminGetStatsHandler(w http.ResponseWriter, r *http.Request) {
 	logger.GetLogger("boulder").Errorf("[Call GetStatsHandler] %#v", r.URL)
-	username, _ := r.Context().Value("username").(string)
-	if username == "" {
-		xhttp.AdminWriteJSONError(w, r, http.StatusUnauthorized, "invalid username", nil, http.StatusUnauthorized)
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
 		return
 	}
 
-	accountID := meta.GenerateAccountID(username)
 	ss := stats.GetStatsService()
-	_stats, err := ss.GetAccountStats(accountID)
+	_stats, err := ss.GetAccountStats(pe.accountID)
 	if err != nil || _stats == nil {
-		logger.GetLogger("boulder").Errorf("failed to get stats for account %s", username)
+		logger.GetLogger("boulder").Errorf("failed to get stats for account %s", pe.username)
 		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "internal server error", nil, http.StatusInternalServerError)
 		return
 	}
@@ -227,36 +261,10 @@ func AdminGetStatsHandler(w http.ResponseWriter, r *http.Request) {
 
 func AdminListBucketsHandler(w http.ResponseWriter, r *http.Request) {
 	logger.GetLogger("boulder").Errorf("[Call ListBucketHandler] %#v", r.URL)
-	username, _ := r.Context().Value("username").(string)
-	if username == "" {
-		xhttp.AdminWriteJSONError(w, r, http.StatusUnauthorized, "invalid username", nil, http.StatusUnauthorized)
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
 		return
 	}
-	accountID := meta.GenerateAccountID(username)
-
-	iamService := iam2.GetIamService()
-	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
-		xhttp.AdminWriteJSONError(w, r, http.StatusServiceUnavailable, "invalid username", nil, http.StatusServiceUnavailable)
-		return
-	}
-
-	ac, err := iamService.GetAccount(accountID)
-	if err != nil || ac == nil {
-		logger.GetLogger("boulder").Errorf("failed to get account %s", accountID)
-		xhttp.AdminWriteJSONError(w, r, http.StatusServiceUnavailable, "internal server error", nil, http.StatusServiceUnavailable)
-		return
-	}
-
-	adminUser, err := ac.GetUser("root")
-	if err != nil || adminUser == nil || len(adminUser.AccessKeys) == 0 {
-		logger.GetLogger("boulder").Errorf("failed to get root user for account %s", accountID)
-		xhttp.AdminWriteJSONError(w, r, http.StatusServiceUnavailable, "internal server error", nil, http.StatusServiceUnavailable)
-		return
-	}
-
-	accessKeyID := adminUser.AccessKeys[0].AccessKeyID
-
 	bs := sb.GetBucketService()
 	if bs == nil {
 		logger.GetLogger("boulder").Errorf("bucket service is nil")
@@ -265,7 +273,7 @@ func AdminListBucketsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	buckets, _, err := bs.ListBuckets(&sb.BaseBucketParams{
-		AccessKeyID: accessKeyID,
+		AccessKeyID: pe.accessKey,
 	})
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to list buckets: %v", err)
@@ -294,16 +302,15 @@ func AdminListBucketsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if needRefresh {
-		ss.RefreshAccountStats(accountID)
+		ss.RefreshAccountStats(pe.accountID)
 	}
 	xhttp.AdminWriteJSONError(w, r, 0, "success", bucketList, http.StatusOK)
 }
 
 func AdminCreateBucketHandler(w http.ResponseWriter, r *http.Request) {
 	logger.GetLogger("boulder").Errorf("[call createbuckethandler] %#v", r.URL)
-	username, _ := r.Context().Value("username").(string)
-	if username == "" {
-		xhttp.AdminWriteJSONError(w, r, http.StatusUnauthorized, "invalid username", nil, http.StatusUnauthorized)
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
 		return
 	}
 
@@ -319,31 +326,6 @@ func AdminCreateBucketHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accountID := meta.GenerateAccountID(username)
-
-	iamService := iam2.GetIamService()
-	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
-		xhttp.AdminWriteJSONError(w, r, http.StatusServiceUnavailable, "invalid username", nil, http.StatusServiceUnavailable)
-		return
-	}
-
-	ac, err := iamService.GetAccount(accountID)
-	if err != nil || ac == nil {
-		logger.GetLogger("boulder").Errorf("failed to get account %s", accountID)
-		xhttp.AdminWriteJSONError(w, r, http.StatusServiceUnavailable, "internal server error", nil, http.StatusServiceUnavailable)
-		return
-	}
-
-	adminUser, err := ac.GetUser("root")
-	if err != nil || adminUser == nil || len(adminUser.AccessKeys) == 0 {
-		logger.GetLogger("boulder").Errorf("failed to get root user for account %s", accountID)
-		xhttp.AdminWriteJSONError(w, r, http.StatusServiceUnavailable, "internal server error", nil, http.StatusServiceUnavailable)
-		return
-	}
-
-	accessKeyID := adminUser.AccessKeys[0].AccessKeyID
-
 	bs := sb.GetBucketService()
 	if bs == nil {
 		logger.GetLogger("boulder").Errorf("bucket service is nil")
@@ -351,11 +333,11 @@ func AdminCreateBucketHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cfg := xconf.Get()
-	err = bs.CreateBucket(&sb.BaseBucketParams{
+	err := bs.CreateBucket(&sb.BaseBucketParams{
 		BucketName:        req.Name,
 		Location:          cfg.Node.Region,
 		ObjectLockEnabled: false,
-		AccessKeyID:       accessKeyID,
+		AccessKeyID:       pe.accessKey,
 	})
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed create bucket err: %v", err)
@@ -378,7 +360,7 @@ func AdminDeleteBucketHandler(w http.ResponseWriter, r *http.Request) {
 	query := utils.DecodeQuerys(r.URL.Query())
 	bucketName := query.Get("name")
 
-	pe := Prepare(w, r, bucketName)
+	pe := Prepare4S3(w, r, bucketName)
 	if pe == nil {
 		return
 	}
@@ -421,7 +403,7 @@ func AdminListObjectsHandler(w http.ResponseWriter, r *http.Request) {
 	delimiter := "/"
 	logger.GetLogger("boulder").Debugf("get query %#v  prefix %s", query, prefix)
 
-	pe := Prepare(w, r, bucketName)
+	pe := Prepare4S3(w, r, bucketName)
 	if pe == nil {
 		return
 	}
@@ -517,7 +499,7 @@ func AdminCreateFolderHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pe := Prepare(w, r, req.BucketName)
+	pe := Prepare4S3(w, r, req.BucketName)
 	if pe == nil {
 		return
 	}
@@ -586,7 +568,7 @@ func AdminPutObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pe := Prepare(w, r, bucketName)
+	pe := Prepare4S3(w, r, bucketName)
 	if pe == nil {
 		return
 	}
@@ -674,7 +656,7 @@ func AdminDelObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pe := Prepare(w, r, req.BucketName)
+	pe := Prepare4S3(w, r, req.BucketName)
 	if pe == nil {
 		return
 	}
@@ -715,7 +697,7 @@ func AdminDelObjectHandler(w http.ResponseWriter, r *http.Request) {
 			allObjectKeys = append(allObjectKeys, key)
 		}
 	}
-	logger.GetLogger("boulder").Errorf("prepare to delete key %#v", allObjectKeys)
+	logger.GetLogger("boulder").Errorf("Prepare4S3 to delete key %#v", allObjectKeys)
 	deleteKeys := make([]string, 0, len(allObjectKeys))
 	for _, objkey := range allObjectKeys {
 		// 执行删除操作
@@ -783,7 +765,7 @@ func AdminGetObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	logger.GetLogger("boulder").Errorf("download object list : %#v", objectKeys)
 
-	pe := Prepare(w, r, req.BucketName)
+	pe := Prepare4S3(w, r, req.BucketName)
 	if pe == nil {
 		return
 	}
@@ -824,7 +806,7 @@ func AdminGetObjectHandler(w http.ResponseWriter, r *http.Request) {
 			allObjectKeys = append(allObjectKeys, key)
 		}
 	}
-	logger.GetLogger("boulder").Errorf("prepare to download key %#v", allObjectKeys)
+	logger.GetLogger("boulder").Errorf("Prepare4S3 to download key %#v", allObjectKeys)
 	if len(allObjectKeys) == 0 {
 		logger.GetLogger("boulder").Errorf("no object to download")
 		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
@@ -917,4 +899,408 @@ func AdminGetObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 		logger.GetLogger("boulder").Infof("successfully downloaded %d objects as zip from bucket %s", len(allObjectKeys), req.BucketName)
 	}
+}
+
+func AdminListUserHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Errorf("[call adminListUserHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
+		return
+	}
+
+	userList := make([]*IamUserInfo, 0)
+
+	for _, u := range pe.ac.Users {
+		if u.IsRoot {
+			continue
+		}
+		ui := &IamUserInfo{
+			Username:       u.Username,
+			Account:        pe.ac.Name,
+			Group:          utils.StringSlice(u.Groups),
+			Role:           utils.StringSlice(u.Roles),
+			AttachPolicies: utils.StringSlice(u.AttachedPolicies),
+			AllPolicies:    make([]meta.Statement, 0),
+			Enabled:        u.Enabled,
+			CreatedAt:      u.CreatedAt,
+		}
+		userList = append(userList, ui)
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", userList, http.StatusOK)
+}
+func AdminGetUserHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Errorf("[call adminGetUserHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
+		return
+	}
+
+	userInfo := &IamUserInfo{
+		Username:       pe.username,
+		Account:        pe.ac.Name,
+		Group:          utils.StringSlice(pe.user.Groups),
+		Role:           utils.StringSlice(pe.user.Roles),
+		AttachPolicies: utils.StringSlice(pe.user.AttachedPolicies),
+		AllPolicies:    make([]meta.Statement, 0),
+		Enabled:        pe.user.Enabled,
+		CreatedAt:      pe.user.CreatedAt,
+	}
+
+	allPolices := pe.ac.GetUserAllPolicies(pe.user)
+	for _, policy := range allPolices {
+		if policy != nil && policy.Document != "" {
+			var pd meta.PolicyDocument
+			err := json.Unmarshal([]byte(policy.Document), &pd)
+			if err != nil {
+				logger.GetLogger("boulder").Errorf("failed to unmarshal policy %s: %v", policy.Name, err)
+				continue
+			}
+			if pd.Statement != nil {
+				userInfo.AllPolicies = append(userInfo.AllPolicies, pd.Statement...)
+			}
+		}
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", userInfo, http.StatusOK)
+}
+
+func AdminSetUserHandler(w http.ResponseWriter, r *http.Request) {
+
+}
+
+func AdminCreateUserHandler(w http.ResponseWriter, r *http.Request) {
+
+}
+
+func AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
+
+}
+
+func AdminListPolicyHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Errorf("[call adminListPolicyHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
+		return
+	}
+	policies := make([]*meta.IamPolicy, 0)
+	if pe.ac.Policies != nil {
+		for _, policy := range pe.ac.Policies {
+			policies = append(policies, policy)
+		}
+	}
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", policies, http.StatusOK)
+}
+
+func AdminGetPolicyHandler(w http.ResponseWriter, r *http.Request) {
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
+		return
+	}
+	if pe.ac == nil || pe.ac.Policies == nil {
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "invalid policy request", nil, http.StatusInternalServerError)
+		return
+	}
+
+	query := utils.DecodeQuerys(r.URL.Query())
+	name := query.Get("name")
+	name = strings.TrimSpace(name)
+
+	if p, exists := pe.ac.Policies[name]; !exists || p == nil {
+		logger.GetLogger("boulder").Errorf("policy %s does not exist", name)
+		xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "policy name does not exist", nil, http.StatusNotFound)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", pe.ac.Policies[name], http.StatusOK)
+}
+
+func AdminSetPolicyHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Errorf("[call adminListPolicyHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
+		return
+	}
+
+	type Req struct {
+		Name string `json:"name"`
+		Desc string `json:"desc"`
+		Doc  string `json:"doc"`
+	}
+
+	// 解析请求体
+	var req Req
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		logger.GetLogger("boulder").Errorf("failed to decode request: %v", err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
+		return
+	}
+	if pe.ac == nil || pe.user == nil {
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "invalid policy document", nil, http.StatusInternalServerError)
+		return
+	}
+
+	err := pe.iam.UpdatePolicy(pe.accountID, pe.username, req.Name, req.Desc, req.Doc)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to update policy: %v", err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchIamPolicy)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "policy not exists", nil, http.StatusNotFound)
+			return
+		}
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid policy document", nil, http.StatusBadRequest)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
+
+func AdminCreatePolicyHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Errorf("[call adminListPolicyHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
+		return
+	}
+
+	if pe.ac == nil || pe.user == nil {
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "invalid policy document", nil, http.StatusInternalServerError)
+		return
+	}
+	type Req struct {
+		Name string `json:"name"`
+		Desc string `json:"desc"`
+		Doc  string `json:"doc"`
+	}
+
+	// 解析请求体
+	var req Req
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		logger.GetLogger("boulder").Errorf("failed to decode request: %v", err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
+		return
+	}
+	err := pe.iam.CreatePolicy(pe.accountID, pe.username, req.Name, req.Desc, req.Doc)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to create policy: %v", err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrPolicyAlreadyExists)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusConflict, "policy already exists", nil, http.StatusConflict)
+			return
+		}
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid policy document", nil, http.StatusBadRequest)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
+
+func AdminDeletePolicyHandler(w http.ResponseWriter, r *http.Request) {
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
+		return
+	}
+	if pe.ac == nil || pe.user == nil {
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "invalid policy request", nil, http.StatusInternalServerError)
+		return
+	}
+
+	query := utils.DecodeQuerys(r.URL.Query())
+	name := query.Get("name")
+	name = strings.TrimSpace(name)
+
+	err := pe.iam.DeletePolicy(pe.accountID, pe.username, name)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to delete policy: %v", err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchIamPolicy)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "policy not exists", nil, http.StatusNotFound)
+			return
+		}
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "delete policy failed", nil, http.StatusBadRequest)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
+
+func AdminListGroupHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Errorf("[call adminListGroupHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
+		return
+	}
+	groups := make([]*meta.IamGroup, 0)
+	if pe.ac.Groups != nil {
+		for _, group := range pe.ac.Groups {
+			groups = append(groups, group)
+		}
+	}
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", groups, http.StatusOK)
+}
+
+func AdminListRoleHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Errorf("[call adminListRoleHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+	roles := make([]*meta.IamRole, 0)
+	if pe.ac.Policies != nil {
+		for _, role := range pe.ac.Roles {
+			roles = append(roles, role)
+		}
+	}
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", roles, http.StatusOK)
+}
+
+func AdminGetRoleHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Errorf("[call adminGetRoleHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+	query := utils.DecodeQuerys(r.URL.Query())
+	name := query.Get("name")
+	name = strings.TrimSpace(name)
+	if p, exists := pe.ac.Roles[name]; !exists || p == nil {
+		logger.GetLogger("boulder").Errorf("role %s does not exist", name)
+		xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "role name does not exist", nil, http.StatusNotFound)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", pe.ac.Roles[name], http.StatusOK)
+}
+
+func AdminCreateRoleHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Errorf("[call adminCreateRoleHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
+		return
+	}
+
+	type Req struct {
+		Name           string   `json:"name"`
+		Desc           string   `json:"desc"`
+		AttachPolicies []string `json:"attachPolicies"`
+	}
+
+	// 解析请求体
+	var req Req
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		logger.GetLogger("boulder").Errorf("failed to decode request: %v", err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
+		return
+	}
+
+	err := pe.iam.CreateRole(pe.accountID, pe.username, req.Name, req.Desc, "", req.AttachPolicies)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to create role: %v", err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchIamPolicy)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "policy not exists", nil, http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrRoleAlreadyExists)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusConflict, "role already exists", nil, http.StatusConflict)
+			return
+		}
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "create role failed", nil, http.StatusBadRequest)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
+
+func AdminUpdateRoleHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Errorf("[call adminUpdateRoleHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
+		return
+	}
+
+	type Req struct {
+		Name           string   `json:"name"`
+		Desc           string   `json:"desc"`
+		AttachPolicies []string `json:"attachPolicies"`
+	}
+
+	// 解析请求体
+	var req Req
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		logger.GetLogger("boulder").Errorf("failed to decode request: %v", err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
+		return
+	}
+
+	err := pe.iam.UpdateRole(pe.accountID, pe.username, req.Name, req.Desc, "", req.AttachPolicies)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to update role: %v", err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchRole)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "role not exists", nil, http.StatusNotFound)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchIamPolicy)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "policy not exists", nil, http.StatusNotFound)
+			return
+		}
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "create role failed", nil, http.StatusBadRequest)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
+
+func AdminDeleteRoleHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Errorf("[call adminDeleteRoleHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+	query := utils.DecodeQuerys(r.URL.Query())
+	name := query.Get("name")
+	name = strings.TrimSpace(name)
+
+	if err := pe.iam.DeleteRole(pe.accountID, pe.username, name); err != nil {
+		logger.GetLogger("boulder").Errorf("failed to delete role: %v", err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchRole)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "role not exists", nil, http.StatusNotFound)
+			return
+		}
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "delete role failed", nil, http.StatusBadRequest)
+		return
+	}
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
 }

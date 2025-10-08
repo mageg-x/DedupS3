@@ -41,6 +41,13 @@ func DumpCaller(depth int) {
 	}
 }
 
+func StringSlice(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}
+
 func NextKey(s string) string {
 	bytes := []byte(s)
 	for i := len(bytes) - 1; i >= 0; i-- {

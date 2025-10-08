@@ -202,6 +202,7 @@ const (
 	ErrObjectLockInvalidHeaders
 	ErrInvalidTagDirective
 	ErrPolicyAlreadyAttached
+	ErrPolicyAlreadyExists
 	ErrPolicyNotAttached
 	ErrExcessData
 	ErrPolicyInvalidName
@@ -531,7 +532,9 @@ const (
 	ErrNoSuchAccessPoint
 	ErrInvalidTag
 	ErrMalformedPolicy
-
+	ErrRoleAlreadyExists
+	ErrNoSuchIamPolicy
+	ErrNoSuchRole
 	apiErrCodeEnd // This is used only for the testing code
 )
 
@@ -2597,6 +2600,11 @@ var errorCodes = errorCodeMap{
 		Description:    "The specified policy is already attached.",
 		HTTPStatusCode: http.StatusConflict,
 	},
+	ErrPolicyAlreadyExists: {
+		Code:           "ErrPolicyAlreadyExists",
+		Description:    "The specified policy is already exists.",
+		HTTPStatusCode: http.StatusConflict,
+	},
 	ErrPolicyNotAttached: {
 		Code:           "PolicyNotAttached",
 		Description:    "The specified policy is not found.",
@@ -2636,5 +2644,20 @@ var errorCodes = errorCodeMap{
 		Code:           "InvalidArgument",
 		Description:    "The request body is malformed.",
 		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrRoleAlreadyExists: {
+		Code:           "ErrRoleAlreadyExists",
+		Description:    "The specified role is already exists.",
+		HTTPStatusCode: http.StatusConflict,
+	},
+	ErrNoSuchIamPolicy: {
+		Code:           "ErrNoSuchIamPolicy",
+		Description:    "The iam policy does not exist",
+		HTTPStatusCode: http.StatusNotFound,
+	},
+	ErrNoSuchRole: {
+		Code:           "ErrNoSuchRole",
+		Description:    "The iam role does not exist",
+		HTTPStatusCode: http.StatusNotFound,
 	},
 }
