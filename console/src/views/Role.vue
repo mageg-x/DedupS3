@@ -3,7 +3,7 @@
     <!-- 页面标题和操作按钮 -->
     <div class="page-header flex items-center justify-between mb-6">
       <h1 class="text-2xl font-bold text-gray-800">{{ t('role.pageTitle') }}</h1>
-      <button @click="showAddRoleDialog"
+      <button @click="openAddRoleDialog"
         class="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
         <i class="fas fa-plus"></i>
         <span>{{ t('role.addRole') }}</span>
@@ -25,15 +25,17 @@
         <table class="w-full">
           <thead class="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">{{
                 t('role.name') }}</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">{{
                 t('role.description') }}</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">{{
-                t('role.associatedPolicies') }}</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{
+              <th
+                class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                {{
+                  t('role.associatedPolicies') }}</th>
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">{{
                 t('role.creationTime') }}</th>
-              <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{{
+              <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">{{
                 t('role.operation') }}</th>
             </tr>
           </thead>
@@ -54,7 +56,7 @@
                 {{ role.description || t('role.noDescription') }}
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
-                <span class="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
+                <span class="px-2 py-1 text-sm font-medium rounded-full bg-green-100 text-green-800">
                   {{ role.policies ? role.policies.length : 0 }}
                 </span>
               </td>
@@ -67,11 +69,11 @@
                   class="text-green-600 hover:text-green-900 transition-colors mr-3">
                   <i class="fas fa-eye mr-1"></i>{{ t('role.view') }}
                 </button>
-                <button @click="showEditRoleDialog(role)"
+                <button @click="openEditRoleDialog(role)"
                   class="text-blue-600 hover:text-blue-900 transition-colors mr-3">
                   <i class="fas fa-edit mr-1"></i>{{ t('role.edit') }}
                 </button>
-                <button @click="handleDeleteRole(role.name)" class="text-red-600 hover:text-red-900 transition-colors">
+                <button @click="openDeleteRoleDialog(role.name)" class="text-red-600 hover:text-red-900 transition-colors">
                   <i class="fas fa-trash-alt mr-1"></i>{{ t('role.delete') }}
                 </button>
               </td>
@@ -100,7 +102,7 @@
           </button>
         </div>
         <div class="p-5 flex-grow overflow-y-auto">
-          <form @submit.prevent="handleSubmit">
+          <form @submit.prevent="submitRoleForm">
             <div class="mb-4">
               <label for="roleName" class="block text-sm font-medium text-gray-700 mb-1">{{ t('role.name') }}</label>
               <input type="text" id="roleName" v-model="formData.name"
@@ -109,7 +111,7 @@
             </div>
             <div class="mb-6">
               <label for="description" class="block text-sm font-medium text-gray-700 mb-1">{{ t('role.description')
-                }}</label>
+              }}</label>
               <textarea id="description" v-model="formData.description"
                 class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 rows="2" :placeholder="t('role.pleaseEnterRoleDescription')"></textarea>
@@ -125,15 +127,13 @@
                   <input type="checkbox" :value="policy.id" v-model="formData.policyIds"
                     class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
                   <span class="ml-2 text-sm text-gray-700">{{ policy.name }}</span>
-                  <span v-if="policy.description" class="ml-2 text-xs text-gray-500">({{ policy.description }})</span>
+                  <span v-if="policy.description" class="ml-2 text-sm text-gray-500">({{ policy.description }})</span>
                 </label>
               </div>
               <div v-if="policiesList.length === 0" class="text-sm text-gray-500 p-4 text-center">
                 {{ t('role.noAvailablePolicies') }}
               </div>
             </div>
-
-
           </form>
         </div>
         <div class="p-5 border-t border-gray-100 flex items-center justify-end gap-3">
@@ -141,7 +141,7 @@
             class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
             {{ t('role.cancel') }}
           </button>
-          <button @click="handleSubmit"
+          <button @click="submitRoleForm"
             class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
             {{ isEditMode ? t('role.save') : t('role.create') }}
           </button>
@@ -243,11 +243,9 @@ import { listrole, getrole, createrole, setrole, delrole, listpolicy } from '../
 // 获取翻译函数
 const { t } = useI18n();
 
-// 角色和策略数据
+// ==================== 数据状态 ====================
 const rolesList = ref([]);
 const policiesList = ref([]);
-
-// 搜索关键字
 const searchKeyword = ref('');
 
 // 对话框状态
@@ -271,7 +269,7 @@ const showToast = ref(false);
 const toastMessage = ref('');
 const toastType = ref('success');
 
-// 过滤角色列表
+// ==================== 计算属性 ====================
 const filteredRoles = computed(() => {
   if (!searchKeyword.value) {
     return rolesList.value;
@@ -282,86 +280,76 @@ const filteredRoles = computed(() => {
   );
 });
 
-// 从API获取角色列表
+// ==================== API 数据加载 ====================
 const loadRolesFromAPI = async () => {
   try {
     const response = await listrole();
     if (response.code === 0) {
-      // 处理API返回的数据，确保每个角色都有policies字段
       rolesList.value = (response.data || []).map(role => ({
         ...role,
-        // 转换attachedPolicies为policies对象数组，或初始化为空数组
         policies: role.attachedPolicies ? role.attachedPolicies.map(policyName => ({
-          id: policyName, // 使用策略名称作为临时ID
+          id: policyName,
           name: policyName
         })) : []
       }));
     } else {
-      showToastMessage(response.msg || t('common.networkErrorPleaseRetry'), 'error');
+      showNotification(response.msg || t('common.networkErrorPleaseRetry'), 'error');
     }
   } catch (error) {
     console.error('获取角色列表异常:', error);
-    showToastMessage(t('common.networkErrorPleaseRetry'), 'error');
+    showNotification(t('common.networkErrorPleaseRetry'), 'error');
   }
 };
 
-// 从API获取策略列表
 const loadPoliciesFromAPI = async () => {
   try {
     const response = await listpolicy();
     if (response.code === 0) {
-      // 确保每个策略都有唯一的ID
       policiesList.value = (response.data || []).map(policy => ({
         ...policy,
-        // 如果没有ID或ID不唯一，使用name作为ID或生成唯一ID
         id: policy.id || policy.name || `policy_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
       }));
     } else {
-      showToastMessage(response.msg || t('common.networkErrorPleaseRetry'), 'error');
+      showNotification(response.msg || t('common.networkErrorPleaseRetry'), 'error');
     }
   } catch (error) {
     console.error('获取策略列表异常:', error);
-    showToastMessage(t('common.networkErrorPleaseRetry'), 'error');
+    showNotification(t('common.networkErrorPleaseRetry'), 'error');
   }
 };
 
-// 获取角色详情（包含策略信息）
+// ==================== 角色详情获取 ====================
 const getRoleDetails = async (roleName) => {
   try {
     const response = await getrole({ name: roleName });
     if (response.code === 0) {
       const role = response.data;
-      // 将策略名称转换为策略对象引用
-      role.policies = policiesList.value.filter(policy => 
+      role.policies = policiesList.value.filter(policy =>
         role.attachedPolicies.includes(policy.name)
       );
       return role;
     } else {
-      showToastMessage(response.msg || t('common.networkErrorPleaseRetry'), 'error');
+      showNotification(response.msg || t('common.networkErrorPleaseRetry'), 'error');
       return null;
     }
   } catch (error) {
     console.error('获取角色详情异常:', error);
-    showToastMessage(t('common.networkErrorPleaseRetry'), 'error');
+    showNotification(t('common.networkErrorPleaseRetry'), 'error');
     return null;
   }
 };
 
-// 显示添加角色对话框
-const showAddRoleDialog = () => {
+// ==================== 对话框操作 ====================
+const openAddRoleDialog = () => {
+  resetForm();
   isEditMode.value = false;
-  formData.value = {
-    name: '',
-    description: '',
-    policyIds: []
-  };
   dialogVisible.value = true;
 };
 
-// 显示编辑角色对话框
-const showEditRoleDialog = (role) => {
+const openEditRoleDialog = (role) => {
+  resetForm();
   isEditMode.value = true;
-  currentRoleId.value = role.name; // 使用角色名称作为ID
+  currentRoleId.value = role.name;
   formData.value = {
     name: role.name,
     description: role.description,
@@ -370,7 +358,6 @@ const showEditRoleDialog = (role) => {
   dialogVisible.value = true;
 };
 
-// 显示角色详情
 const showRoleDetails = async (role) => {
   const roleWithDetails = await getRoleDetails(role.name);
   if (roleWithDetails) {
@@ -379,33 +366,38 @@ const showRoleDetails = async (role) => {
   }
 };
 
-// 关闭对话框
+const openDeleteRoleDialog = (roleName) => {
+  currentRoleId.value = roleName;
+  const role = rolesList.value.find(r => r.name === roleName);
+  if (role) {
+    policiesInCurrentRole.value = role.policies ? role.policies.length : 0;
+  }
+  deleteDialogVisible.value = true;
+};
+
 const closeDialog = () => {
   dialogVisible.value = false;
   currentRoleId.value = null;
 };
 
-// 关闭详情对话框
 const closeDetails = () => {
   detailsVisible.value = false;
   currentRole.value = {};
 };
 
-// 关闭删除对话框
 const closeDeleteDialog = () => {
   deleteDialogVisible.value = false;
   currentRoleId.value = null;
   policiesInCurrentRole.value = 0;
 };
 
-// 提交表单
-const handleSubmit = async () => {
+// ==================== 表单提交 ====================
+const submitRoleForm = async () => {
   if (!formData.value.name) {
-    showToastMessage(t('role.pleaseEnterRoleName'), 'error');
+    showNotification(t('role.pleaseEnterRoleName'), 'error');
     return;
   }
 
-  // 准备API请求参数
   const requestData = {
     name: formData.value.name,
     desc: formData.value.description,
@@ -416,105 +408,93 @@ const handleSubmit = async () => {
 
   try {
     if (isEditMode.value) {
-      // 编辑角色
       const response = await setrole(requestData);
       if (response.code === 0) {
-        showToastMessage(t('role.updatedSuccess'), 'success');
-        // 重新加载角色列表以更新数据
+        showNotification(t('role.updatedSuccess'), 'success');
         await loadRolesFromAPI();
       } else {
-        showToastMessage(response.msg || '更新角色失败', 'error');
+        showNotification(response.msg || t('role.updateRoleFailed'), 'error');
       }
     } else {
-      // 添加角色
       const response = await createrole(requestData);
-      if (response.code === 0) {
-        showToastMessage(t('role.createdSuccess'), 'success');
-        // 重新加载角色列表以显示新创建的角色
+      if (response?.code === 0) {
+        showNotification(t('role.createdSuccess'), 'success');
         await loadRolesFromAPI();
       } else {
-        showToastMessage(response.msg || '创建角色失败', 'error');
+        showNotification(response.msg || t('role.createRoleFailed'), 'error');
       }
     }
     closeDialog();
   } catch (error) {
-      console.error('提交表单异常:', error);
-      showToastMessage(t('common.networkErrorPleaseRetry'), 'error');
-    }
-};
-
-// 处理删除角色
-const handleDeleteRole = (roleName) => {
-  currentRoleId.value = roleName;
-  const role = rolesList.value.find(r => r.name === roleName);
-  if (role) {
-    policiesInCurrentRole.value = role.policies ? role.policies.length : 0;
+    console.error('提交表单异常:', error);
+    showNotification(t('common.networkErrorPleaseRetry'), 'error');
   }
-  deleteDialogVisible.value = true;
 };
 
-// 确认删除角色
+// ==================== 删除操作 ====================
 const confirmDeleteRole = async () => {
   try {
     const response = await delrole({ name: currentRoleId.value });
     if (response.code === 0) {
-      showToastMessage(t('role.deletedSuccess'), 'success');
-      // 重新加载角色列表以更新数据
+      showNotification(t('role.deletedSuccess'), 'success');
       await loadRolesFromAPI();
     } else {
-      showToastMessage(response.msg || '删除角色失败', 'error');
+      showNotification(response.msg || t('role.deleteRoleFailed'), 'error');
     }
   } catch (error) {
     console.error('删除角色异常:', error);
-    showToastMessage(t('common.networkErrorPleaseRetry'), 'error');
+    showNotification(t('common.networkErrorPleaseRetry'), 'error');
   }
   closeDeleteDialog();
 };
 
-// 显示提示消息
-const showToastMessage = (message, type = 'success') => {
+// ==================== 工具函数 ====================
+const resetForm = () => {
+  formData.value = {
+    name: '',
+    description: '',
+    policyIds: []
+  };
+};
+
+const showNotification = (message, type = 'success') => {
   toastMessage.value = message;
   toastType.value = type;
   showToast.value = true;
 
-  // 3秒后自动隐藏
   setTimeout(() => {
     showToast.value = false;
   }, 3000);
 };
 
-// 格式化日期
 const formatDate = (date) => {
   if (!date) return '';
-  
+
   let dateObj;
   try {
-    // 尝试创建日期对象
     dateObj = new Date(date);
   } catch (error) {
     console.error('日期格式化错误:', error);
     return t('role.invalidDate');
   }
-  
-  // 检查日期是否有效或是否为默认的0001-01-01日期
-  if (isNaN(dateObj.getTime()) || 
-      dateObj.toISOString() === '0001-01-01T00:00:00.000Z' ||
-      dateObj.getTime() < 10000000000) { // 过滤极早的日期
-    return t('role.noCreationTime') || '暂无创建时间';
+
+  if (isNaN(dateObj.getTime()) ||
+    dateObj.toISOString() === '0001-01-01T00:00:00.000Z' ||
+    dateObj.getTime() < 10000000000) {
+    return t('role.noCreationTime');
   }
-  
-  // 格式化日期为可读格式
+
   const year = dateObj.getFullYear();
   const month = String(dateObj.getMonth() + 1).padStart(2, '0');
   const day = String(dateObj.getDate()).padStart(2, '0');
   const hours = String(dateObj.getHours()).padStart(2, '0');
   const minutes = String(dateObj.getMinutes()).padStart(2, '0');
   const seconds = String(dateObj.getSeconds()).padStart(2, '0');
-  
+
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 };
 
-// 组件挂载时加载数据
+// ==================== 生命周期 ====================
 onMounted(async () => {
   await Promise.all([
     loadRolesFromAPI(),

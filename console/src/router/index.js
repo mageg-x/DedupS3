@@ -111,6 +111,7 @@ const router = createRouter({
 
 // 前端路由守卫
 router.beforeEach(async (to, from, next) => {
+  console.log('router.beforeEach', to, from);
   if (to.path === '/login') {
     next();
     return;

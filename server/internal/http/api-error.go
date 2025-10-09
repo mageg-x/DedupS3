@@ -535,6 +535,10 @@ const (
 	ErrRoleAlreadyExists
 	ErrNoSuchIamPolicy
 	ErrNoSuchRole
+	ErrGroupAlreadyExists
+	ErrNoSuchGroup
+	ErrInvalidName
+	ErrUserAlreadyExists
 	apiErrCodeEnd // This is used only for the testing code
 )
 
@@ -2659,5 +2663,25 @@ var errorCodes = errorCodeMap{
 		Code:           "ErrNoSuchRole",
 		Description:    "The iam role does not exist",
 		HTTPStatusCode: http.StatusNotFound,
+	},
+	ErrGroupAlreadyExists: {
+		Code:           "ErrGroupAlreadyExists",
+		Description:    "The specified group is already exists.",
+		HTTPStatusCode: http.StatusConflict,
+	},
+	ErrNoSuchGroup: {
+		Code:           "ErrNoSuchGroup",
+		Description:    "The iam group does not exist",
+		HTTPStatusCode: http.StatusNotFound,
+	},
+	ErrInvalidName: {
+		Code:           "ErrInvalidName",
+		Description:    "name contains unsupported characters.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrUserAlreadyExists: {
+		Code:           "ErrUserAlreadyExists",
+		Description:    "The specified user is already exists.",
+		HTTPStatusCode: http.StatusConflict,
 	},
 }

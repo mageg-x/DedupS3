@@ -1,5 +1,6 @@
 <template>
     <div class="login-page">
+        <!-- 背景装饰元素 -->
         <div class="background-elements">
             <div class="grid-pattern"></div>
             <div class="radial-gradient"></div>
@@ -12,11 +13,12 @@
         </div>
 
         <div class="content-wrapper">
-            <!-- Language switch -->
+            <!-- 语言切换 -->
             <div class="language-switch-container mr-16 mt-8 z-10">
                 <LanguageSwitch :sidebar-collapsed="false" />
             </div>
-            <!-- 介绍区域（PC端显示） -->
+
+            <!-- 介绍区域 -->
             <div class="intro-section">
                 <div class="logo">
                     <div class="logo-icon">
@@ -31,99 +33,31 @@
                 <h1 class="tagline">{{ t('login.tagline') }}</h1>
                 <p class="subtitle">{{ t('login.subtitleDescription') }}</p>
 
+                <!-- 特性展示 -->
                 <div class="features">
-                    <div class="feature flex flex-col items-center">
+                    <div v-for="(feature, index) in featuresData" :key="index"
+                        class="feature flex flex-col items-center">
                         <div class="flex items-center w-full gap-x-4">
                             <div class="feature-icon">
-                                <i class="fas fa-plug"></i>
+                                <i :class="feature.icon"></i>
                             </div>
                             <div class="feature-header">
-                                <div class="feature-title">{{ t('login.feature1Title') }}</div>
+                                <div class="feature-title">{{ t(feature.titleKey) }}</div>
                             </div>
                         </div>
                         <div class="feature-content">
-                            <p class="feature-description">{{ t('login.feature1Description') }}</p>
-                        </div>
-                    </div>
-
-                    <div class="feature flex flex-col items-center">
-                        <div class="flex items-center w-full gap-x-4">
-                            <div class="feature-icon">
-                                <i class="fas fa-piggy-bank"></i>
-                            </div>
-                            <div class="feature-header">
-                                <div class="feature-title">{{ t('login.feature2Title') }}</div>
-                            </div>
-                        </div>
-
-                        <div class="feature-content">
-                            <p class="feature-description">{{ t('login.feature2Description') }}</p>
-                        </div>
-                    </div>
-
-                    <div class="feature flex flex-col items-center">
-                        <div class="flex items-center w-full gap-x-4">
-                            <div class="feature-icon">
-                                <i class="fas fa-balance-scale"></i>
-                            </div>
-                            <div class="feature-header">
-                                <div class="feature-title">{{ t('login.feature3Title') }}</div>
-                            </div>
-                        </div>
-
-                        <div class="feature-content">
-                            <p class="feature-description">{{ t('login.feature3Description') }}</p>
-                        </div>
-                    </div>
-
-                    <div class="feature flex flex-col items-center">
-                        <div class="flex items-center w-full gap-x-4">
-                            <div class="feature-icon">
-                                <i class="fas fa-shield-alt"></i>
-                            </div>
-                            <div class="feature-header">
-                                <div class="feature-title">{{ t('login.feature4Title') }}</div>
-                            </div>
-                        </div>
-
-                        <div class="feature-content">
-                            <p class="feature-description">{{ t('login.feature4Description') }}</p>
+                            <p class="feature-description">{{ t(feature.descriptionKey) }}</p>
                         </div>
                     </div>
                 </div>
 
+                <!-- 技术图标 -->
                 <div class="tech-logos">
-                    <div class="tech-logo">
-                        <svg width="32" height="32" viewBox="0 0 256 198" fill="none"
+                    <div class="tech-logo" v-for="(logo, index) in techLogos" :key="index">
+                        <svg :width="logo.width" :height="logo.height" :viewBox="logo.viewBox" fill="none"
                             xmlns="http://www.w3.org/2000/svg">
-                            <path
-                                d="M240.258 197.122H15.741C7.049 197.122 0 190.073 0 181.381V15.741C0 7.049 7.049 0 15.741 0H240.258C248.951 0 256 7.049 256 15.741V181.38C256 190.073 248.951 197.122 240.258 197.122Z"
-                                fill="#232F3E" />
-                            <path
-                                d="M118.412 145.388C118.412 145.388 92.843 149.915 85.333 124.346C77.824 98.777 105.3 75.854 113.94 70.064C122.58 64.273 128.371 57.764 134.161 58.985C139.951 60.206 140.542 64.273 138.701 67.621C136.86 70.97 119.593 87.526 119.593 87.526C119.593 87.526 146.069 64.273 159.212 63.392C172.355 62.511 179.574 69.73 182.332 76.358C185.09 82.987 185.09 90.206 181.741 94.273C178.393 98.34 172.355 101.108 172.355 101.108L118.412 145.388Z"
-                                fill="white" />
-                            <path
-                                d="M116.571 110.471C116.571 110.471 100.015 113.239 95.948 102.497C91.881 91.755 109.738 79.119 116.571 76.358C123.404 73.597 128.371 70.064 131.72 71.285C135.068 72.506 134.477 75.854 133.256 77.695C132.035 79.536 119.593 88.116 119.593 88.116L116.571 110.471Z"
-                                fill="#FF9900" />
-                        </svg>
-                    </div>
-                    <div class="tech-logo">
-                        <svg width="32" height="32" viewBox="0 0 256 315" fill="none"
-                            xmlns="http://www.w3.org/2000/svg">
-                            <path d="M130.003 313.607L0 236.722V78.98L130.003 1.724L256 78.354V236.722L130.003 313.607Z"
-                                fill="#00C4B3" />
-                            <path d="M130.003 313.607L256 236.722V78.98L130.003 155.865V313.607Z" fill="#00C4B3" />
-                            <path d="M130.003 155.865L0 78.98L130.003 1.724V155.865Z" fill="#00A98F" />
-                        </svg>
-                    </div>
-                    <div class="tech-logo">
-                        <svg width="32" height="32" viewBox="0 0 256 222" fill="none"
-                            xmlns="http://www.w3.org/2000/svg">
-                            <path
-                                d="M127.693 221.704L0 166.557V55.161L127.693 0L255.385 55.161V166.557L127.693 221.704Z"
-                                fill="#0052CC" />
-                            <path d="M127.693 221.704L255.385 166.557V55.161L127.693 110.308V221.704Z" fill="#2684FF" />
-                            <path d="M127.693 110.308L0 55.161L127.693 0V110.308Z" fill="#2684FF" />
+                            <path v-for="(path, pathIndex) in logo.paths" :key="pathIndex" :d="path.d"
+                                :fill="path.fill" />
                         </svg>
                     </div>
                 </div>
@@ -146,14 +80,15 @@
 
                     <!-- 登录方式切换 -->
                     <div class="login-method-toggle">
-                        <div :class="['method-btn', { active: loginMethod === 'iam' }]" @click="loginMethod = 'iam'">
+                        <div :class="['method-btn', { active: loginMethod === 'iam' }]" @click="setLoginMethod('iam')">
                             {{ t('login.iamLogin') }}
                         </div>
-                        <div :class="['method-btn', { active: loginMethod === 's3' }]" @click="loginMethod = 's3'">
+                        <div :class="['method-btn', { active: loginMethod === 's3' }]" @click="setLoginMethod('s3')">
                             {{ t('login.s3Login') }}
                         </div>
                     </div>
 
+                    <!-- 登录表单 -->
                     <el-form ref="loginFormRef" :model="loginForm" :rules="rules" @submit.prevent="handleLogin"
                         label-position="top">
                         <!-- S3凭证登录表单 -->
@@ -168,16 +103,43 @@
                                     :placeholder="t('login.secretKeyPlaceholder')" size="large" show-password />
                             </el-form-item>
 
-                            <el-form-item :label="t('login.endpoint')" prop="endpoint">
-                                <el-input v-model="loginForm.endpoint" :placeholder="t('login.endpointPlaceholder')"
-                                    size="large" />
-                            </el-form-item>
+                            <!-- 分割线 -->
+                            <div class="section-divider"></div>
+
+                            <!-- 可扩展的存储点和区域设置 -->
+                            <div class="expandable-section">
+                                <div class="expandable-header" @click="toggleExpand">
+                                    <span class="expandable-title">{{ t('login.expandSettings') }}</span>
+                                    <i :class="['fas', expandVisible ? 'fa-chevron-up' : 'fa-chevron-down']"></i>
+                                </div>
+
+                                <transition name="slide-fade">
+                                    <div v-if="expandVisible" class="expandable-content">
+                                        <el-form-item :label="t('login.endpoint')" prop="endpoint">
+                                            <el-input v-model="loginForm.endpoint"
+                                                :placeholder="t('login.endpointPlaceholder')" size="large" />
+                                            <div class="form-item-hint">{{ t('login.endpointHint') }}</div>
+                                        </el-form-item>
+
+                                        <el-form-item :label="t('login.region')" prop="region">
+                                            <el-input v-model="loginForm.region"
+                                                :placeholder="t('login.regionPlaceholder')" size="large" />
+                                            <div class="form-item-hint">{{ t('login.regionHint') }}</div>
+                                        </el-form-item>
+                                    </div>
+                                </transition>
+                            </div>
+
+                            <div class="s3-universal-browser-note">
+                                <i class="fas fa-info-circle"></i>
+                                <span>{{ t('login.s3AKLoginNote') }}</span>
+                            </div>
                         </div>
 
                         <!-- 用户名密码登录表单 -->
                         <div v-if="loginMethod === 'iam'">
                             <el-form-item :label="t('login.username')" prop="username">
-                                <el-input v-model="loginForm.username" :placeholder="t('login.usernamePlaceholder')"
+                                <el-input v-model="loginForm.username" :placeholder="t('login.usernamePlaceholder',{ at: '@' })"
                                     size="large" />
                             </el-form-item>
 
@@ -197,43 +159,112 @@
 
                         <el-form-item>
                             <el-button type="primary" @click="handleLogin" :loading="loading" size="large">
-                                {{ loading ? t('login.connecting') : loginMethod === 's3' ? t('login.connectToS3') :
-                                t('login.loginSystem') }}
+                                {{ loading ? t('login.connecting') :
+                                    loginMethod === 's3' ? t('login.connectToS3') : t('login.loginSystem') }}
                             </el-button>
                         </el-form-item>
                     </el-form>
                 </div>
             </div>
         </div>
-
     </div>
 </template>
 
 <script setup>
-import { ref, reactive, watch } from 'vue';
+import { ref, reactive, watch, computed } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
-import { login, logout } from '../api/admin';
+import { login } from '../api/admin';
 import LanguageSwitch from '@/components/LanguageSwitch.vue';
 
+// 国际化
 const { t } = useI18n();
 
+// 路由实例
 const router = useRouter();
+
+// 表单引用
 const loginFormRef = ref(null);
+
+// 状态变量
 const loading = ref(false);
 const loginMethod = ref('iam'); // 's3' 或 'iam'
 
+// 登录表单数据
 const loginForm = reactive({
     accessKeyId: '',
     secretAccessKey: '',
     endpoint: '',
+    region: '',
     username: '',
     password: '',
     remember: false
 });
 
-const rules = {
+// 扩展区域状态
+const expandVisible = ref(false);
+
+// 特性数据
+const featuresData = computed(() => [
+    {
+        icon: 'fas fa-plug',
+        titleKey: 'login.feature1Title',
+        descriptionKey: 'login.feature1Description'
+    },
+    {
+        icon: 'fas fa-piggy-bank',
+        titleKey: 'login.feature2Title',
+        descriptionKey: 'login.feature2Description'
+    },
+    {
+        icon: 'fas fa-balance-scale',
+        titleKey: 'login.feature3Title',
+        descriptionKey: 'login.feature3Description'
+    },
+    {
+        icon: 'fas fa-shield-alt',
+        titleKey: 'login.feature4Title',
+        descriptionKey: 'login.feature4Description'
+    }
+]);
+
+// 技术图标数据
+const techLogos = [
+    {
+        width: 32,
+        height: 32,
+        viewBox: '0 0 256 198',
+        paths: [
+            { d: 'M240.258 197.122H15.741C7.049 197.122 0 190.073 0 181.381V15.741C0 7.049 7.049 0 15.741 0H240.258C248.951 0 256 7.049 256 15.741V181.38C256 190.073 248.951 197.122 240.258 197.122Z', fill: '#232F3E' },
+            { d: 'M118.412 145.388C118.412 145.388 92.843 149.915 85.333 124.346C77.824 98.777 105.3 75.854 113.94 70.064C122.58 64.273 128.371 57.764 134.161 58.985C139.951 60.206 140.542 64.273 138.701 67.621C136.86 70.97 119.593 87.526 119.593 87.526C119.593 87.526 146.069 64.273 159.212 63.392C172.355 62.511 179.574 69.73 182.332 76.358C185.09 82.987 185.09 90.206 181.741 94.273C178.393 98.34 172.355 101.108 172.355 101.108L118.412 145.388Z', fill: 'white' },
+            { d: 'M116.571 110.471C116.571 110.471 100.015 113.239 95.948 102.497C91.881 91.755 109.738 79.119 116.571 76.358C123.404 73.597 128.371 70.064 131.72 71.285C135.068 72.506 134.477 75.854 133.256 77.695C132.035 79.536 119.593 88.116 119.593 88.116L116.571 110.471Z', fill: '#FF9900' }
+        ]
+    },
+    {
+        width: 32,
+        height: 32,
+        viewBox: '0 0 256 315',
+        paths: [
+            { d: 'M130.003 313.607L0 236.722V78.98L130.003 1.724L256 78.354V236.722L130.003 313.607Z', fill: '#00C4B3' },
+            { d: 'M130.003 313.607L256 236.722V78.98L130.003 155.865V313.607Z', fill: '#00C4B3' },
+            { d: 'M130.003 155.865L0 78.98L130.003 1.724V155.865Z', fill: '#00A98F' }
+        ]
+    },
+    {
+        width: 32,
+        height: 32,
+        viewBox: '0 0 256 222',
+        paths: [
+            { d: 'M127.693 221.704L0 166.557V55.161L127.693 0L255.385 55.161V166.557L127.693 221.704Z', fill: '#0052CC' },
+            { d: 'M127.693 221.704L255.385 166.557V55.161L127.693 110.308V221.704Z', fill: '#2684FF' },
+            { d: 'M127.693 110.308L0 55.161L127.693 0V110.308Z', fill: '#2684FF' }
+        ]
+    }
+];
+
+// 表单验证规则
+const rules = reactive({
     accessKeyId: [
         { required: true, message: t('login.pleaseEnterAccessKeyId'), trigger: 'blur' }
     ],
@@ -241,7 +272,18 @@ const rules = {
         { required: true, message: t('login.pleaseEnterSecretAccessKey'), trigger: 'blur' }
     ],
     endpoint: [
-        { required: true, message: t('login.pleaseEnterEndpoint'), trigger: 'blur' }
+        {
+            required: false,
+            message: t('login.pleaseEnterEndpoint'),
+            trigger: 'blur'
+        }
+    ],
+    region: [
+        {
+            required: false,
+            message: t('login.pleaseEnterRegion'),
+            trigger: 'blur'
+        }
     ],
     username: [
         { required: true, message: t('login.pleaseEnterUsername'), trigger: 'blur' }
@@ -250,8 +292,12 @@ const rules = {
         { required: true, message: t('login.pleaseEnterPassword'), trigger: 'blur' },
         { min: 6, message: t('login.passwordTooShort'), trigger: 'blur' }
     ]
-};
+});
 
+// 切换登录方式
+const setLoginMethod = (method) => {
+    loginMethod.value = method;
+};
 
 // 切换登录方式时重置表单验证
 watch(loginMethod, () => {
@@ -260,30 +306,54 @@ watch(loginMethod, () => {
     }
 });
 
-const handleLogin = async () => {
-    if (!loginFormRef.value) return;
-
-    try {
-        const valid = await loginFormRef.value.validate();
-        if (!valid) return;
-
-        loading.value = true;
-
-        const result = await login(loginForm.username, loginForm.password);
-        
-        if (result.success) {
-            ElMessage.success(`登录成功！正在跳转...`);
-            router.push('/dashboard');
-        } else {
-            ElMessage.error(`登录失败: ${result.message}`);
-        }
-
-        loading.value = false;        
-    } catch (error) {
-        ElMessage.error('登录失败: ' + error.message);
-    } finally {
-        loading.value = false;
+// 切换扩展区域显示状态
+const toggleExpand = () => {
+    expandVisible.value = !expandVisible.value;
+    if (loginFormRef.value && !expandVisible.value) {
+        loginFormRef.value.clearValidate(['endpoint', 'region']);
     }
+};
+
+// 处理登录
+const handleLogin = async () => {
+    if (!loginFormRef.value) {
+        return;
+    }
+
+    loginFormRef.value.validate(async (valid) => {
+        if (valid) {
+            loading.value = true;
+            try {
+                if (loginMethod.value === 'iam') {
+                    await login({
+                        username: loginForm.username,
+                        password: loginForm.password,
+                        remember: loginForm.remember
+                    });
+                } else if (loginMethod.value === 's3') {
+                    await login({
+                        accessKeyId: loginForm.accessKeyId,
+                        secretAccessKey: loginForm.secretAccessKey,
+                        endpoint: loginForm.endpoint || '',
+                        region: loginForm.region || '',
+                        remember: loginForm.remember
+                    });
+                }
+
+                ElMessage.success(t('login.loginSuccess'));
+                router.push('/dashboard');
+            } catch (error) {
+                loading.value = false;
+                // 处理登录失败
+                const message = error.response?.data?.msg || t('login.loginFailed');
+            } finally {
+                loading.value = false;
+            }
+        } else {
+            ElMessage.error(t('login.formValidationFailed'));
+            return false;
+        }
+    });
 };
 </script>
 
@@ -315,7 +385,7 @@ const handleLogin = async () => {
     font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
 }
 
-/* Background effects */
+/* 背景效果 */
 .background-elements {
     position: absolute;
     top: 0;
@@ -416,7 +486,7 @@ const handleLogin = async () => {
     }
 }
 
-/* Tech lines */
+/* 技术线条 */
 .tech-line {
     position: absolute;
     background: linear-gradient(to right, var(--accent-blue), var(--accent-purple));
@@ -440,7 +510,7 @@ const handleLogin = async () => {
     transform: rotate(25deg);
 }
 
-/* Content layout */
+/* 内容布局 */
 .content-wrapper {
     display: flex;
     max-width: 1200px;
@@ -464,7 +534,7 @@ const handleLogin = async () => {
     align-items: center;
 }
 
-/* Intro styles */
+/* 介绍样式 */
 .logo {
     display: flex;
     align-items: center;
@@ -644,7 +714,7 @@ const handleLogin = async () => {
     opacity: 1;
 }
 
-/* Login card */
+/* 登录卡片 */
 .login-card {
     color: #010101;
     background: #f1f7fe;
@@ -738,7 +808,7 @@ const handleLogin = async () => {
     font-size: 15px;
 }
 
-/* Login method toggle */
+/* 登录方式切换 */
 .login-method-toggle {
     display: flex;
     background: rgba(255, 255, 255, 0.7);
@@ -765,8 +835,7 @@ const handleLogin = async () => {
     box-shadow: 0 4px 10px rgba(110, 142, 251, 0.3);
 }
 
-
-/* Additional styles */
+/* 记住我和忘记密码 */
 .remember-forgot {
     display: flex;
     justify-content: space-between;
@@ -795,7 +864,7 @@ const handleLogin = async () => {
     text-decoration: underline;
 }
 
-/* Form elements */
+/* 表单元素 */
 :deep(.el-form-item) {
     margin-bottom: 24px;
 }
@@ -850,11 +919,104 @@ const handleLogin = async () => {
     transform: translateY(0);
 }
 
+/* S3通用浏览器说明样式 */
+.s3-universal-browser-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px 16px;
+    background: rgba(79, 109, 245, 0.08);
+    border: 1px solid rgba(79, 109, 245, 0.2);
+    border-radius: 8px;
+    margin-top: 16px;
+    font-size: 14px;
+    color: var(--accent-blue);
+}
+
+/* 分割线样式 */
+.section-divider {
+    height: 1px;
+    background: var(--border-light);
+    margin: 24px 0;
+    width: 100%;
+}
+
+/* 扩展区域样式 */
+.expandable-section {
+    margin: 8px 0;
+}
+
+.expandable-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.expandable-header:hover {
+    color: var(--accent-blue);
+}
+
+.expandable-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-dark);
+}
+
+.expandable-header i {
+    font-size: 12px;
+    color: var(--text-muted);
+    transition: transform 0.3s ease;
+}
+
+.expandable-content {
+    margin-top: 12px;
+}
+
+/* 确保输入框宽度一致 */
+.expandable-content :deep(.el-input__inner) {
+    width: 100% !important;
+}
+
+.form-item-hint {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-muted);
+    padding-left: 4px;
+}
+
+/* 第三方字段动画效果 */
+.third-party-fields {
+    overflow: hidden;
+}
+
+.slide-fade-enter-active {
+    transition: all 0.3s ease;
+}
+
+.slide-fade-leave-active {
+    transition: all 0.2s cubic-bezier(1, 0.5, 0.8, 1);
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+    transform: translateY(-10px);
+    opacity: 0;
+}
+
+.s3-universal-browser-note i {
+    font-size: 16px;
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
 :deep(.el-select .el-input__inner) {
     padding-right: 40px !important;
 }
 
-/* Responsive design */
+/* 响应式设计 */
 @media (max-width: 900px) {
     .intro-section {
         display: none;

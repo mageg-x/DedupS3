@@ -31,7 +31,7 @@ api.interceptors.response.use(
         window.location.href = "/login";
       } else {
         // 在登录页发生的 401 → 不跳转，返回错误给 UI 显示
-        console.warn("Login failed:", error.response?.data?.message);
+        console.warn("Login failed:", error.response?.data?.msg);
       }
     }
 
@@ -39,20 +39,25 @@ api.interceptors.response.use(
   }
 );
 
-export async function login(username, password) {
+export async function login(form) {
   try {
     // 对password进行md5处理
-    password = md5(password + ":" + username);
-    const res = await api.post("/login", { username, password });
+    if (form.password) {
+      // 密码不为空时进行md5处理
+      let password = md5(form.password + ":" + form.username);
+      form.password = password;
+    }
+    
+    const res = await api.post("/login", form);
     console.log(res.data);
     if (res.data.code == 0) {
-      return { success: true, message: res.data.msg };
+      return { success: true, msg: res.data.msg };
     } else {
-      return { success: true, message: res.data.msg };
+      return { success: true, msg: res.data.msg };
     }
   } catch (error) {
-    const msg = error.response?.data?.message || "登录失败...";
-    return { success: false, message: msg };
+    const msg = error.response?.data?.msg || "登录失败...";
+    return { success: false, msg: msg };
   }
 }
 
@@ -104,9 +109,9 @@ const apicall = {
         if (response) {
           const msg =
             response.data?.msg || response.data?.message || defaultMsg;
-          return { success: false, message: msg };
+          return { success: false, msg: msg };
         }
-        return { success: false, message: defaultMsg };
+        return { success: false, msg: defaultMsg };
       }
     },
 
@@ -118,9 +123,9 @@ const apicall = {
       const response = error.response;
       if (response) {
         const msg = response.data?.msg || response.data?.message || defaultMsg;
-        return { success: false, message: msg };
+        return { success: false, msg: msg };
       }
-      return { success: false, message: defaultMsg };
+      return { success: false, msg: defaultMsg };
     }
   },
 
@@ -132,9 +137,9 @@ const apicall = {
       const response = error.response;
       if (response) {
         const msg = response.data?.msg || response.data?.message || defaultMsg;
-        return { success: false, message: msg };
+        return { success: false, msg: msg };
       }
-      return { success: false, message: defaultMsg };
+      return { success: false, msg: defaultMsg };
     }
   },
 
@@ -163,9 +168,9 @@ const apicall = {
         const response = error.response;
         if (response) {
           const msg = response.data?.msg || response.data?.message || defaultMsg;
-          return { success: false, message: msg };
+          return { success: false, msg: msg };
         }
-        return { success: false, message: defaultMsg };
+        return { success: false, msg: defaultMsg };
       }
     },
   upload:
@@ -190,7 +195,7 @@ const apicall = {
           response?.data?.message ||
           defaultMsg ||
           "File upload failed";
-        return { success: false, message: msg };
+        return { success: false, msg: msg };
       }
     },
 download:
@@ -224,7 +229,7 @@ download:
         } catch (e) {
           // 读取失败
         }
-        return { success: false, message: errorMsg };
+        return { success: false, msg: errorMsg };
       }
 
       // 提取文件名：优先从 header，其次 params.filename，最后默认
@@ -252,9 +257,9 @@ download:
       document.body.removeChild(a);
       URL.revokeObjectURL(blobUrl); // 立即释放
 
-      return { success: true, message: "Download started" };
+      return { success: true, msg: "Download started" };
     } catch (error) {
-      return { success: false, message: defaultMsg || "Download failed" };
+      return { success: false, msg: defaultMsg || "Download failed" };
     }
   },
 };
@@ -270,7 +275,14 @@ export const delobject = apicall.post("/bucket/deleteobject", "Failed to delete 
 export const getobject = apicall.download("/bucket/getobject", "Failed to download file");
 export const getuser = apicall.get("/user/info", "Failed to get user info");
 export const listuser = apicall.get("/user/list", "Failed to list user info");
+export const createuser = apicall.post("/user/create", "Failed to create user info");
+export const setuser = apicall.post("/user/update", "Failed to update user info");
+export const deluser = apicall.delete("/user/delete", "Failed to delete user info");
 export const listgroup = apicall.get("/group/list", "Failed to list group info");
+export const getgroup = apicall.get("/group/get", "Failed to get group info");
+export const creategroup = apicall.post("/group/create", "Failed to create group info");
+export const setgroup = apicall.post("/group/update", "Failed to update group info");
+export const delgroup = apicall.delete("/group/delete", "Failed to delete group info");
 export const listrole = apicall.get("/role/list", "Failed to list role info");
 export const getrole = apicall.get("/role/get", "Failed to get role info");
 export const createrole = apicall.post("/role/create", "Failed to create role info");

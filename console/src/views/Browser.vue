@@ -1,8 +1,7 @@
 <template>
   <div class="browser-container">
     <!-- 头部导航区域 -->
-    <div
-      class="header-nav flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 sm:mb-3 gap-1 sm:gap-2 transition-all duration-300">
+    <div class="header-nav flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 sm:mb-3 gap-1 sm:gap-2 transition-all duration-300">
       <div class="nav-path flex items-center">
         <button @click="backToList"
           class="back-btn p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-300 mr-2">
@@ -25,7 +24,7 @@
       <div class="header-actions flex items-center gap-2">
         <button
           class="upload-btn bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center justify-center transition-all duration-300 transform hover:scale-105 hover:shadow-md whitespace-nowrap text-sm"
-          @click="handleUploadClick" :disabled="uploading.value">
+          @click="handleUploadClick" :disabled="uploading">
           <i v-if="uploading" class="fas fa-spinner fa-spin mr-1.5 text-sm"></i>
           <i v-else class="fas fa-upload mr-1.5 text-sm"></i>
           {{ t('browser.uploadFile') }}
@@ -45,8 +44,7 @@
       <!-- 对象列表区域 -->
       <div class="objects-list-container bg-white rounded-l-xl shadow-md border border-gray-100 overflow-hidden flex-1">
         <!-- 列表头部 -->
-        <div
-          class="list-header grid grid-cols-12 px-4 py-3 border-b border-gray-200 bg-gray-50 text-sm font-medium text-gray-500">
+        <div class="list-header grid grid-cols-12 px-4 py-3 border-b border-gray-200 bg-gray-50 text-sm font-medium text-gray-500">
           <div class="col-span-1 sm:col-span-1 flex items-center justify-center">
             <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll"
               class="rounded text-blue-600 focus:ring-blue-500">
@@ -81,7 +79,7 @@
           </div>
 
           <!-- 文件夹列表 -->
-          <div v-for="folder in currentFolders" :key="folder.name"
+          <div v-for="folder in currentFolders" :key="folder.fullPath"
             class="object-item flex items-center grid grid-cols-12 px-4 py-3 hover:bg-gray-50 transition-all duration-300 cursor-pointer animate-fadeIn"
             :style="{ animationDelay: (currentPath === '' ? 0 : 1) + (folder.index * 0.05) + 's' }">
             <div class="col-span-1 sm:col-span-1 flex items-center justify-center">
@@ -104,7 +102,7 @@
           </div>
 
           <!-- 文件列表 -->
-          <div v-for="file in currentFiles" :key="file.name" @click.stop="selectFile(file)"
+          <div v-for="file in currentFiles" :key="file.fullPath" @click.stop="selectFile(file)"
             class="object-item flex items-center grid grid-cols-12 px-4 py-3 hover:bg-gray-50 transition-all duration-300 cursor-pointer animate-fadeIn"
             :style="{ animationDelay: (currentPath === '' ? 0 : 1) + (foldersCount + file.index) * 0.05 + 's' }">
             <div class="col-span-1 sm:col-span-1 flex items-center justify-center">
@@ -128,8 +126,7 @@
 
           <!-- 加载状态 -->
           <div v-if="loading" class="loading-state py-16 text-center bg-white rounded-xl shadow-md">
-            <div class="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4">
-            </div>
+            <div class="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
             <h3 class="text-xl font-semibold text-gray-800 mb-2">{{ t('common.loading') }}</h3>
             <p class="text-gray-500">{{ t('browser.loadingObjects') }}</p>
           </div>
@@ -162,8 +159,7 @@
               </svg>
             </div>
             <h3 class="text-xl font-semibold text-gray-800 mb-2">{{ t('browser.folderEmpty') }}</h3>
-            <p class="text-gray-500 mb-6 max-w-md mx-auto">{{ currentPath.value === '' ? t('browser.emptyBucketHint') :
-              t('browser.emptyFolderHint') }}</p>
+            <p class="text-gray-500 mb-6 max-w-md mx-auto">{{ currentPath === '' ? t('browser.emptyBucketHint') : t('browser.emptyFolderHint') }}</p>
             <button
               class="upload-btn bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium flex items-center justify-center transition-all duration-300 mx-auto transform hover:scale-105 hover:shadow-md"
               @click="handleUploadClick">
@@ -189,14 +185,10 @@
         <div class="sidebar-content p-4 overflow-y-auto h-[calc(100%-64px)]">
           <!-- 多对象选择状态 -->
           <div v-if="isMultipleSelection" class="multi-selection-state text-center py-8">
-            <div
-              class="selection-icon w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div class="selection-icon w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <i class="fas fa-check-circle text-blue-600 text-4xl"></i>
             </div>
-            <h3 class="font-semibold text-gray-800 text-lg mb-2">{{ t('browser.selectedObjectsCount', {
-              count:
-                selectedFiles.length
-            }) }}</h3>
+            <h3 class="font-semibold text-gray-800 text-lg mb-2">{{ t('browser.selectedObjectsCount', { count: selectedFiles.length }) }}</h3>
             <p class="text-gray-500 text-sm mb-6">{{ t('browser.selectedObjectsHint') }}</p>
           </div>
 
@@ -244,8 +236,7 @@
               </div>
               <div class="info-item">
                 <label class="text-xs text-gray-500 block mb-1">{{ t('common.size') }}</label>
-                <p class="text-gray-800">{{ selectedFile.isFolder ? '-' : formatSize(selectedFile.size) + ' (' +
-                  selectedFile.size + ' bytes)' }}</p>
+                <p class="text-gray-800">{{ selectedFile.isFolder ? '-' : formatSize(selectedFile.size) + ' (' + selectedFile.size + ' bytes)' }}</p>
               </div>
               <div class="info-item">
                 <label class="text-xs text-gray-500 block mb-1">{{ t('common.createdAt') }}</label>
@@ -253,8 +244,7 @@
               </div>
               <div class="info-item">
                 <label class="text-xs text-gray-500 block mb-1">{{ t('common.lastModified') }}</label>
-                <p class="text-gray-800">{{ selectedFile.isFolder ? '-' : formatDateTime(selectedFile.lastModified) }}
-                </p>
+                <p class="text-gray-800">{{ selectedFile.isFolder ? '-' : formatDateTime(selectedFile.lastModified) }}</p>
               </div>
               <div class="info-item">
                 <label class="text-xs text-gray-500 block mb-1">{{ t('browser.etag') }}</label>
@@ -275,8 +265,7 @@
               </div>
               <div class="info-item">
                 <label class="text-xs text-gray-500 block mb-1">{{ t('browser.storagePath') }}</label>
-                <p class="text-gray-800 text-xs truncate">{{ bucketName }}/{{ currentPath ? currentPath + '/' : '' }}{{
-                  selectedFile.name }}</p>
+                <p class="text-gray-800 text-xs truncate">{{ bucketName }}/{{ currentPath ? currentPath + '/' : '' }}{{ selectedFile.name }}</p>
               </div>
             </div>
           </div>
@@ -311,8 +300,7 @@
             {{ createFolderError }}
           </div>
           <div class="text-gray-500 text-sm">
-            {{ t('browser.createFolderHint', { path: currentPath === '' ? bucketName : `${bucketName}/${currentPath}` })
-            }}
+            {{ t('browser.createFolderHint', { path: currentPath === '' ? bucketName : `${bucketName}/${currentPath}` }) }}
           </div>
         </div>
         <div class="dialog-footer px-6 py-4 bg-gray-50 flex justify-end gap-3 border-t border-gray-200">
@@ -338,50 +326,63 @@ import { useI18n } from 'vue-i18n';
 import { listobjects, createfolder, putobject, delobject, getobject } from '@/api/admin.js';
 import { ElMessage } from 'element-plus';
 
+// ====== 变量定义 ======
 const { t } = useI18n();
-
 const route = useRoute();
 const router = useRouter();
 
-// 获取路由参数中的桶名
+// 路由参数
 const bucketName = ref(route.params.name || '');
 
-// 当前路径
+// 路径和文件状态
 const currentPath = ref('');
+const objectsList = ref([]);
 
-// 选中的文件
+// 选中状态
 const selectedFile = ref(null);
-
-// 选中的多个文件
 const selectedFiles = ref([]);
-
-// 是否全选
 const isAllSelected = ref(false);
 
-// 创建文件夹相关状态
+// 创建文件夹状态
 const createFolderDialogVisible = ref(false);
 const folderName = ref('');
 const createFolderError = ref('');
 const creatingFolder = ref(false);
 
-// 上传相关状态
+// 上传状态
 const uploading = ref(false);
 const uploadProgress = ref(0);
 const uploadError = ref('');
 
-// 存储从API获取的对象列表
-const objectsList = ref([]);
-
-// 加载状态
+// 加载和错误状态
 const loading = ref(false);
-
-// 错误信息
 const error = ref('');
 
-// 分页相关
+// 删除状态
+const deleting = ref(false);
+
+// 分页状态
 const nextMarker = ref('');
 
-// 处理从API获取的数据，转换为前端需要的格式
+// 文件输入引用
+const fileInput = ref(null);
+
+// ====== 计算属性 ======
+const currentFolders = computed(() => {
+  const data = processObjectsData(objectsList.value);
+  return data.folders;
+});
+
+const currentFiles = computed(() => {
+  const data = processObjectsData(objectsList.value);
+  return data.files;
+});
+
+const foldersCount = computed(() => currentFolders.value.length);
+
+const isMultipleSelection = computed(() => selectedFiles.value.length > 1);
+
+// ====== 核心数据处理函数 ======
 const processObjectsData = (data) => {
   const folders = [];
   const files = [];
@@ -389,86 +390,152 @@ const processObjectsData = (data) => {
   if (data?.objects) {
     data.objects.forEach((item, idx) => {
       if (item.isFolder) {
-        // 处理文件夹 - 保留完整路径信息
         const folderName = item.name.split('/').filter(p => p).pop();
         folders.push({
-          name: folderName, // 显示名称
-          fullPath: item.name, // 完整路径
-          originalItem: item, // 原始数据引用
+          name: folderName,
+          fullPath: item.name,
+          originalItem: item,
           lastModified: item.lastModify ? item.lastModify : new Date().toISOString(),
           index: idx,
-          isFolder: true // 标记为文件夹
+          isFolder: true
         });
       } else {
-        // 处理文件
-        // 从文件名中提取名称（去掉路径部分）
         const fileName = item.name.split('/').pop();
-
-        // 转换tags格式为前端需要的数组格式
+        
         let tags = [];
         if (item.tags && typeof item.tags === 'object') {
-          tags = Object.entries(item.tags).map(([key, value]) => ({
-            key,
-            value
-          }));
+          tags = Object.entries(item.tags).map(([key, value]) => ({ key, value }));
         }
 
         files.push({
-          name: fileName, // 显示名称
-          fullPath: item.name, // 完整路径
-          originalItem: item, // 原始数据引用
+          name: fileName,
+          fullPath: item.name,
+          originalItem: item,
           size: item.size || 0,
           lastModified: item.lastModify ? item.lastModify : new Date().toISOString(),
           createdAt: item.createdAt ? item.createdAt : new Date().toISOString(),
           etag: item.etag || '',
           tags: tags,
           chunks: item.chunks ? item.chunks.length : 1,
-          index: idx
+          index: idx,
+          isSelected: false
         });
       }
     });
   }
 
-  // 更新分页标记
   nextMarker.value = data?.nextMarker || '';
-
   return { folders, files };
 };
 
-// 当前目录下的文件夹
-const currentFolders = computed(() => {
-  const data = processObjectsData(objectsList.value);
-  return data.folders;
-});
+// ====== 路径导航函数 ======
+const navigateUp = () => {
+  if (currentPath.value === '') return;
+  
+  const pathParts = currentPath.value.split('/');
+  pathParts.pop();
+  currentPath.value = pathParts.join('/');
+  fetchObjects();
+};
 
-// 当前目录下的文件
-const currentFiles = computed(() => {
-  const data = processObjectsData(objectsList.value);
-  return data.files;
-});
+const navigateToFolder = (folder) => {
+  currentPath.value = folder.fullPath;
+  selectedFile.value = null;
+  fetchObjects();
+};
 
-// 文件夹数量
-const foldersCount = computed(() => {
-  return currentFolders.value.length;
-});
+const backToList = () => {
+  router.push('/buckets');
+};
 
-// 计算属性：是否为多选状态
-const isMultipleSelection = computed(() => {
-  return selectedFiles.value.length > 1;
-});
+const getParentDirLastModified = () => {
+  return new Date().toISOString();
+};
 
-// 文件输入引用
-const fileInput = ref(null);
+// ====== 文件选择与操作函数 ======
+const selectFile = (file) => {
+  selectedFile.value = file;
+  
+  if (file.hasOwnProperty('isSelected')) {
+    file.isSelected = !file.isSelected;
+    const index = selectedFiles.value.findIndex(f => f.fullPath === file.fullPath);
+    if (file.isSelected && index === -1) {
+      selectedFiles.value.push(file);
+    } else if (!file.isSelected && index > -1) {
+      selectedFiles.value.splice(index, 1);
+    }
+  }
+};
 
-// 删除相关状态
-const deleting = ref(false);
+const toggleSelect = (item) => {
+  const index = selectedFiles.value.findIndex(f => f.fullPath === item.fullPath);
+  if (index > -1) {
+    selectedFiles.value.splice(index, 1);
+    if (item.hasOwnProperty('isSelected')) {
+      item.isSelected = false;
+    }
+  } else {
+    selectedFiles.value.push(item);
+    if (item.hasOwnProperty('isSelected')) {
+      item.isSelected = true;
+    }
+  }
 
-// 处理上传按钮点击
+  if (selectedFiles.value.length === 1) {
+    selectedFile.value = selectedFiles.value[0];
+  } else if (selectedFiles.value.length > 1) {
+    selectedFile.value = {
+      name: `${selectedFiles.value.length} 个对象已选择`
+    };
+  } else {
+    selectedFile.value = null;
+  }
+
+  updateSelectAllState();
+};
+
+const isSelected = (item) => {
+  return selectedFiles.value.some(f => f.fullPath === item.fullPath);
+};
+
+const toggleSelectAll = () => {
+  if (isAllSelected.value) {
+    selectedFiles.value = [];
+    selectedFile.value = null;
+    
+    currentFolders.value.forEach(folder => {
+      if (folder.hasOwnProperty('isSelected')) folder.isSelected = false;
+    });
+    currentFiles.value.forEach(file => file.isSelected = false);
+  } else {
+    const allItems = [...currentFolders.value, ...currentFiles.value];
+    selectedFiles.value = [...allItems];
+
+    currentFolders.value.forEach(folder => {
+      if (folder.hasOwnProperty('isSelected')) folder.isSelected = true;
+    });
+    currentFiles.value.forEach(file => file.isSelected = true);
+    
+    if (allItems.length === 1) {
+      selectedFile.value = allItems[0];
+    } else if (allItems.length > 1) {
+      selectedFile.value = { name: `${allItems.length} 个对象已选择` };
+    }
+  }
+
+  isAllSelected.value = !isAllSelected.value;
+};
+
+const updateSelectAllState = () => {
+  const allItems = [...currentFolders.value, ...currentFiles.value];
+  isAllSelected.value = selectedFiles.value.length === allItems.length && allItems.length > 0;
+};
+
+// ====== 上传功能函数 ======
 const handleUploadClick = () => {
   fileInput.value?.click();
 };
 
-// 处理文件选择
 const handleFileSelect = async (event) => {
   const files = event.target.files;
   if (!files || files.length === 0) return;
@@ -477,11 +544,9 @@ const handleFileSelect = async (event) => {
     await uploadFile(files[i]);
   }
 
-  // 清空文件输入，以便可以重复选择同一个文件
   event.target.value = '';
 };
 
-// 上传文件
 const uploadFile = async (file) => {
   if (!bucketName.value) {
     ElMessage.error(t('browser.noBucketSelected'));
@@ -493,19 +558,13 @@ const uploadFile = async (file) => {
   uploadProgress.value = 0;
 
   try {
-    // 构建完整的对象名称（包含路径）
-    const objectName = currentPath.value
-      ? `${currentPath.value}/${file.name}`
-      : file.name;
-
-    // 创建FormData
+    const objectName = currentPath.value ? `${currentPath.value}/${file.name}` : file.name;
     const formData = new FormData();
     formData.append('file', file);
     formData.append('bucket', bucketName.value);
     formData.append('object', objectName);
     formData.append('contentType', file.type || 'application/octet-stream');
 
-    // 上传文件
     const result = await putobject(formData, {
       onUploadProgress: (progressEvent) => {
         if (progressEvent.total) {
@@ -514,20 +573,11 @@ const uploadFile = async (file) => {
       }
     });
 
-    // 处理响应
     if (result.success === true || result.code === 0) {
       ElMessage.success(t('browser.uploadSuccess', { fileName: file.name }));
-      // 上传成功后刷新文件列表
       await fetchObjects();
     } else {
-      // 处理不同的错误情况
-      if (result.message === 'NoSuchBucket' || result.message?.includes('NoSuchBucket')) {
-        ElMessage.error(t('browser.bucketNotFound'));
-      } else if (result.message === 'AccessDenied' || result.message?.includes('AccessDenied')) {
-        ElMessage.error(t('common.accessDenied'));
-      } else {
-        ElMessage.error(result.message || t('browser.uploadFailed'));
-      }
+      handleUploadError(result);
     }
   } catch (error) {
     console.error('Error uploading file:', error);
@@ -538,190 +588,88 @@ const uploadFile = async (file) => {
   }
 };
 
-// 返回上一级
-const navigateUp = () => {
-  if (currentPath.value === '') return;
-  console.log('currentPath 1:', currentPath.value);
-  const pathParts = currentPath.value.split('/');
-  let s = pathParts.pop();
-  if (s === null || s === undefined || s === "") {
-    pathParts.pop();
-  }
-  currentPath.value = pathParts.join('/');
-  console.log('currentPath 2:', currentPath.value);
-  // 导航回上一级后立即获取该文件夹下的对象
-  fetchObjects();
-};
-
-// 导航到子文件夹
-const navigateToFolder = (folder) => {
-  currentPath.value = folder.fullPath;
-
-  // 进入文件夹内部时关闭详情侧边栏
-  selectedFile.value = null;
-
-  // 导航到文件夹后立即获取该文件夹下的对象
-  fetchObjects();
-};
-
-// 选择单个文件
-const selectFile = (file) => {
-  selectedFile.value = file;
-  // 切换文件的isSelected状态
-  if (file.hasOwnProperty('isSelected')) {
-    file.isSelected = !file.isSelected;
-    // 根据isSelected状态更新selectedFiles数组
-    const index = selectedFiles.value.findIndex(f => f.fullPath === file.fullPath);
-    if (file.isSelected && index === -1) {
-      selectedFiles.value.push(file);
-    } else if (!file.isSelected && index > -1) {
-      selectedFiles.value.splice(index, 1);
-    }
-  }
-};
-
-// 切换选择状态
-const toggleSelect = (item) => {
-  // 使用fullPath进行比较，确保正确识别不同路径下的同名文件
-  const index = selectedFiles.value.findIndex(f => f.fullPath === item.fullPath);
-  if (index > -1) {
-    selectedFiles.value.splice(index, 1);
-    // 对于文件，更新其isSelected状态
-    if (item.hasOwnProperty('isSelected')) {
-      item.isSelected = false;
-    }
+const handleUploadError = (result) => {
+  if (result.message === 'NoSuchBucket' || result.message?.includes('NoSuchBucket')) {
+    ElMessage.error(t('browser.bucketNotFound'));
+  } else if (result.message === 'AccessDenied' || result.message?.includes('AccessDenied')) {
+    ElMessage.error(t('common.accessDenied'));
   } else {
-    selectedFiles.value.push(item);
-    // 对于文件，更新其isSelected状态
-    if (item.hasOwnProperty('isSelected')) {
-      item.isSelected = true;
-    }
-  }
-
-  // 如果只选择了一个文件，显示其详情
-  if (selectedFiles.value.length === 1) {
-    selectedFile.value = selectedFiles.value[0];
-  } else if (selectedFiles.value.length > 1) {
-    // 选择多个文件时，显示自定义标题
-    selectedFile.value = {
-      name: `${selectedFiles.value.length} 个对象已选择`
-    };
-  } else {
-    selectedFile.value = null;
-  }
-
-  // 更新全选状态
-  updateSelectAllState();
-};
-
-// 初始化文件的isSelected状态
-const initializeFileSelectionState = () => {
-  // 确保每个文件都有isSelected属性，并根据selectedFiles数组设置其状态
-  if (currentFiles.value && currentFiles.value.length > 0) {
-    currentFiles.value.forEach(file => {
-      file.isSelected = isSelected(file);
-    });
+    ElMessage.error(result.message || t('browser.uploadFailed'));
   }
 };
 
-// 监听currentFiles中的isSelected变化，同步更新selectedFiles数组
-watch(() => currentFiles.value, (newFiles) => {
-  if (newFiles && newFiles.length > 0) {
-    // 为每个文件添加isSelected属性的响应式监听
-    newFiles.forEach(file => {
-      if (file.hasOwnProperty('isSelected')) {
-        watch(() => file.isSelected, (newValue) => {
-          const index = selectedFiles.value.findIndex(f => f.fullPath === file.fullPath);
-          if (newValue && index === -1) {
-            selectedFiles.value.push(file);
-          } else if (!newValue && index > -1) {
-            selectedFiles.value.splice(index, 1);
-          }
-          updateSelectAllState();
-        }, { immediate: false });
-      }
-    });
-  }
-}, { deep: true, immediate: true });
-
-// 检查是否被选中
-const isSelected = (item) => {
-  // 使用fullPath进行比较，确保正确识别不同路径下的同名文件
-  return selectedFiles.value.some(f => f.fullPath === item.fullPath);
+// ====== 创建文件夹函数 ======
+const openCreateFolderDialog = () => {
+  folderName.value = '';
+  createFolderError.value = '';
+  createFolderDialogVisible.value = true;
 };
 
-// 切换全选
-const toggleSelectAll = () => {
-  if (isAllSelected.value) {
-    // 取消全选
-    selectedFiles.value = [];
-    selectedFile.value = null;
-    
-    // 同步更新所有文件和文件夹的isSelected状态
-    if (currentFolders.value && currentFolders.value.length > 0) {
-      currentFolders.value.forEach(folder => {
-        if (folder.hasOwnProperty('isSelected')) {
-          folder.isSelected = false;
-        }
-      });
-    }
-    if (currentFiles.value && currentFiles.value.length > 0) {
-      currentFiles.value.forEach(file => {
-        file.isSelected = false;
-      });
-    }
-  } else {
-    // 全选当前目录下的所有文件和文件夹
-    const allItems = [...currentFolders.value, ...currentFiles.value];
-    selectedFiles.value = [...allItems];
-
-    // 同步更新所有文件和文件夹的isSelected状态
-    if (currentFolders.value && currentFolders.value.length > 0) {
-      currentFolders.value.forEach(folder => {
-        if (folder.hasOwnProperty('isSelected')) {
-          folder.isSelected = true;
-        }
-      });
-    }
-    if (currentFiles.value && currentFiles.value.length > 0) {
-      currentFiles.value.forEach(file => {
-        file.isSelected = true;
-      });
-    }
-
-    if (allItems.length === 1) {
-      selectedFile.value = allItems[0];
-    } else if (allItems.length > 1) {
-      selectedFile.value = {
-        name: `${allItems.length} 个对象已选择`
-      };
-    }
-  }
-
-  isAllSelected.value = !isAllSelected.value;
+const closeCreateFolderDialog = () => {
+  createFolderDialogVisible.value = false;
+  folderName.value = '';
+  createFolderError.value = '';
+  creatingFolder.value = false;
 };
 
-// 更新全选状态
-const updateSelectAllState = () => {
-  const allItems = [...currentFolders.value, ...currentFiles.value];
-  isAllSelected.value = selectedFiles.value.length === allItems.length && allItems.length > 0;
-};
-
-// 关闭侧边栏
-const closeSidebar = () => {
-  selectedFile.value = null;
-};
-
-// 处理删除操作
-const handleDelete = async () => {
-  if (!bucketName.value || selectedFiles.value.length === 0) {
+const handleCreateFolder = async () => {
+  const trimmedName = folderName.value.trim().replace(/^\//, '');
+  if (!trimmedName) {
+    createFolderError.value = t('browser.folderNameRequired');
     return;
   }
 
+  if (trimmedName.includes('/')) {
+    createFolderError.value = t('browser.invalidFolderName');
+    return;
+  }
+
+  let fullFolderPath = trimmedName + "/";
+  if (currentPath.value) {
+    const normalizedPath = currentPath.value.endsWith('/')
+      ? currentPath.value.slice(0, -1)
+      : currentPath.value;
+    fullFolderPath = `${normalizedPath}/${trimmedName}/`;
+  }
+
+  fullFolderPath = fullFolderPath.replace(/\/+/g, '/');
+
   try {
-    // 构建删除请求数据
+    creatingFolder.value = true;
+    createFolderError.value = '';
+
+    const response = await createfolder({
+      bucket: bucketName.value,
+      folder: fullFolderPath
+    });
+
+    if (response.success === false) {
+      if (response.msg.includes('AlreadyExists')) {
+        createFolderError.value = t('browser.folderAlreadyExists');
+      } else if (response.msg.includes('AccessDenied')) {
+        createFolderError.value = t('browser.accessDenied');
+      } else {
+        createFolderError.value = response.msg;
+      }
+      return;
+    }
+
+    closeCreateFolderDialog();
+    await fetchObjects();
+  } catch (error) {
+    console.error('Error creating folder:', error);
+    createFolderError.value = t('browser.createFolderFailed');
+  } finally {
+    creatingFolder.value = false;
+  }
+};
+
+// ====== 文件管理操作函数 ======
+const handleDelete = async () => {
+  if (!bucketName.value || selectedFiles.value.length === 0) return;
+
+  try {
     const keysToDelete = selectedFiles.value.map(item => {
-      // 对于文件夹，确保路径以/结尾
       if (item.isFolder && !item.fullPath.endsWith('/')) {
         return item.fullPath + '/';
       }
@@ -730,7 +678,6 @@ const handleDelete = async () => {
 
     deleting.value = true;
 
-    // 调用删除API
     const response = await delobject({
       bucket: bucketName.value,
       keys: keysToDelete
@@ -741,22 +688,13 @@ const handleDelete = async () => {
         count: response.deleted || selectedFiles.value.length
       }));
 
-      // 关闭侧边栏
       selectedFile.value = null;
       selectedFiles.value = [];
       isAllSelected.value = false;
 
-      // 刷新文件列表
       await fetchObjects();
     } else {
-      // 处理不同的错误情况
-      if (response.message === 'NoSuchBucket' || response.message?.includes('NoSuchBucket')) {
-        ElMessage.error(t('browser.bucketNotFound'));
-      } else if (response.message === 'AccessDenied' || response.message?.includes('AccessDenied')) {
-        ElMessage.error(t('common.accessDenied'));
-      } else {
-        ElMessage.error(response.message || t('browser.deleteFailed'));
-      }
+      handleDeleteError(response);
     }
   } catch (error) {
     console.error('Error deleting objects:', error);
@@ -766,39 +704,38 @@ const handleDelete = async () => {
   }
 };
 
-// 处理下载操作
-const handleDownload = async () => {
-  if (!bucketName.value || selectedFiles.value.length === 0) {
-    return;
+const handleDeleteError = (response) => {
+  if (response.msg === 'NoSuchBucket' || response.msg?.includes('NoSuchBucket')) {
+    ElMessage.error(t('browser.bucketNotFound'));
+  } else if (response.msg === 'AccessDenied' || response.msg?.includes('AccessDenied')) {
+    ElMessage.error(t('common.accessDenied'));
+  } else {
+    ElMessage.error(response.msg || t('browser.deleteFailed'));
   }
+};
+
+const handleDownload = async () => {
+  if (!bucketName.value || selectedFiles.value.length === 0) return;
 
   try {
-    // 构建下载请求数据
     const filePaths = selectedFiles.value.map(item => item.fullPath);
     
-    // 确定文件名参数
     let filename = '';
     if (selectedFiles.value.length === 1) {
-      // 单个文件下载时，使用文件名
       filename = selectedFiles.value[0].name;
     } else {
-      // 多个文件下载时，创建一个压缩包名称
       const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       filename = `download-${timestamp}.zip`;
     }
 
-    // 调用下载API
     const response = await getobject({
       bucket: bucketName.value,
       files: filePaths,
       filename: filename
     });
     
-    // 下载API应该会自动触发文件下载，不需要额外处理
-    
-    // 如果需要处理特殊情况，可以在这里添加
     if (response?.success === false) {
-      ElMessage.error(response.message || t('browser.downloadFailed'));
+      ElMessage.error(response.msg || t('browser.downloadFailed'));
     }
   } catch (error) {
     console.error('Error downloading objects:', error);
@@ -806,21 +743,56 @@ const handleDownload = async () => {
   }
 };
 
-// 返回桶列表
-const backToList = () => {
-  router.push('/buckets');
+// ====== 侧边栏控制函数 ======
+const closeSidebar = () => {
+  selectedFile.value = null;
 };
 
-// 获取上一级目录的最后修改时间
-const getParentDirLastModified = () => {
-  // 简化实现，真实环境中可能需要从父目录获取
-  return new Date().toISOString();
+// ====== 数据获取函数 ======
+const fetchObjects = async () => {
+  if (!bucketName.value) return;
+
+  loading.value = true;
+  error.value = '';
+
+  try {
+    const params = {
+      bucket: bucketName.value,
+      prefix: currentPath.value ? currentPath.value + '/' : '',
+      marker: '',
+      delimiter: '/'
+    };
+
+    const result = await listobjects(params);
+
+    if (result.success === true || result.code === 0) {
+      objectsList.value = result.data.data || result.data;
+    } else {
+      handleError(result);
+    }
+  } catch (err) {
+    console.error('Error fetching objects:', err);
+    error.value = t('common.networkErrorPleaseRetry');
+    ElMessage.error(t('common.networkErrorPleaseRetry'));
+  } finally {
+    loading.value = false;
+  }
 };
 
-// 监听路径变化，重新获取数据
-currentPath.value && fetchObjects();
+const handleError = (result) => {
+  if (result.message === 'NoSuchBucket' || result.message?.includes('NoSuchBucket')) {
+    error.value = t('browser.bucketNotFound');
+    ElMessage.error(t('browser.bucketNotFound'));
+  } else if (result.message === 'AccessDenied' || result.message?.includes('AccessDenied')) {
+    error.value = t('common.accessDenied');
+    ElMessage.error(t('common.accessDenied'));
+  } else {
+    error.value = result.message || t('browser.failedToLoadObjects');
+    ElMessage.error(result.message || t('browser.failedToLoadObjects'));
+  }
+};
 
-// 获取文件扩展名
+// ====== 工具函数 ======
 const getFileExtension = (fileName) => {
   const parts = fileName.split('.');
   if (parts.length > 1) {
@@ -829,7 +801,6 @@ const getFileExtension = (fileName) => {
   return 'FILE';
 };
 
-// 根据文件类型获取图标类名
 const getFileIconClass = (fileName) => {
   if (!fileName) return 'fas fa-file text-gray-500';
 
@@ -858,11 +829,9 @@ const getFileIconClass = (fileName) => {
   }
 };
 
-// 格式化日期
 const formatDate = (dateString) => {
   try {
     const date = new Date(dateString);
-    // 检查是否是有效的日期
     if (!isNaN(date.getTime())) {
       return date.toLocaleDateString('zh-CN', {
         year: 'numeric',
@@ -873,15 +842,12 @@ const formatDate = (dateString) => {
   } catch (error) {
     console.warn('Invalid date string:', dateString);
   }
-  // 返回默认值或空字符串
   return '-';
 };
 
-// 格式化日期时间
 const formatDateTime = (dateString) => {
   try {
     const date = new Date(dateString);
-    // 检查是否是有效的日期
     if (!isNaN(date.getTime())) {
       return date.toLocaleDateString('zh-CN', {
         year: 'numeric',
@@ -894,85 +860,9 @@ const formatDateTime = (dateString) => {
   } catch (error) {
     console.warn('Invalid date string:', dateString);
   }
-  // 返回默认值或空字符串
   return '-';
 };
 
-// 打开创建文件夹对话框
-const openCreateFolderDialog = () => {
-  folderName.value = '';
-  createFolderError.value = '';
-  createFolderDialogVisible.value = true;
-};
-
-// 关闭创建文件夹对话框
-const closeCreateFolderDialog = () => {
-  createFolderDialogVisible.value = false;
-  folderName.value = '';
-  createFolderError.value = '';
-  creatingFolder.value = false;
-};
-
-// 处理创建文件夹
-const handleCreateFolder = async () => {
-  // 移除前后空格并去除前导斜杠（如果有）
-  const trimmedName = folderName.value.trim().replace(/^\//, '');
-  if (!trimmedName) {
-    createFolderError.value = t('browser.folderNameRequired');
-    return;
-  }
-
-  // 验证文件夹名称是否合法
-  if (trimmedName.includes('/')) {
-    createFolderError.value = t('browser.invalidFolderName');
-    return;
-  }
-
-  // 构建完整的文件夹路径，确保不会有多余的斜杠
-  let fullFolderPath = trimmedName + "/";
-  if (currentPath.value) {
-    // 去除currentPath末尾的斜杠（如果有），然后添加一个斜杠
-    const normalizedPath = currentPath.value.endsWith('/')
-      ? currentPath.value.slice(0, -1)
-      : currentPath.value;
-    fullFolderPath = `${normalizedPath}/${trimmedName}/`;
-  }
-
-  // 规范化路径，移除所有多余的斜杠（包括中间部分的）
-  fullFolderPath = fullFolderPath.replace(/\/+/g, '/');
-
-  try {
-    creatingFolder.value = true;
-    createFolderError.value = '';
-
-    const response = await createfolder({
-      bucket: bucketName.value,
-      folder: fullFolderPath
-    });
-    console.log('Create folder response:', response);
-    if (response.success === false) {
-      if (response.message.includes('AlreadyExists')) {
-        createFolderError.value = t('browser.folderAlreadyExists');
-      } else if (response.message.includes('AccessDenied')) {
-        createFolderError.value = t('browser.accessDenied');
-      } else {
-        createFolderError.value = response.message;
-      }
-      return;
-    }
-
-    // 成功创建文件夹后刷新列表
-    closeCreateFolderDialog();
-    await fetchObjects();
-  } catch (error) {
-    console.error('Error creating folder:', error);
-    createFolderError.value = t('browser.createFolderFailed');
-  } finally {
-    creatingFolder.value = false;
-  }
-};
-
-// 格式化文件大小
 const formatSize = (bytes) => {
   if (bytes >= 1099511627776) {
     return (bytes / 1099511627776).toFixed(2) + 'TB';
@@ -986,59 +876,29 @@ const formatSize = (bytes) => {
   return bytes + 'B';
 };
 
-// 获取当前路径下的对象列表
-const fetchObjects = async () => {
-  if (!bucketName.value) return;
-
-  loading.value = true;
-  error.value = '';
-
-  try {
-    // 构造查询参数
-    const params = {
-      bucket: bucketName.value,
-      prefix: currentPath.value ? currentPath.value + '/' : '',
-      marker: '',
-      delimiter: '/'
-    };
-
-    const result = await listobjects(params);
-
-    if (result.success === true || result.code === 0) {
-      // 确保正确处理嵌套的data对象
-      objectsList.value = result.data.data || result.data;
-    } else {
-      // 处理不同的错误情况
-      if (result.message === 'NoSuchBucket' || result.message?.includes('NoSuchBucket')) {
-        error.value = t('browser.bucketNotFound');
-        ElMessage.error(t('browser.bucketNotFound'));
-      } else if (result.message === 'AccessDenied' || result.message?.includes('AccessDenied')) {
-        error.value = t('common.accessDenied');
-        ElMessage.error(t('common.accessDenied'));
-      } else {
-        error.value = result.message || t('browser.failedToLoadObjects');
-        ElMessage.error(result.message || t('browser.failedToLoadObjects'));
-      }
-    }
-  } catch (err) {
-    console.error('Error fetching objects:', err);
-    error.value = t('common.networkErrorPleaseRetry');
-    ElMessage.error(t('common.networkErrorPleaseRetry'));
-  } finally {
-    loading.value = false;
-    // 确保在DOM更新后调用，以便currentFiles计算属性已经更新
-    setTimeout(() => {
-      initializeFileSelectionState();
-    }, 0);
-  }
-};
-
-// 组件挂载时获取数据
+// ====== 组件生命周期 ======
 onMounted(() => {
   fetchObjects();
 });
 
-// 使用系统的i18n翻译系统获取创建文件夹相关的翻译文本
+// 监听currentFiles变化，初始化选择状态
+watch(() => currentFiles.value, (newFiles) => {
+  if (newFiles && newFiles.length > 0) {
+    newFiles.forEach(file => {
+      if (file.hasOwnProperty('isSelected')) {
+        watch(() => file.isSelected, (newValue) => {
+          const index = selectedFiles.value.findIndex(f => f.fullPath === file.fullPath);
+          if (newValue && index === -1) {
+            selectedFiles.value.push(file);
+          } else if (!newValue && index > -1) {
+            selectedFiles.value.splice(index, 1);
+          }
+          updateSelectAllState();
+        }, { immediate: false });
+      }
+    });
+  }
+}, { deep: true, immediate: true });
 </script>
 
 <style scoped>

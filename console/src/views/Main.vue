@@ -14,8 +14,9 @@
                 d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
             </svg>
           </div>
-          <span class="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 text-transparent bg-clip-text">{{
-            t('brand.name') }}</span>
+          <span class="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 text-transparent bg-clip-text">
+            {{ t('brand.name') }}
+          </span>
         </div>
         <div v-else
           class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
@@ -115,8 +116,9 @@
             <el-breadcrumb separator="/">
               <el-breadcrumb-item v-for="(crumb, index) in breadcrumbs" :key="index">
                 <span v-if="index === breadcrumbs.length - 1" class="text-gray-900 font-medium">{{ crumb.label }}</span>
-                <router-link v-else :to="crumb.path" class="text-gray-500 hover:text-blue-500 transition-colors">{{
-                  crumb.label }}</router-link>
+                <router-link v-else :to="crumb.path" class="text-gray-500 hover:text-blue-500 transition-colors">
+                  {{ crumb.label }}
+                </router-link>
               </el-breadcrumb-item>
             </el-breadcrumb>
           </div>
@@ -133,7 +135,7 @@
             <!-- 语言切换 -->
             <LanguageSwitch :sidebar-collapsed="sidebarCollapsed" />
 
-            <!-- 用户信息 -->
+            <!-- 用户信息和下拉菜单 -->
             <div class="flex items-center gap-3 cursor-pointer group relative">
               <div class="relative">
                 <img v-if="userInfo.avatar" :src="userInfo.avatar" alt="用户头像"
@@ -150,19 +152,18 @@
                 <div class="text-sm font-medium text-gray-800 group-hover:text-blue-600 transition-colors">
                   {{ userInfo.name || '未登录' }}
                 </div>
-                <div class="text-xs text-gray-500">
-                  {{ userInfo.role === 'admin' ? t('common.admin') : t('common.regularUser') }}
-                </div>
               </div>
               <i
                 class="fas fa-chevron-down text-gray-400 hidden md:block group-hover:text-blue-500 transition-colors"></i>
+              
+              <!-- 下拉菜单内容 -->
+              <div class="absolute right-0 mt-16 w-auto min-w-[120px] bg-white rounded-lg shadow-lg py-1 z-10 hidden group-hover:block animate-fadeIn whitespace-nowrap">
+                <button @click="handleLogout" 
+                  class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
+                  <i class="fas fa-sign-out-alt mr-2 text-red-500"></i> {{ t('common.logout') }}
+                </button>
+              </div>
             </div>
-
-            <!-- 退出登录 -->
-            <button @click="handleLogout"
-              class="p-2 text-gray-600 hover:text-red-500 transition-all duration-300 rounded-full hover:bg-gray-100">
-              <i class="fas fa-sign-out-alt text-lg"></i>
-            </button>
           </div>
         </div>
       </header>
@@ -181,8 +182,9 @@ import { useRoute, useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
 import LanguageSwitch from '@/components/LanguageSwitch.vue';
-import { getuser} from '@/api/admin';
+import { getuser, logout } from '@/api/admin';
 
+// ==================== 变量定义 ====================
 const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
@@ -190,12 +192,21 @@ const router = useRouter();
 // 侧边栏状态
 const sidebarCollapsed = ref(false);
 
+// 子菜单展开状态
+const isSubmenuOpen = ref([]);
+
 // 当前用户信息
 const userInfo = ref({
-  name: '管理员',
-  role: 'admin',
+  name: '',
+  account: '',
+  role: ['admin'],
+  group: [],
+  attachPolicies: [],
+  allPolicies: [],
+  permissions: [], // console:* 类型的权限列表
   avatar: null,
-  permissions: []
+  enabled: true,
+  createdAt: ''
 });
 
 // 原始菜单项 - 添加权限标识
@@ -240,6 +251,45 @@ const menuItems = [
   },
 ];
 
+// ==================== 计算属性 ====================
+// 计算面包屑导航
+const breadcrumbs = computed(() => {
+  const path = route.path;
+  const crumbs = [{ path: '/dashboard', label: t('common.home') }];
+
+  // 查找当前路径对应的菜单项，包括子菜单
+  let found = false;
+  for (const item of menuItems) {
+    // 检查是否是主菜单项
+    if (item.path === path) {
+      crumbs.push({ path, label: item.label });
+      found = true;
+      break;
+    }
+    // 检查是否是子菜单项
+    if (item.children) {
+      const subItem = item.children.find(s => s.path === path);
+      if (subItem) {
+        crumbs.push({ path: item.path || '#', label: item.label });
+        crumbs.push({ path, label: subItem.label });
+        found = true;
+        break;
+      }
+    }
+  }
+  // 如果没有找到对应的菜单项，只添加当前路径
+  if (!found) {
+    crumbs.push({ path, label: path.split('/').pop() || path });
+  }
+  return crumbs;
+});
+
+// 计算属性，根据权限过滤菜单项
+const filteredMenuItems = computed(() => {
+  return filterMenuItems(menuItems);
+});
+
+// ==================== 功能函数 ====================
 // 切换侧边栏
 const toggleSidebar = () => {
   sidebarCollapsed.value = !sidebarCollapsed.value;
@@ -251,8 +301,14 @@ const toggleSidebar = () => {
   }
 };
 
-// 子菜单展开状态
-const isSubmenuOpen = ref([]);
+// 切换子菜单
+const toggleSubmenu = (index) => {
+  const item = filteredMenuItems.value[index];
+  if (!item || item.disabled) {
+    return;
+  }
+  isSubmenuOpen.value[index] = !isSubmenuOpen.value[index];
+};
 
 // 检查用户是否有指定权限
 const hasPermission = (permission) => {
@@ -297,20 +353,6 @@ const filterMenuItems = (items) => {
   });
 };
 
-// 计算属性，根据权限过滤菜单项
-const filteredMenuItems = computed(() => {
-  return filterMenuItems(menuItems);
-});
-
-// 切换子菜单
-const toggleSubmenu = (index) => {
-  const item = filteredMenuItems.value[index];
-  if (!item || item.disabled) {
-    return;
-  }
-  isSubmenuOpen.value[index] = !isSubmenuOpen.value[index];
-};
-
 // 计算当前激活的路由
 const isActiveRoute = (path) => {
   return route.path === path;
@@ -331,182 +373,67 @@ const handleMenuClick = (item) => {
   }
 };
 
+// 从策略中提取 console:* 类型的权限
+const extractConsolePermissions = (policies) => {
+  const consolePermissions = new Set();
+
+  if (policies && Array.isArray(policies)) {
+    policies.forEach(policy => {
+      if (policy.Effect === 'Allow' && policy.Action && Array.isArray(policy.Action)) {
+        policy.Action.forEach(action => {
+          if (action.startsWith('console:')) {
+            consolePermissions.add(action);
+          }
+        });
+      }
+    });
+  }
+
+  return Array.from(consolePermissions);
+};
+
 // 获取用户信息和权限
 const getUserInfo = async () => {
   try {
     // 调用API获取用户信息和权限
     const response = await getuser();
 
-    if (response.success && response.data) {
+    if (response.code === 0 && response.data) {
+      const userData = response.data;
       // 从API返回的结果中获取用户信息和权限
       userInfo.value = {
-        name: response.data.name || 'Unknown',
-        role: response.data.role || 'user',
-        avatar: response.data.avatar,
-        permissions: response.data.permissions || []
+        name: userData.username || 'Unknown',
+        account: userData.account || '',
+        role: userData.role || [],
+        group: userData.group || [],
+        attachPolicies: userData.attachPolicies || [],
+        allPolicies: userData.allPolicies || [],
+        permissions: extractConsolePermissions(userData.allPolicies), // 提取console权限
+        avatar: userData.avatar,
+        enabled: userData.enabled !== undefined ? userData.enabled : true,
+        createdAt: userData.createdAt || ''
       };
-    } else if (response.message) {
+    } else if (response.msg) {
       // 如果API返回了错误信息，显示它
-      ElMessage.error(response.message);
-      // 使用模拟数据作为备份
-      setMockUserInfo();
-    } else {
-      // 如果API调用失败但没有返回具体信息，使用模拟数据
-      setMockUserInfo();
+      ElMessage.error(response.msg);
     }
   } catch (error) {
     console.error('Failed to get user info:', error);
     ElMessage.error(t('common.fetchUserInfoFailed'));
-    // API调用出错时，使用模拟数据
-    setMockUserInfo();
   }
 };
-
-// 设置模拟用户信息（当API不可用时使用）
-const setMockUserInfo = () => {
-  userInfo.value = {
-    name: '管理员',
-    role: 'admin',
-    avatar: null,
-    permissions: [
-      'console:Login',
-      'console:Stats',
-      'console:Bucket',
-      'console:AccessKey',
-      'console:User',
-      'console:Role',
-      'console:Group',
-      'console:Policy',
-      'console:Event',
-      'console:Audit',
-      'console:Storage',
-      'console:Quota',
-      'console:Chunk',
-      'console:Migrate',
-      'console:Defragment',
-      'console:Snapshot',
-      'console:Analysis',
-      'console:Debug'
-    ]
-  };
-};
-
-// 测试不同权限级别的用户（开发调试用）
-const testUserPermission = (userType) => {
-  // 在实际项目中，此函数可以删除或注释掉
-  if (process.env.NODE_ENV !== 'development') return;
-
-  console.log(`切换到${userType}权限测试模式`);
-
-  let permissions = [];
-  let name = '';
-  let role = '';
-
-  switch (userType) {
-    case 'admin':
-      name = '超级管理员';
-      role = 'admin';
-      permissions = [
-        'console:Login',
-        'console:Stats',
-        'console:Bucket',
-        'console:AccessKey',
-        'console:User',
-        'console:Role',
-        'console:Group',
-        'console:Policy',
-        'console:Event',
-        'console:Audit',
-        'console:Storage',
-        'console:Quota',
-        'console:Chunk',
-        'console:Migrate',
-        'console:Defragment',
-        'console:Snapshot',
-        'console:Analysis',
-        'console:Debug'
-      ];
-      break;
-    case 'readOnly':
-      name = '只读用户';
-      role = 'readOnly';
-      permissions = [
-        'console:Login',
-        'console:Stats',
-        'console:Bucket'
-      ];
-      break;
-    case 'limited':
-      name = '普通用户';
-      role = 'user';
-      permissions = [
-        'console:Login',
-        'console:Stats',
-        'console:Bucket',
-        'console:AccessKey',
-        'console:Event'
-      ];
-      break;
-    default:
-      name = '访客';
-      role = 'guest';
-      permissions = ['console:Login'];
-  }
-
-  userInfo.value = {
-    name,
-    role,
-    avatar: null,
-    permissions
-  };
-};
-
-// 计算面包屑导航
-const breadcrumbs = computed(() => {
-  const path = route.path;
-  const crumbs = [{ path: '/dashboard', label: t('common.home') }];
-
-  // 查找当前路径对应的菜单项，包括子菜单
-  let found = false;
-  for (const item of menuItems) {
-    // 检查是否是主菜单项
-    if (item.path === path) {
-      crumbs.push({ path, label: item.label });
-      found = true;
-      break;
-    }
-    // 检查是否是子菜单项
-    if (item.children) {
-      const subItem = item.children.find(s => s.path === path);
-      if (subItem) {
-        crumbs.push({ path: item.path || '#', label: item.label });
-        crumbs.push({ path, label: subItem.label });
-        found = true;
-        break;
-      }
-    }
-  }
-  // 如果没有找到对应的菜单项，只添加当前路径
-  if (!found) {
-    crumbs.push({ path, label: path.split('/').pop() || path });
-  }
-  return crumbs;
-});
 
 // 退出登录处理函数
 const handleLogout = () => {
-  // 实际项目中这里应该有退出登录的逻辑
-  console.log('用户退出登录');
+  // 调用logout API进行退出操作
+  logout();
 };
 
 onMounted(() => {
   // 获取用户信息和权限
   getUserInfo();
 });
-
 </script>
-
-
 
 <style scoped>
 .main-layout {

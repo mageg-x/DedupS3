@@ -1,19 +1,20 @@
 <template>
   <div class="buckets-container">
     <!-- 头部操作区域 -->
-    <div
-      class="header-actions flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 sm:mb-3 gap-1 sm:gap-2 transition-all duration-300">
-      <div class="page-title flex flex-col sm:flex-row items-start sm:items-center gap-1 sm:gap-2">
-        <h1 class="text-xl font-bold text-gray-800 transition-all duration-300 sm:text-2xl m-0">{{ t('bucket.pageTitle')
-        }}</h1>
-        <p class="text-gray-500 transition-all duration-300 text-xs sm:text-sm m-0">{{ t('bucket.pageSubtitle') }}</p>
+    <div class="header-actions">
+      <div class="page-title">
+        <h1 class="text-xl font-bold text-gray-800 sm:text-2xl m-0">{{ t('bucket.pageTitle') }}</h1>
+        <p class="text-gray-500 text-xs sm:text-sm m-0">{{ t('bucket.pageSubtitle') }}</p>
       </div>
 
-      <div class="search-create-container flex flex-col sm:flex-row gap-2 w-full md:w-auto transition-all duration-300">
+      <div class="search-create-container">
         <!-- 搜索框 -->
-        <div class="relative flex-grow  w-full sm:w-auto min-w-[300px] transition-all duration-300">
-          <input v-model="searchQuery" type="text" :placeholder="t('bucket.searchPlaceholder')"
-            class="w-full pl-9 pr-3 py-2.25 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all duration-300">
+        <div class="relative flex-grow w-full sm:w-auto min-w-[300px]">
+          <input 
+            v-model="searchQuery" 
+            type="text" 
+            :placeholder="t('bucket.searchPlaceholder')"
+            class="w-full pl-9 pr-3 py-2.25 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm">
           <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm"></i>
         </div>
 
@@ -32,8 +33,7 @@
       <div class="buckets-list">
         <!-- 加载状态 -->
         <div v-if="loading" class="loading-state py-16 text-center bg-white rounded-xl shadow-md">
-          <div class="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4">
-          </div>
+          <div class="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
           <h3 class="text-xl font-semibold text-gray-800 mb-2">{{ t('bucket.loadingBuckets') }}</h3>
           <p class="text-gray-500">{{ t('bucket.pleaseWait') }}</p>
         </div>
@@ -87,7 +87,7 @@
 
             <!-- 桶详情 -->
             <div class="bucketDetails px-4 pb-3">
-              <span id="created-{{ bucket.name }}" class="mr-6">
+              <span class="mr-6">
                 <strong>{{ t('bucket.createdAt') }}:</strong> {{ formatDate(bucket.createdAt) }}
               </span>
             </div>
@@ -266,66 +266,39 @@ import { listbuckets, createbucket, deletebucket } from '@/api/admin.js';
 import { ElMessage } from 'element-plus';
 
 const { t } = useI18n();
-
 const router = useRouter();
 
-// 导航到桶的浏览视图
-const navigateToBucket = (bucketName) => {
-  router.push(`/bucket/${bucketName}`);
-};
-
-// 搜索查询
+// ==================== 响应式数据定义 ====================
 const searchQuery = ref('');
-
-// 当前页码
 const currentPage = ref(1);
-
-// 每页显示数量
 const pageSize = ref(10);
-
-// 桶数据列表
 const buckets = ref([]);
-
-// 加载状态
 const loading = ref(false);
-
-// 错误信息
 const error = ref('');
-
-// 创建桶对话框相关状态
 const dialogVisible = ref(false);
 const bucketName = ref('');
 const creating = ref(false);
-
-// 删除桶对话框相关状态
 const deleteDialogVisible = ref(false);
 const bucketToDelete = ref(null);
 
-// 过滤后的桶列表
+// ==================== 计算属性 ====================
 const filteredBuckets = computed(() => {
   if (!searchQuery.value.trim()) {
     return buckets.value;
   }
 
   const query = searchQuery.value.toLowerCase().trim();
-  return buckets.value.filter(bucket =>
-    bucket.name.toLowerCase().includes(query)
-  );
+  return buckets.value.filter(bucket => bucket.name.toLowerCase().includes(query));
 });
 
-// 分页后的桶列表
 const paginatedBuckets = computed(() => {
   const startIndex = (currentPage.value - 1) * pageSize.value;
   const endIndex = startIndex + pageSize.value;
   return filteredBuckets.value.slice(startIndex, endIndex);
 });
 
-// 总页数
-const totalPages = computed(() =>
-  Math.ceil(filteredBuckets.value.length / pageSize.value)
-);
+const totalPages = computed(() => Math.ceil(filteredBuckets.value.length / pageSize.value));
 
-// 可见页码
 const visiblePages = computed(() => {
   const pages = [];
   const maxVisible = 5;
@@ -343,7 +316,7 @@ const visiblePages = computed(() => {
   return pages;
 });
 
-// 格式化数字
+// ==================== 工具函数 ====================
 const formatNumber = (num) => {
   if (num >= 1000000) {
     return (num / 1000000).toFixed(1) + 'M';
@@ -353,7 +326,6 @@ const formatNumber = (num) => {
   return num;
 };
 
-// 格式化文件大小
 const formatSize = (bytes) => {
   if (bytes >= 1099511627776) {
     return (bytes / 1099511627776).toFixed(2) + 'TB';
@@ -367,7 +339,6 @@ const formatSize = (bytes) => {
   return bytes + 'B';
 };
 
-// 格式化日期
 const formatDate = (dateString) => {
   const date = new Date(dateString);
   return date.toLocaleDateString('zh-CN', {
@@ -379,13 +350,47 @@ const formatDate = (dateString) => {
   }).replace(/\//g, '-');
 };
 
-// 打开创建桶对话框
+// ==================== 桶操作函数 ====================
+const fetchBuckets = async () => {
+  loading.value = true;
+  error.value = '';
+
+  try {
+    const result = await listbuckets();
+
+    if (result.success === false) {
+      error.value = result.message || t('bucket.failedToListBuckets');
+      return;
+    }
+
+    // 处理后端返回的数据结构
+    const bucketData = result.data || [];
+    buckets.value = bucketData.map(bucket => ({
+      name: bucket.base?.name || 'unknown',
+      objectCount: bucket.stats?.objectCount || 0,
+      size: bucket.stats?.sizeOfObject || 0,
+      region: bucket.base?.location || 'unknown',
+      owner: bucket.base?.owner?.displayName || 'unknown',
+      createdAt: bucket.base?.creationDate || new Date().toISOString()
+    }));
+  } catch (err) {
+    console.error('Error fetching buckets:', err);
+    error.value = t('common.networkErrorPleaseRetry');
+  } finally {
+    loading.value = false;
+  }
+};
+
+const navigateToBucket = (bucketName) => {
+  router.push(`/bucket/${bucketName}`);
+};
+
+// ==================== 创建桶相关函数 ====================
 const openCreateBucketDialog = () => {
   bucketName.value = '';
   dialogVisible.value = true;
 };
 
-// 验证桶名称
 const validateBucketName = (name) => {
   if (!name || name.trim() === '') {
     return { valid: false, message: t('bucket.bucketNameCannotBeEmpty') };
@@ -402,7 +407,6 @@ const validateBucketName = (name) => {
   return { valid: true };
 };
 
-// 创建桶
 const handleCreateBucket = async () => {
   const validation = validateBucketName(bucketName.value);
   if (!validation.valid) {
@@ -412,19 +416,15 @@ const handleCreateBucket = async () => {
 
   creating.value = true;
   try {
-    // 调用创建桶API，region默认为美东1区
     const result = await createbucket({
       name: bucketName.value,
       region: 'us-east-1'
     });
 
-    console.log('createbucket result:', result);
-
     if (result.success === true || result.code === 0) {
       ElMessage.success(t('bucket.bucketCreatedSuccessfully'));
       dialogVisible.value = false;
-      // 重新获取桶列表
-      await fetchBuckets();
+      await fetchBuckets(); // 重新获取桶列表
     } else {
       // 处理不同的错误情况
       if (result.message === 'BucketAlreadyOwnedByYou' || result.message?.includes('BucketAlreadyOwnedByYou')) {
@@ -445,61 +445,20 @@ const handleCreateBucket = async () => {
   }
 };
 
-// 关闭对话框
 const handleCloseDialog = () => {
   dialogVisible.value = false;
 };
 
-// 获取桶列表数据
-const fetchBuckets = async () => {
-  loading.value = true;
-  error.value = '';
-
-  try {
-    const result = await listbuckets();
-
-    if (result.success === false) {
-      error.value = result.message || t('bucket.failedToListBuckets');
-      return;
-    }
-
-    // 处理后端返回的数据结构，转换为前端组件需要的格式
-    // 后端返回的数据结构: { data: [{ base: { name, creationDate }, stats: { objectCount, SizeOfObject } }] }
-    const bucketData = result.data || [];
-
-    buckets.value = bucketData.map(bucket => ({
-      name: bucket.base?.name || 'unknown',
-      objectCount: bucket.stats?.objectCount || 0,
-      size: bucket.stats?.sizeOfObject || 0,
-      region: bucket.base?.location || 'unknown',
-      owner: bucket.base?.owner?.displayName || 'unknown',
-      createdAt: bucket.base?.creationDate || new Date().toISOString()
-    }));
-  } catch (err) {
-    console.error('Error fetching buckets:', err);
-    error.value = t('common.networkErrorPleaseRetry');
-  } finally {
-    loading.value = false;
-  }
-};
-
-// 组件挂载时获取数据
-onMounted(() => {
-  fetchBuckets();
-});
-
-// 删除桶 - 打开确认对话框
+// ==================== 删除桶相关函数 ====================
 const handleDeleteBucket = (bucket) => {
   bucketToDelete.value = bucket;
   deleteDialogVisible.value = true;
 };
 
-// 确认删除桶
 const confirmDeleteBucket = async () => {
   if (!bucketToDelete.value) return;
   
   try {
-    // 调用删除桶API
     const result = await deletebucket({
       name: bucketToDelete.value.name,
       region: bucketToDelete.value.region || 'us-east-1'
@@ -509,8 +468,7 @@ const confirmDeleteBucket = async () => {
 
     if (result.success === true || result.code === 0) {
       ElMessage.success(t('bucket.deletedSuccess'));
-      // 重新获取桶列表
-      await fetchBuckets();
+      await fetchBuckets(); // 重新获取桶列表
     } else {
       // 处理不同的错误情况
       if (result.message === 'NoSuchBucket' || result.message?.includes('NoSuchBucket')) {
@@ -531,6 +489,11 @@ const confirmDeleteBucket = async () => {
     ElMessage.error(t('common.networkErrorPleaseRetry'));
   }
 };
+
+// ==================== 生命周期 ====================
+onMounted(() => {
+  fetchBuckets();
+});
 </script>
 
 <style scoped>
@@ -543,7 +506,37 @@ const confirmDeleteBucket = async () => {
 
 /* 头部操作区域 */
 .header-actions {
-  animation: fadeIn 0.5s ease-out forwards;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  gap: 0.5rem;
+  transition: all 0.3s ease;
+}
+
+@media (min-width: 640px) {
+  .header-actions {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    gap: 0.5rem;
+  }
+}
+
+.page-title {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+@media (min-width: 640px) {
+  .page-title {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
+  }
 }
 
 .page-title h1 {
@@ -553,13 +546,19 @@ const confirmDeleteBucket = async () => {
   background-clip: text;
 }
 
-/* 创建桶按钮 */
-.create-bucket-btn {
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.2);
+/* 搜索和创建按钮容器 */
+.search-create-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
 }
 
-.create-bucket-btn:hover {
-  box-shadow: 0 6px 16px rgba(64, 158, 255, 0.3);
+@media (min-width: 640px) {
+  .search-create-container {
+    flex-direction: row;
+    width: auto;
+  }
 }
 
 /* 桶列表容器 */
@@ -585,6 +584,7 @@ const confirmDeleteBucket = async () => {
   align-items: center;
   justify-content: space-between;
   width: 100%;
+  padding: 1rem;
 }
 
 .bucketTitle h1 {
@@ -603,6 +603,7 @@ const confirmDeleteBucket = async () => {
 .bucketDetails {
   color: #4b5563;
   font-size: 0.875rem;
+  padding: 0 1rem 0.75rem;
 }
 
 .bucketDetails strong {
@@ -612,7 +613,7 @@ const confirmDeleteBucket = async () => {
 /* 桶指标样式 */
 .bucketMetrics {
   border-top: 1px solid #f0f0f0;
-  padding-top: 1rem;
+  padding: 1rem;
 }
 
 /* 桶图标样式 */
@@ -656,7 +657,7 @@ const confirmDeleteBucket = async () => {
 /* 操作按钮样式 */
 .actions {
   display: flex;
-  gap: 8px;
+  gap: 0.5rem;
   flex-shrink: 0;
   justify-content: flex-end;
   align-items: center;
@@ -752,52 +753,6 @@ const confirmDeleteBucket = async () => {
 
 .retry-btn:active {
   transform: translateY(0);
-}
-
-/* 创建桶对话框样式 */
-:deep(.el-dialog__header) {
-  border-bottom: 1px solid #f0f0f0;
-  padding: 16px 20px;
-}
-
-:deep(.el-dialog__title) {
-  font-size: 16px;
-  font-weight: 500;
-  color: #303133;
-}
-
-:deep(.el-dialog__body) {
-  padding: 20px;
-}
-
-:deep(.el-dialog__footer) {
-  border-top: 1px solid #f0f0f0;
-  padding: 12px 20px;
-}
-
-:deep(.el-input__wrapper) {
-  transition: all 0.3s;
-}
-
-:deep(.el-input__wrapper:hover) {
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
-}
-
-:deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
-  border-color: #409EFF;
-}
-
-/* Font Awesome 图标样式 */
-.fas {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.3s ease;
-}
-
-.action-btn:hover .fas {
-  transform: scale(1.1);
 }
 
 /* 对话框样式 */
@@ -934,21 +889,13 @@ const confirmDeleteBucket = async () => {
   }
 }
 
-/* 对话框响应式设计 */
-@media (max-width: 768px) {
-  .dialog-container {
-    margin: 1rem;
-    width: calc(100% - 2rem);
-  }
-}
-
 .animate-fadeIn {
   animation: fadeIn 0.6s ease-out forwards;
   opacity: 0;
 }
 
 /* 响应式设计 */
-@media (max-width: 768px) {
+@media (max-width: 639px) {
   .buckets-container {
     padding: 0.75rem;
   }

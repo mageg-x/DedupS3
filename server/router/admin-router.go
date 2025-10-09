@@ -78,7 +78,14 @@ func registerAdminRouter(mr *mux.Router) {
 
 	api_router.Methods(http.MethodGet).Path("/user/info").HandlerFunc(handler.AdminGetUserHandler)
 	api_router.Methods(http.MethodGet).Path("/user/list").HandlerFunc(handler.AdminListUserHandler)
+	api_router.Methods(http.MethodPost).Path("/user/create").HandlerFunc(handler.AdminCreateUserHandler)
+	api_router.Methods(http.MethodPost).Path("/user/update").HandlerFunc(handler.AdminUpdateUserHandler)
+	api_router.Methods(http.MethodDelete).Path("/user/delete").HandlerFunc(handler.AdminDeleteUserHandler)
 	api_router.Methods(http.MethodGet).Path("/group/list").HandlerFunc(handler.AdminListGroupHandler)
+	api_router.Methods(http.MethodGet).Path("/group/get").HandlerFunc(handler.AdminGetGroupHandler)
+	api_router.Methods(http.MethodPost).Path("/group/create").HandlerFunc(handler.AdminCreateGroupHandler)
+	api_router.Methods(http.MethodPost).Path("/group/update").HandlerFunc(handler.AdminUpdateGroupHandler)
+	api_router.Methods(http.MethodDelete).Path("/group/delete").HandlerFunc(handler.AdminDeleteGroupHandler)
 	api_router.Methods(http.MethodGet).Path("/role/list").HandlerFunc(handler.AdminListRoleHandler)
 	api_router.Methods(http.MethodGet).Path("/role/get").HandlerFunc(handler.AdminGetRoleHandler)
 	api_router.Methods(http.MethodPost).Path("/role/create").HandlerFunc(handler.AdminCreateRoleHandler)
@@ -87,7 +94,7 @@ func registerAdminRouter(mr *mux.Router) {
 	api_router.Methods(http.MethodGet).Path("/policy/list").HandlerFunc(handler.AdminListPolicyHandler)
 	api_router.Methods(http.MethodGet).Path("/policy/get").HandlerFunc(handler.AdminGetPolicyHandler)
 	api_router.Methods(http.MethodPost).Path("/policy/create").HandlerFunc(handler.AdminCreatePolicyHandler)
-	api_router.Methods(http.MethodPost).Path("/policy/update").HandlerFunc(handler.AdminSetPolicyHandler)
+	api_router.Methods(http.MethodPost).Path("/policy/update").HandlerFunc(handler.AdminUpdatePolicyHandler)
 	api_router.Methods(http.MethodDelete).Path("/policy/delete").HandlerFunc(handler.AdminDeletePolicyHandler)
 
 	// 处理静态资源路由

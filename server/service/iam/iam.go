@@ -306,15 +306,11 @@ func (s *IamService) DeleteAccount(accountID string) error {
 }
 
 // CreateUser 为指定账户添加新用户
-func (s *IamService) CreateUser(accountID, username, password string) (*meta.IamUser, error) {
+func (s *IamService) CreateUser(accountID, username, password string, groups, roles, policies []string, enable bool) (*meta.IamUser, error) {
 	// 验证用户名和密码
 	if err := meta.ValidateUsername(username); err != nil {
 		logger.GetLogger("boulder").Errorf("username %s is invalid format", username)
-		return nil, errors.New("invalid username format")
-	}
-	if err := meta.ValidatePassword(password, username); err != nil {
-		logger.GetLogger("boulder").Errorf("password for user %s is invalid: %v", username, err)
-		return nil, fmt.Errorf("invalid password: %w", err)
+		return nil, xhttp.ToError(xhttp.ErrInvalidName)
 	}
 
 	var user *meta.IamUser
@@ -323,17 +319,43 @@ func (s *IamService) CreateUser(accountID, username, password string) (*meta.Iam
 			return fmt.Errorf("account %s not found", accountID)
 		}
 
-		// 检查用户是否已存在
-		if _, exists := a.Users[username]; exists {
-			logger.GetLogger("boulder").Errorf("user %s already exists in account %s", username, accountID)
-			return fmt.Errorf("user already exists in account %s", accountID)
+		// 创建新用户
+		var err error
+		user, err = a.CreateUser(username, password, groups, roles, policies, enable)
+		if err != nil {
+			logger.GetLogger("boulder").Errorf("failed to create user %s in account %s: %v", username, accountID, err)
+			return err
+		}
+
+		a.Users[username] = user
+		return nil
+	})
+
+	if err != nil || !ok {
+		return nil, fmt.Errorf("failed to update account %s: %v", accountID, err)
+	}
+	return user, nil
+}
+
+// UpdateUser 更新用户
+func (s *IamService) UpdateUser(accountID, username, password string, groups, roles, policies []string, enable bool) (*meta.IamUser, error) {
+	// 验证用户名和密码
+	if err := meta.ValidateUsername(username); err != nil {
+		logger.GetLogger("boulder").Errorf("username %s is invalid format", username)
+		return nil, xhttp.ToError(xhttp.ErrInvalidName)
+	}
+
+	var user *meta.IamUser
+	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
+		if a == nil {
+			return fmt.Errorf("account %s not found", accountID)
 		}
 
 		// 创建新用户
 		var err error
-		user, err = a.CreateUser(username, password)
+		user, err = a.UpdateUser(username, password, groups, roles, policies, enable)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to create user %s in account %s: %v", username, accountID, err)
+			logger.GetLogger("boulder").Errorf("failed to update user %s in account %s: %v", username, accountID, err)
 			return err
 		}
 
@@ -537,6 +559,63 @@ func (s *IamService) DeleteRole(accountID, username, rolename string) error {
 			return xhttp.ToError(xhttp.ErrAdminNoSuchUser)
 		}
 		err = a.DeleteRole(user, rolename)
+		return err
+	})
+
+	if err != nil || !ok {
+		return err
+	}
+	return nil
+}
+
+func (s *IamService) CreateGroup(accountID, username, groupname, desc string, users, policies []string) error {
+	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
+		if a == nil {
+			return fmt.Errorf("account %s not found", accountID)
+		}
+		user, err := a.GetUser(username)
+		if err != nil || user == nil {
+			return xhttp.ToError(xhttp.ErrNoSuchGroup)
+		}
+		_, err = a.CreateGroup(user, groupname, desc, users, policies)
+		return err
+	})
+
+	if err != nil || !ok {
+		return err
+	}
+	return nil
+}
+
+func (s *IamService) UpdateGroup(accountID, username, groupname, desc string, users, policies []string) error {
+	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
+		if a == nil {
+			return fmt.Errorf("account %s not found", accountID)
+		}
+		user, err := a.GetUser(username)
+		if err != nil || user == nil {
+			return xhttp.ToError(xhttp.ErrNoSuchGroup)
+		}
+		_, err = a.UpdateGroup(user, groupname, desc, users, policies)
+		return err
+	})
+
+	if err != nil || !ok {
+		return err
+	}
+	return nil
+}
+
+func (s *IamService) DeleteGroup(accountID, username, groupname string) error {
+	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
+		if a == nil {
+			return fmt.Errorf("account %s not found", accountID)
+		}
+		user, err := a.GetUser(username)
+		if err != nil || user == nil {
+			return xhttp.ToError(xhttp.ErrAdminNoSuchUser)
+		}
+		err = a.DeleteGroup(user, groupname)
 		return err
 	})
 

@@ -88,7 +88,7 @@
         class="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-4 overflow-hidden animate-fadeIn max-h-[90vh] flex flex-col">
         <div class="p-5 border-b border-gray-100 flex items-center justify-between">
           <h3 class="text-lg font-bold text-gray-800">{{ isEditMode ? t('policy.editPolicy') : t('policy.addNewPolicy')
-            }}</h3>
+          }}</h3>
           <button @click="closeDialog" class="text-gray-500 hover:text-gray-700 transition-colors" aria-label="关闭">
             <i class="fas fa-times"></i>
           </button>
@@ -97,14 +97,14 @@
           <form @submit.prevent="handleSubmit">
             <div class="mb-4">
               <label for="policyName" class="block text-sm font-medium text-gray-700 mb-1">{{ t('policy.name')
-                }}</label>
+              }}</label>
               <input type="text" id="policyName" v-model="formData.name"
                 class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 :placeholder="t('policy.pleaseEnterPolicyName')" required>
             </div>
             <div class="mb-4">
               <label for="description" class="block text-sm font-medium text-gray-700 mb-1">{{ t('policy.description')
-                }}</label>
+              }}</label>
               <textarea id="description" v-model="formData.description"
                 class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 :placeholder="t('policy.pleaseEnterPolicyDescription')" rows="2"></textarea>
@@ -185,7 +185,8 @@
           </div>
           <div class="mt-6">
             <h4 class="text-sm font-medium text-gray-500 mb-2">{{ t('policy.policyDocument') }}</h4>
-            <pre class="bg-gray-50 p-4 rounded-lg text-sm font-mono overflow-x-auto whitespace-pre-wrap">{{ JSON.stringify(currentPolicy.document, null, 2) }}</pre>
+            <pre
+              class="bg-gray-50 p-4 rounded-lg text-sm font-mono overflow-x-auto whitespace-pre-wrap">{{ JSON.stringify(currentPolicy.document, null, 2) }}</pre>
           </div>
         </div>
         <div class="p-5 border-t border-gray-100 flex items-center justify-end gap-3">
@@ -222,8 +223,6 @@
         </div>
       </div>
     </div>
-
-
   </div>
 </template>
 
@@ -236,13 +235,9 @@ import { listpolicy, createpolicy, setpolicy, delpolicy } from '../api/admin.js'
 // 获取翻译函数
 const { t } = useI18n();
 
-// 策略数据
+// ==================== 响应式数据定义 ====================
 const policiesList = ref([]);
-
-// 搜索关键字
 const searchKeyword = ref('');
-
-// 对话框状态
 const dialogVisible = ref(false);
 const detailsVisible = ref(false);
 const deleteDialogVisible = ref(false);
@@ -251,25 +246,11 @@ const currentPolicyId = ref(null);
 const currentPolicy = ref({});
 const jsonError = ref(false);
 
-// 表单数据
 const formData = ref({
   name: '',
   description: '',
-  documentText: '', // 用于文本编辑
-  document: null    // 用于对象存储
-});
-
-
-
-// 过滤策略列表
-const filteredPolicies = computed(() => {
-  if (!searchKeyword.value) {
-    return policiesList.value;
-  }
-  return policiesList.value.filter(policy =>
-    policy.name.toLowerCase().includes(searchKeyword.value.toLowerCase()) ||
-    (policy.description && policy.description.toLowerCase().includes(searchKeyword.value.toLowerCase()))
-  );
+  documentText: '',
+  document: null
 });
 
 // 默认的策略文档模板
@@ -284,7 +265,26 @@ const defaultPolicyDocument = {
   ]
 };
 
-// 显示添加策略对话框
+// ==================== 计算属性 ====================
+const filteredPolicies = computed(() => {
+  if (!searchKeyword.value) {
+    return policiesList.value;
+  }
+  return policiesList.value.filter(policy =>
+    policy.name.toLowerCase().includes(searchKeyword.value.toLowerCase()) ||
+    (policy.description && policy.description.toLowerCase().includes(searchKeyword.value.toLowerCase()))
+  );
+});
+
+// ==================== 格式化函数 ====================
+const formatDate = (date) => {
+  if (!(date instanceof Date)) {
+    date = new Date(date);
+  }
+  return date.toLocaleString('zh-CN');
+};
+
+// ==================== 对话框控制函数 ====================
 const showAddPolicyDialog = () => {
   isEditMode.value = false;
   formData.value = {
@@ -297,7 +297,6 @@ const showAddPolicyDialog = () => {
   dialogVisible.value = true;
 };
 
-// 显示编辑策略对话框
 const showEditPolicyDialog = (policy) => {
   isEditMode.value = true;
   currentPolicyId.value = policy.id;
@@ -311,32 +310,28 @@ const showEditPolicyDialog = (policy) => {
   dialogVisible.value = true;
 };
 
-// 显示策略详情
 const showPolicyDetails = (policy) => {
   currentPolicy.value = policy;
   detailsVisible.value = true;
 };
 
-// 关闭对话框
 const closeDialog = () => {
   dialogVisible.value = false;
   currentPolicyId.value = null;
   jsonError.value = false;
 };
 
-// 关闭详情对话框
 const closeDetails = () => {
   detailsVisible.value = false;
   currentPolicy.value = {};
 };
 
-// 关闭删除对话框
 const closeDeleteDialog = () => {
   deleteDialogVisible.value = false;
   currentPolicyId.value = null;
 };
 
-// 验证JSON格式
+// ==================== JSON处理函数 ====================
 const validateJson = () => {
   try {
     const document = JSON.parse(formData.value.documentText);
@@ -350,7 +345,6 @@ const validateJson = () => {
   }
 };
 
-// 格式化JSON
 const formatJson = () => {
   try {
     const document = JSON.parse(formData.value.documentText);
@@ -362,10 +356,10 @@ const formatJson = () => {
   }
 };
 
-// 提交表单
+// ==================== 表单提交函数 ====================
 const handleSubmit = async () => {
   if (!formData.value.name) {
-    ElMessage.error('策略名称不能为空');
+    ElMessage.error(t('policy.nameRequired'));
     return;
   }
 
@@ -377,13 +371,13 @@ const handleSubmit = async () => {
 
   // 验证策略版本
   if (document.Version !== '2012-10-17') {
-    ElMessage.error('策略版本必须为 2012-10-17');
+    ElMessage.error(t('policy.policyVersionError'));
     return;
   }
 
   // 验证Statement是否存在
   if (!Array.isArray(document.Statement) || document.Statement.length === 0) {
-    ElMessage.error('策略必须包含Statement数组');
+    ElMessage.error(t('policy.missingStatement'));
     return;
   }
 
@@ -404,26 +398,26 @@ const handleSubmit = async () => {
     }
 
     if (response.success || response.code === 0) {
-      ElMessage.success(isEditMode.value ? '策略已更新' : '策略已创建');
+      ElMessage.success(isEditMode.value ? t('policy.policyUpdated') : t('policy.policyCreated'));
       closeDialog();
       // 重新加载策略列表
       await loadPolicies();
     } else {
-      ElMessage.error(response.msg || response.message || (isEditMode.value ? '更新策略失败' : '创建策略失败'));
+      ElMessage.error(response.msg || (isEditMode.value ? t('policy.updatePolicyFailed') : t('policy.createPolicyFailed')));
     }
   } catch (error) {
-    let errorMessage = isEditMode.value ? '更新策略失败' : '创建策略失败';
+    let errorMessage = isEditMode.value ? t('policy.updatePolicyFailed') : t('policy.createPolicyFailed');
     if (error.response) {
       // 处理不同的错误状态码
       switch (error.response.status) {
         case 409:
-          errorMessage = '策略名称已存在';
+          errorMessage = t('policy.policyExists');
           break;
         case 403:
-          errorMessage = '权限不足';
+          errorMessage = t('common.permissionDenied');
           break;
         case 400:
-          errorMessage = '无效的策略文档';
+          errorMessage = t('policy.invalidPolicyDocument');
           break;
         default:
           errorMessage = error.response.data?.msg || error.response.data?.message || errorMessage;
@@ -433,19 +427,18 @@ const handleSubmit = async () => {
   }
 };
 
-// 处理删除策略
+// ==================== 删除策略函数 ====================
 const handleDeletePolicy = (policyId) => {
   currentPolicyId.value = policyId;
   deleteDialogVisible.value = true;
 };
 
-// 确认删除策略
 const confirmDeletePolicy = async () => {
   try {
     // 从策略列表中找到对应的策略名称
     const policy = policiesList.value.find(p => p.id === currentPolicyId.value);
     if (!policy) {
-      ElMessage.error('策略不存在');
+      ElMessage.error(t('policy.policyNotFound'));
       closeDeleteDialog();
       return;
     }
@@ -453,23 +446,23 @@ const confirmDeletePolicy = async () => {
     const response = await delpolicy({ name: policy.name });
 
     if (response.success || response.code === 0) {
-      ElMessage.success('策略已删除');
+      ElMessage.success(t('policy.policyDeleted'));
       closeDeleteDialog();
       // 重新加载策略列表
       await loadPolicies();
     } else {
-      ElMessage.error(response.msg || response.message || '删除策略失败');
+      ElMessage.error(response.msg || t('policy.deletePolicyFailed'));
     }
   } catch (error) {
-    let errorMessage = '删除策略失败';
+    let errorMessage = t('policy.deletePolicyFailed');
     if (error.response) {
       // 处理不同的错误状态码
       switch (error.response.status) {
         case 404:
-          errorMessage = '策略不存在';
+          errorMessage = t('policy.policyNotFound');
           break;
         case 403:
-          errorMessage = '权限不足';
+          errorMessage = t('common.permissionDenied');
           break;
         default:
           errorMessage = error.response.data?.msg || error.response.data?.message || errorMessage;
@@ -479,7 +472,7 @@ const confirmDeletePolicy = async () => {
   }
 };
 
-// 从API获取策略数据
+// ==================== 数据加载函数 ====================
 const loadPolicies = async () => {
   try {
     const response = await listpolicy();
@@ -510,20 +503,12 @@ const loadPolicies = async () => {
       });
     }
   } catch (error) {
-    ElMessage.error('获取策略列表失败');
+    ElMessage.error(t('policy.loadPolicyFailed'));
     console.error('加载策略列表失败:', error);
   }
 };
 
-// 格式化日期
-const formatDate = (date) => {
-  if (!(date instanceof Date)) {
-    date = new Date(date);
-  }
-  return date.toLocaleString('zh-CN');
-};
-
-// 组件挂载时加载数据
+// ==================== 生命周期 ====================
 onMounted(async () => {
   await loadPolicies();
 });

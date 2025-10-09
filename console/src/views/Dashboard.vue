@@ -3,34 +3,45 @@
     <!-- 统计卡片区域 -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
       <!-- 使用v-for循环渲染所有卡片 -->
-      <div v-for="card in statCards" :key="card.id"
-        class="stat-card bg-white rounded-2xl shadow-card border border-gray-100 hover:shadow-card-hover p-6 transition-all duration-500 relative">
+      <div 
+        v-for="(card, index) in statCards" 
+        :key="card.id"
+        class="stat-card bg-white rounded-2xl shadow-card border border-gray-100 hover:shadow-card-hover p-6 transition-all duration-500 relative animate-fadeIn"
+      >
         <!-- 右上角固定图标 -->
-        <div :class="card.iconContainerClass" style="position: absolute; top: 1rem; right: 1rem;">
+        <div :class="card.iconContainerClass" class="absolute top-4 right-4">
           <div :class="card.iconWrapperClass">
             <i :class="card.iconClass" class="text-white text-lg"></i>
           </div>
         </div>
         
         <!-- 主要内容 -->
-        <div style="margin-right: 2rem;">
+        <div class="mr-8">
           <p class="text-gray-500 text-sm font-medium mb-2">{{ card.title }}</p>
           <h3 class="text-3xl font-bold text-gray-800 mt-4">{{ card.value }}</h3>
         </div>
+        
+        <!-- 底部信息 -->
         <div class="mt-5 flex items-center text-sm">
-          <span v-if="card.footerType === 'growth'"
-            class="text-green-500 font-medium flex items-center bg-green-50  py-1 rounded-lg">
+          <span 
+            v-if="card.footerType === 'growth'"
+            class="text-green-500 font-medium flex items-center bg-green-50 py-1 px-2 rounded-lg"
+          >
             <i class="fas fa-arrow-up w-3 h-3 mr-1.5"></i>
             +{{ card.growthValue }}%
             <span class="text-gray-400 ml-2 whitespace-nowrap">{{ t('dashboard.comparedToLastMonth') }}</span>
           </span>
-          <span v-else-if="card.footerType === 'saving'"
-            class="text-green-500 font-medium flex items-center bg-green-50  py-1 rounded-lg">
+          <span 
+            v-else-if="card.footerType === 'saving'"
+            class="text-green-500 font-medium flex items-center bg-green-50 py-1 px-2 rounded-lg"
+          >
             <i class="fas fa-arrow-down w-3 h-3 mr-1.5"></i>
             {{ card.savingText }}
           </span>
-          <span v-else-if="card.footerType === 'reuse'"
-            class="text-green-500 font-medium flex items-center bg-green-50  py-1 rounded-lg">
+          <span 
+            v-else-if="card.footerType === 'reuse'"
+            class="text-green-500 font-medium flex items-center bg-green-50 py-1 px-2 rounded-lg"
+          >
             <i class="fas fa-check w-3 h-3 mr-1.5"></i>
             {{ card.reuseText }}
           </span>
@@ -45,9 +56,10 @@ import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { getstats } from '../api/admin';
 
+// 国际化
 const { t } = useI18n();
 
-// 统计数据
+// 统计数据状态
 const stats = ref({
   bucketCount: 0,
   objectCount: 0,
@@ -68,7 +80,7 @@ const stats = ref({
   reuseRatio: 0
 });
 
-// 格式化数字
+// 格式化函数
 const formatNumber = (num) => {
   if (num >= 1000000) {
     return (num / 1000000).toFixed(1) + 'M';
@@ -78,7 +90,6 @@ const formatNumber = (num) => {
   return num;
 };
 
-// 格式化文件大小
 const formatSize = (bytes) => {
   if (bytes >= 1099511627776) {
     return (bytes / 1099511627776).toFixed(2) + 'TB';
@@ -92,13 +103,13 @@ const formatSize = (bytes) => {
   return bytes + 'B';
 };
 
-// 创建卡片配置数组
+// 计算属性 - 卡片配置
 const statCards = computed(() => [
   {
     id: 'bucket-count',
     title: t('dashboard.bucketCount'),
     value: stats.value.bucketCount,
-    iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center text-blue-500 ',
+    iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center text-blue-500',
     iconWrapperClass: 'w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-blue',
     iconClass: 'fas fa-archive',
     footerType: 'growth',
@@ -108,7 +119,7 @@ const statCards = computed(() => [
     id: 'object-count',
     title: t('dashboard.objectCount'),
     value: formatNumber(stats.value.objectCount),
-    iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-50 to-purple-100 flex items-center justify-center text-purple-500 ',
+    iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-50 to-purple-100 flex items-center justify-center text-purple-500',
     iconWrapperClass: 'w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-purple',
     iconClass: 'fas fa-file',
     footerType: 'growth',
@@ -118,7 +129,7 @@ const statCards = computed(() => [
     id: 'block-count',
     title: t('dashboard.blockCount'),
     value: formatNumber(stats.value.blockCount),
-    iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-green-50 to-green-100 flex items-center justify-center text-green-500 ',
+    iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-green-50 to-green-100 flex items-center justify-center text-green-500',
     iconWrapperClass: 'w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center shadow-green',
     iconClass: 'fas fa-box',
     footerType: 'growth',
@@ -128,7 +139,7 @@ const statCards = computed(() => [
     id: 'chunk-count',
     title: t('dashboard.chunkCount'),
     value: formatNumber(stats.value.chunkCount),
-    iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-50 to-amber-100 flex items-center justify-center text-amber-500 ',
+    iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-50 to-amber-100 flex items-center justify-center text-amber-500',
     iconWrapperClass: 'w-8 h-8 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl flex items-center justify-center shadow-amber',
     iconClass: 'fas fa-chart-pie',
     footerType: 'growth',
@@ -138,7 +149,7 @@ const statCards = computed(() => [
     id: 'original-size',
     title: t('dashboard.originalSize'),
     value: formatSize(stats.value.originalSize),
-    iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-red-50 to-red-100 flex items-center justify-center text-red-500 ',
+    iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-red-50 to-red-100 flex items-center justify-center text-red-500',
     iconWrapperClass: 'w-8 h-8 bg-gradient-to-br from-red-500 to-red-600 rounded-xl flex items-center justify-center shadow-red',
     iconClass: 'fas fa-database',
     footerType: 'growth',
@@ -148,7 +159,7 @@ const statCards = computed(() => [
     id: 'actual-size',
     title: t('dashboard.actualSize'),
     value: formatSize(stats.value.actualSize),
-    iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-50 to-cyan-100 flex items-center justify-center text-cyan-500 ',
+    iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-50 to-cyan-100 flex items-center justify-center text-cyan-500',
     iconWrapperClass: 'w-8 h-8 bg-gradient-to-br from-cyan-500 to-cyan-600 rounded-xl flex items-center justify-center shadow-cyan',
     iconClass: 'fas fa-server',
     footerType: 'growth',
@@ -168,7 +179,7 @@ const statCards = computed(() => [
     id: 'reuse-stats',
     title: t('dashboard.reuseStats'),
     value: stats.value.reuseRatio + '%',
-    iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-pink-50 to-pink-100 flex items-center justify-center text-pink-500 ',
+    iconContainerClass: 'w-10 h-10 rounded-2xl bg-gradient-to-br from-pink-50 to-pink-100 flex items-center justify-center text-pink-500',
     iconWrapperClass: 'w-8 h-8 bg-gradient-to-br from-pink-500 to-pink-600 rounded-xl flex items-center justify-center shadow-pink',
     iconClass: 'fas fa-copy',
     footerType: 'reuse',
@@ -176,17 +187,14 @@ const statCards = computed(() => [
   }
 ]);
 
-
-// 从接口获取统计数据
+// 获取统计数据
 const fetchStats = async () => {
   try {
     const response = await getstats();
     const data = response.data || response;
 
     if (data.success !== false) {
-      // 计算所需的统计数据
       const accountStats = data.accountStats || {};
-      const globalStats = data.globalStats || {};
       const lastMonAccountStats = data.lastMonAccountStats || {};
 
       // 基本统计数据
@@ -194,53 +202,65 @@ const fetchStats = async () => {
       stats.value.objectCount = accountStats.objectCount || 0;
       stats.value.blockCount = accountStats.blockCount || 0;
       stats.value.chunkCount = accountStats.chunkCount || 0;
-
-      // 大小统计
       stats.value.originalSize = accountStats.sizeOfObject || 0;
       stats.value.actualSize = accountStats.sizeOfChunk || 0;
+
+      // 计算派生数据
       stats.value.savedSize = Math.max(0, stats.value.originalSize - stats.value.actualSize);
-      stats.value.compressionRatio = stats.value.actualSize > 0 ?
-        (stats.value.originalSize / stats.value.actualSize).toFixed(1) : 0;
+      stats.value.compressionRatio = stats.value.actualSize > 0 
+        ? (stats.value.originalSize / stats.value.actualSize).toFixed(1) 
+        : 0;
 
-      // 重用统计
       stats.value.reusedChunkCount = Math.max(0, stats.value.chunkCount - (accountStats.chunkCountOfDedup || 0));
-      stats.value.reusedSize = Math.max(0, stats.value.originalSize - stats.value.actualSize);
-      stats.value.reuseRatio = stats.value.chunkCount > 0 ?
-        ((stats.value.reusedChunkCount / stats.value.chunkCount) * 100).toFixed(1) : 0;
+      stats.value.reusedSize = stats.value.savedSize;
+      stats.value.reuseRatio = stats.value.chunkCount > 0 
+        ? ((stats.value.reusedChunkCount / stats.value.chunkCount) * 100).toFixed(1) 
+        : 0;
 
-      // 增长率（与上月比较）
-      if (lastMonAccountStats.bucketCount) {
-        stats.value.bucketGrowth = lastMonAccountStats.bucketCount > 0 ?
-          Math.round(((stats.value.bucketCount - lastMonAccountStats.bucketCount) / lastMonAccountStats.bucketCount) * 100) : 0;
-      }
-
-      if (lastMonAccountStats.objectCount) {
-        stats.value.objectGrowth = lastMonAccountStats.objectCount > 0 ?
-          Math.round(((stats.value.objectCount - lastMonAccountStats.objectCount) / lastMonAccountStats.objectCount) * 100) : 0;
-      }
-
-      if (lastMonAccountStats.blockCount) {
-        stats.value.blockGrowth = lastMonAccountStats.blockCount > 0 ?
-          Math.round(((stats.value.blockCount - lastMonAccountStats.blockCount) / lastMonAccountStats.blockCount) * 100) : 0;
-      }
-
-      if (lastMonAccountStats.chunkCount) {
-        stats.value.chunkGrowth = lastMonAccountStats.chunkCount > 0 ?
-          Math.round(((stats.value.chunkCount - lastMonAccountStats.chunkCount) / lastMonAccountStats.chunkCount) * 100) : 0;
-      }
-
-      if (lastMonAccountStats.sizeOfObject) {
-        stats.value.sizeGrowth = lastMonAccountStats.sizeOfObject > 0 ?
-          Math.round(((stats.value.originalSize - lastMonAccountStats.sizeOfObject) / lastMonAccountStats.sizeOfObject) * 100) : 0;
-      }
-
-      if (lastMonAccountStats.SizeOfChunk) {
-        stats.value.actualSizeGrowth = lastMonAccountStats.sizeOfChunk > 0 ?
-          Math.round(((stats.value.actualSize - lastMonAccountStats.sizeOfChunk) / lastMonAccountStats.sizeOfChunk) * 100) : 0;
-      }
+      // 计算增长率
+      calculateGrowth(lastMonAccountStats);
     }
   } catch (error) {
     console.error('Failed to fetch stats:', error);
+  }
+};
+
+// 计算增长率辅助函数
+const calculateGrowth = (lastMonthStats) => {
+  if (lastMonthStats.bucketCount) {
+    stats.value.bucketGrowth = lastMonthStats.bucketCount > 0 
+      ? Math.round(((stats.value.bucketCount - lastMonthStats.bucketCount) / lastMonthStats.bucketCount) * 100) 
+      : 0;
+  }
+
+  if (lastMonthStats.objectCount) {
+    stats.value.objectGrowth = lastMonthStats.objectCount > 0 
+      ? Math.round(((stats.value.objectCount - lastMonthStats.objectCount) / lastMonthStats.objectCount) * 100) 
+      : 0;
+  }
+
+  if (lastMonthStats.blockCount) {
+    stats.value.blockGrowth = lastMonthStats.blockCount > 0 
+      ? Math.round(((stats.value.blockCount - lastMonthStats.blockCount) / lastMonthStats.blockCount) * 100) 
+      : 0;
+  }
+
+  if (lastMonthStats.chunkCount) {
+    stats.value.chunkGrowth = lastMonthStats.chunkCount > 0 
+      ? Math.round(((stats.value.chunkCount - lastMonthStats.chunkCount) / lastMonthStats.chunkCount) * 100) 
+      : 0;
+  }
+
+  if (lastMonthStats.sizeOfObject) {
+    stats.value.sizeGrowth = lastMonthStats.sizeOfObject > 0 
+      ? Math.round(((stats.value.originalSize - lastMonthStats.sizeOfObject) / lastMonthStats.sizeOfObject) * 100) 
+      : 0;
+  }
+
+  if (lastMonthStats.sizeOfChunk) {
+    stats.value.actualSizeGrowth = lastMonthStats.sizeOfChunk > 0 
+      ? Math.round(((stats.value.actualSize - lastMonthStats.sizeOfChunk) / lastMonthStats.sizeOfChunk) * 100) 
+      : 0;
   }
 };
 
@@ -248,7 +268,6 @@ const fetchStats = async () => {
 onMounted(() => {
   fetchStats();
 });
-
 </script>
 
 <style scoped>
@@ -311,33 +330,6 @@ onMounted(() => {
   box-shadow: 0 4px 6px -1px rgba(236, 72, 153, 0.3);
 }
 
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .dashboard-container {
-    padding: 1rem;
-  }
-
-  .stat-card h3 {
-    font-size: 1.8rem;
-  }
-
-  .stat-card .w-14 {
-    width: 3rem;
-  }
-
-  .stat-card .h-14 {
-    height: 3rem;
-  }
-
-  .stat-card .w-10 {
-    width: 2.5rem;
-  }
-
-  .stat-card .h-10 {
-    height: 2.5rem;
-  }
-}
-
 /* 动画效果 */
 @keyframes fadeIn {
   from {
@@ -355,36 +347,14 @@ onMounted(() => {
   animation: fadeIn 0.6s ease-out forwards;
 }
 
-/* 保持原有动画效果 */
-.stat-card:nth-child(1) {
-  animation-delay: 0.1s;
-}
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .dashboard-container {
+    padding: 1rem;
+  }
 
-.stat-card:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.stat-card:nth-child(3) {
-  animation-delay: 0.3s;
-}
-
-.stat-card:nth-child(4) {
-  animation-delay: 0.4s;
-}
-
-.stat-card:nth-child(5) {
-  animation-delay: 0.5s;
-}
-
-.stat-card:nth-child(6) {
-  animation-delay: 0.6s;
-}
-
-.stat-card:nth-child(7) {
-  animation-delay: 0.7s;
-}
-
-.stat-card:nth-child(8) {
-  animation-delay: 0.8s;
+  .stat-card h3 {
+    font-size: 1.8rem;
+  }
 }
 </style>

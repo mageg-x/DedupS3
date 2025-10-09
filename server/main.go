@@ -273,7 +273,7 @@ func main() {
 	ak, err := iamService.CreateAccessKey(account.AccountID, account.Name, time.Now().Add(time.Hour*24*365), cfg.Iam.AK, cfg.Iam.SK)
 	logger.GetLogger("boulder").Warnf("create account %v ak %v ", account, ak)
 
-	iamService.CreateUser(account.AccountID, "admin", "Abcd@1234")
+	iamService.CreateUser(account.AccountID, "admin", "Abcd@1234", nil, nil, nil, true)
 	iamService.CreateAccessKey(account.AccountID, "admin", time.Now().Add(time.Hour*24*365), "D"+cfg.Iam.AK, "D"+cfg.Iam.SK)
 	// 启动 admin server
 	if err := startAdminSvr(); err != nil {

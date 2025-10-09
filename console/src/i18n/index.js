@@ -6,7 +6,10 @@ const i18n = createI18n({
   legacy: false,
   locale: localStorage.getItem('language') || 'zh', // 默认中文
   fallbackLocale: 'zh',
-  messages
+  messages,
+  linkedModifiers: {
+    // 不定义任何 modifier
+  },
 });
 
 export default i18n;

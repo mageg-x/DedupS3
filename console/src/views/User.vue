@@ -25,19 +25,19 @@
         <table class="w-full">
           <thead class="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">{{
                 t('user.userName') }}</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">{{
                 t('user.associatedRole') }}</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">{{
                 t('user.associatedPolicy') }}</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">{{
                 t('user.associatedGroup') }}</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">{{
                 t('user.status') }}</th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">{{
                 t('user.creationTime') }}</th>
-              <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{{
+              <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">{{
                 t('user.operation') }}</th>
             </tr>
           </thead>
@@ -57,33 +57,33 @@
               <td class="px-6 py-4 whitespace-nowrap">
                 <div v-if="user.roles && user.roles.length > 0">
                   <span v-for="role in user.roles" :key="role.id"
-                    class="inline-block px-2 py-1 bg-orange-100 text-orange-800 rounded mr-2 mb-2">
+                    class="inline-block text-sm px-2 py-1 bg-orange-100 text-orange-800 rounded mr-2 mb-2">
                     {{ role.name }}
                   </span>
                 </div>
-                <span v-else class="text-gray-400">{{ t('user.noAssociatedRoles') }}</span>
+                <span v-else class="text-gray-400 text-sm">{{ t('user.noAssociatedRoles') }}</span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
                 <div v-if="user.policies && user.policies.length > 0">
                   <span v-for="policy in user.policies" :key="policy.id"
-                    class="inline-block px-2 py-1 bg-blue-100 text-blue-800 rounded mr-2 mb-2">
+                    class="inline-block text-sm px-2 py-1 bg-blue-100 text-blue-800 rounded mr-2 mb-2">
                     {{ policy.name }}
                   </span>
                 </div>
-                <span v-else class="text-gray-400">{{ t('user.noAssociatedPolicies') }}</span>
+                <span v-else class="text-gray-400 text-sm">{{ t('user.noAssociatedPolicies') }}</span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 <div v-if="user.groups && user.groups.length > 0">
                   <span v-for="group in user.groups" :key="group.id"
-                    class="inline-block px-2 py-1 bg-gray-100 text-gray-800 rounded mr-2 mb-2">
+                    class="inline-block text-sm px-2 py-1 bg-gray-100 text-gray-800 rounded mr-2 mb-2">
                     {{ group.name }}
                   </span>
                 </div>
-                <span v-else class="text-gray-400">{{ t('user.noAssociatedGroups') }}</span>
+                <span v-else class="text-gray-400 text-sm">{{ t('user.noAssociatedGroups') }}</span>
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
                 <span
-                  :class="['px-2 py-1 text-xs rounded-full', user.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800']">
+                  :class="['px-2 py-1 text-sm rounded-full', user.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800']">
                   {{ user.active ? t('user.enabled') : t('user.disabled') }}
                 </span>
               </td>
@@ -95,7 +95,8 @@
                   class="text-blue-600 hover:text-blue-900 transition-colors mr-3">
                   <i class="fas fa-edit mr-1"></i>{{ t('user.edit') }}
                 </button>
-                <button @click="handleDeleteUser(user.id)" class="text-red-600 hover:text-red-900 transition-colors">
+                <button @click="handleDeleteUser(user.username)"
+                  class="text-red-600 hover:text-red-900 transition-colors">
                   <i class="fas fa-trash-alt mr-1"></i>{{ t('user.delete') }}
                 </button>
               </td>
@@ -127,17 +128,18 @@
           <form @submit.prevent="handleSubmit">
             <div class="mb-4">
               <label for="username" class="block text-sm font-medium text-gray-700 mb-1">{{ t('user.userName')
-                }}</label>
+              }}</label>
               <input type="text" id="username" v-model="formData.username"
                 class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 :disabled="isEditMode" required>
             </div>
-            <div v-if="!isEditMode" class="mb-4">
+            <div class="mb-4">
               <label for="password" class="block text-sm font-medium text-gray-700 mb-1">{{ t('user.password')
-                }}</label>
+              }}</label>
               <input type="password" id="password" v-model="formData.password"
                 class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                required>
+                :placeholder="isEditMode ? t('user.keepEmptyPassword') : ''">
+              <span v-if="isEditMode" class="text-xs text-gray-500">{{ t('user.keepEmptyPassword') }}</span>
             </div>
 
             <div class="mb-4">
@@ -145,11 +147,14 @@
               <div class="space-y-2">
                 <div v-for="group in groupsList" :key="group.id" class="flex items-center">
                   <input type="checkbox" :id="`group-${group.id}`" :checked="formData.groups.includes(group.id)"
-                    @change="handleGroupToggle(group.id)"
+                    @change="toggleGroup(group.id)"
                     class="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
                   <label :for="`group-${group.id}`" class="ml-2 block text-sm text-gray-700">
                     {{ group.name }}
                   </label>
+                </div>
+                <div v-if="groupsList.length === 0" class="text-sm text-gray-500 py-2">
+                  {{ t('user.noAvailableGroups') }}
                 </div>
               </div>
             </div>
@@ -158,7 +163,7 @@
               <div class="space-y-2">
                 <div v-for="role in rolesList" :key="role.id" class="flex items-center">
                   <input type="checkbox" :id="`role-${role.id}`" :checked="formData.roles.includes(role.id)"
-                    @change="handleRoleToggle(role.id)"
+                    @change="toggleRole(role.id)"
                     class="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
                   <label :for="`role-${role.id}`" class="ml-2 block text-sm text-gray-700">
                     {{ role.name }}
@@ -175,7 +180,7 @@
               <div class="space-y-2">
                 <div v-for="policy in policiesList" :key="policy.id" class="flex items-center">
                   <input type="checkbox" :id="`policy-${policy.id}`" :checked="formData.policies.includes(policy.id)"
-                    @change="handlePolicyToggle(policy.id)"
+                    @change="togglePolicy(policy.id)"
                     class="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
                   <label :for="`policy-${policy.id}`" class="ml-2 block text-sm text-gray-700">
                     {{ policy.name }}
@@ -220,7 +225,7 @@
           </button>
         </div>
         <div class="p-5">
-          <p class="text-gray-700">{{ t('user.confirmDeleteMessage') }}</p>
+          <p class="text-gray-700">{{ t('user.confirmDeleteMessage', { name: currentUserId }) }}</p>
         </div>
         <div class="p-5 border-t border-gray-100 flex items-center justify-end gap-3">
           <button @click="closeDeleteDialog"
@@ -248,20 +253,19 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
-import { listuser, listgroup, listrole, listpolicy } from '@/api/admin';
+import { listuser, listgroup, listrole, listpolicy, createuser, setuser, deluser } from '@/api/admin';
 
 // 获取翻译函数
 const { t } = useI18n();
 
-// 模拟数据
+// 数据
 const usersList = ref([]);
 const groupsList = ref([]);
 const rolesList = ref([]);
 const policiesList = ref([]);
-let nextUserId = 1;
 
 // 搜索关键字
 const searchKeyword = ref('');
@@ -287,7 +291,7 @@ const showToast = ref(false);
 const toastMessage = ref('');
 const toastType = ref('success');
 
-// 过滤用户列表
+// 计算属性
 const filteredUsers = computed(() => {
   if (!searchKeyword.value) {
     return usersList.value;
@@ -297,89 +301,122 @@ const filteredUsers = computed(() => {
   );
 });
 
-// 加载模拟数据（主要用于API调用失败时）
-const loadMockData = () => {
-  // 模拟用户组数据
-  groupsList.value = [
-    { id: 1, name: '开发组', description: '开发人员' },
-    { id: 2, name: '测试组', description: '测试人员' },
-    { id: 3, name: '管理员组', description: '系统管理员' }
-  ];
+// 加载数据
+onMounted(async () => {
+  await Promise.all([
+    loadGroups(),
+    loadRoles(),
+    loadPolicies(),
+    loadUsers()
+  ]);
+});
 
-  // 模拟角色数据
-  rolesList.value = [
-    { id: 1, name: '系统管理员', description: '系统全部权限' },
-    { id: 2, name: '数据分析师', description: '数据查看和分析权限' },
-    { id: 3, name: '内容审核员', description: '内容审核权限' }
-  ];
-
-  // 模拟策略数据
-  policiesList.value = [
-    { id: 1, name: '账户管理权限', description: '管理所有用户' },
-    { id: 2, name: '数据查看权限', description: '查看所有数据' },
-    { id: 3, name: '内容编辑权限', description: '编辑系统内容' },
-    { id: 4, name: '日志查看权限', description: '查看系统日志' }
-  ];
-
-  // 移除本地存储中可能存在的旧数据以避免冲突
-  localStorage.removeItem('usersList');
-  localStorage.removeItem('rolesList');
-  localStorage.removeItem('policiesList');
-
-  // 如果是在API调用失败的情况下加载模拟数据，才创建模拟用户数据
-  if (usersList.value.length === 0) {
-    usersList.value = [
-      {
-        id: 1,
-        username: 'admin',
-        groups: [groupsList.value[2]],
-        roles: [rolesList.value[0]],
-        policies: [policiesList.value[0]],
-        active: true,
-        createdAt: new Date('2023-01-15T10:00:00')
-      },
-      {
-        id: 2,
-        username: 'developer',
-        groups: [groupsList.value[0], groupsList.value[1]],
-        roles: [rolesList.value[1]],
-        policies: [policiesList.value[1], policiesList.value[3]],
-        active: true,
-        createdAt: new Date('2023-01-20T14:30:00')
-      },
-      {
-        id: 3,
-        username: 'tester',
-        groups: [groupsList.value[1]],
-        roles: [],
-        policies: [policiesList.value[2]],
-        active: true,
-        createdAt: new Date('2023-01-25T09:15:00')
-      }
-    ];
-
-    nextUserId = 4;
+// 加载用户组数据
+const loadGroups = async () => {
+  try {
+    const response = await listgroup();
+    if (response.code === 0 && response.data) {
+      groupsList.value = response.data.map(group => ({
+        id: group.name, // 使用name作为唯一标识符
+        name: group.name,
+        description: group.description || ''
+      }));
+    }
+  } catch (error) {
+    console.error('获取用户组列表失败:', error);
+    ElMessage.error(t('user.fetchGroupsFailed'));
   }
 };
 
-// 显示添加用户对话框
+// 加载角色数据
+const loadRoles = async () => {
+  try {
+    const response = await listrole();
+    if (response.code === 0 && response.data) {
+      rolesList.value = response.data.map(role => ({
+        id: role.name, // 使用name作为唯一标识符
+        name: role.name,
+        description: role.description || ''
+      }));
+    }
+  } catch (error) {
+    console.error('获取角色列表失败:', error);
+    ElMessage.error(t('user.fetchRolesFailed'));
+  }
+};
+
+// 加载策略数据
+const loadPolicies = async () => {
+  try {
+    const response = await listpolicy();
+    if (response.code === 0 && response.data) {
+      policiesList.value = response.data.map(policy => ({
+        id: policy.name, // 使用name作为唯一标识符
+        name: policy.name,
+        description: policy.description || ''
+      }));
+    }
+  } catch (error) {
+    console.error('获取策略列表失败:', error);
+    ElMessage.error(t('user.fetchPoliciesFailed'));
+  }
+};
+
+// 从API加载用户数据
+const loadUsers = async () => {
+  try {
+    // 调用API获取用户列表
+    const response = await listuser();
+
+    if (response.code === 0 && response.data) {
+      // 清空旧数据
+      usersList.value = [];
+
+      // 处理API返回的数据
+      response.data.forEach(apiUser => {
+        // 转换为前端需要的用户格式
+        usersList.value.push({
+          id: apiUser.username, // 使用username作为唯一标识符
+          username: apiUser.username,
+          groups: apiUser.group?.map(groupName => ({
+            id: groupName,
+            name: groupName,
+            description: ''
+          })) || [],
+          roles: apiUser.role?.map(roleName => ({
+            id: roleName,
+            name: roleName,
+            description: ''
+          })) || [],
+          policies: apiUser.attachPolicies?.map(policyName => ({
+            id: policyName,
+            name: policyName,
+            description: ''
+          })) || [],
+          active: apiUser.enabled,
+          createdAt: new Date(apiUser.createdAt)
+        });
+      });
+    } else {
+      console.warn('API返回的数据无效');
+    }
+  } catch (error) {
+    console.error('获取用户列表失败:', error);
+    ElMessage.error(t('user.fetchUsersFailed'));
+  }
+};
+
+// 对话框控制
 const showAddUserDialog = () => {
+  resetForm();
   isEditMode.value = false;
-  formData.value = {
-    username: '',
-    password: '',
-    groups: [],
-    roles: [],
-    policies: [],
-    active: true
-  };
   dialogVisible.value = true;
 };
 
-// 显示编辑用户对话框
 const showEditUserDialog = (user) => {
+  resetForm();
   isEditMode.value = true;
-  currentUserId.value = user.id;
+  currentUserId.value = user.username;
   formData.value = {
     username: user.username,
     password: '',
@@ -391,20 +428,29 @@ const showEditUserDialog = (user) => {
   dialogVisible.value = true;
 };
 
-// 关闭对话框
 const closeDialog = () => {
   dialogVisible.value = false;
   currentUserId.value = null;
 };
 
-// 关闭删除对话框
 const closeDeleteDialog = () => {
   deleteDialogVisible.value = false;
   currentUserId.value = null;
 };
 
-// 处理用户组选择
-const handleGroupToggle = (groupId) => {
+// 表单控制
+const resetForm = () => {
+  formData.value = {
+    username: '',
+    password: '',
+    groups: [],
+    roles: [],
+    policies: [],
+    active: true
+  };
+};
+
+const toggleGroup = (groupId) => {
   const index = formData.value.groups.indexOf(groupId);
   if (index > -1) {
     formData.value.groups.splice(index, 1);
@@ -413,8 +459,7 @@ const handleGroupToggle = (groupId) => {
   }
 };
 
-// 处理角色选择
-const handleRoleToggle = (roleId) => {
+const toggleRole = (roleId) => {
   const index = formData.value.roles.indexOf(roleId);
   if (index > -1) {
     formData.value.roles.splice(index, 1);
@@ -423,8 +468,7 @@ const handleRoleToggle = (roleId) => {
   }
 };
 
-// 处理策略选择
-const handlePolicyToggle = (policyId) => {
+const togglePolicy = (policyId) => {
   const index = formData.value.policies.indexOf(policyId);
   if (index > -1) {
     formData.value.policies.splice(index, 1);
@@ -434,153 +478,89 @@ const handlePolicyToggle = (policyId) => {
 };
 
 // 提交表单
-const handleSubmit = () => {
+const handleSubmit = async () => {
   if (!formData.value.username) {
-    showToastMessage('用户名不能为空', 'error');
+    showToastMessage(t('user.usernameRequired'), 'error');
     return;
   }
 
-  if (!isEditMode && !formData.value.password) {
-    showToastMessage('密码不能为空', 'error');
+  if (!isEditMode.value && !formData.value.password) {
+    showToastMessage(t('user.passwordRequired'), 'error');
     return;
   }
 
-  // 获取完整的用户组信息
-  const selectedGroups = groupsList.value.filter(group =>
-    formData.value.groups.includes(group.id)
-  );
-
-  // 获取完整的角色信息
-  const selectedRoles = rolesList.value.filter(role =>
-    formData.value.roles.includes(role.id)
-  );
-
-  // 获取完整的策略信息
-  const selectedPolicies = policiesList.value.filter(policy =>
-    formData.value.policies.includes(policy.id)
-  );
-
-  if (isEditMode) {
-    // 编辑用户
-    const index = usersList.value.findIndex(user => user.id === currentUserId.value);
-    if (index !== -1) {
-      usersList.value[index] = {
-        ...usersList.value[index],
-        groups: selectedGroups,
-        roles: selectedRoles,
-        policies: selectedPolicies,
-        active: formData.value.active
+  try {
+    if (isEditMode.value) {
+      // 编辑用户
+      const updateData = {
+        username: formData.value.username,
+        groups: formData.value.groups,
+        roles: formData.value.roles,
+        attachPolicies: formData.value.policies,
+        enabled: formData.value.active
       };
-      saveUsers();
-      showToastMessage('用户已更新', 'success');
-    }
-  } else {
-    // 添加用户
-    const newUser = {
-      id: nextUserId++,
-      username: formData.value.username,
-      password: '******', // 实际项目中应该加密存储
-      groups: selectedGroups,
-      roles: selectedRoles,
-      policies: selectedPolicies,
-      active: formData.value.active,
-      createdAt: new Date()
-    };
-    usersList.value.push(newUser);
-    saveUsers();
-    showToastMessage('用户已创建', 'success');
-  }
 
-  closeDialog();
+      if (formData.value.password) {
+        updateData.password = formData.value.password;
+      }
+
+      const response = await setuser(updateData);
+      if (response.code === 0) {
+        showToastMessage(t('user.userUpdated'), 'success');
+        await loadUsers(); // 重新加载用户列表
+        closeDialog();
+      } else {
+        showToastMessage(response.msg || t('user.updateUserFailed'), 'error');
+      }
+    } else {
+      // 添加用户
+      const createData = {
+        username: formData.value.username,
+        password: formData.value.password,
+        groups: formData.value.groups,
+        roles: formData.value.roles,
+        attachPolicies: formData.value.policies,
+        enabled: formData.value.active
+      };
+
+      const response = await createuser(createData);
+      if (response.code === 0) {
+        showToastMessage(t('user.userCreated'), 'success');
+        await loadUsers(); // 重新加载用户列表
+        closeDialog();
+      } else {
+        showToastMessage(response.msg || t('user.createUserFailed'), 'error');
+      }
+    }
+  } catch (error) {
+    console.error('操作用户失败:', error);
+    showToastMessage(t('user.userOperationFailed'), 'error');
+  }
 };
 
-// 处理删除用户
-const handleDeleteUser = (userId) => {
-  currentUserId.value = userId;
+// 删除用户
+const handleDeleteUser = (username) => {
+  currentUserId.value = username;
   deleteDialogVisible.value = true;
 };
 
-// 确认删除用户
-const confirmDeleteUser = () => {
-  const index = usersList.value.findIndex(user => user.id === currentUserId.value);
-  if (index !== -1) {
-    usersList.value.splice(index, 1);
-    saveUsers();
-    showToastMessage('用户已删除', 'success');
-  }
-  closeDeleteDialog();
-};
-
-// 保存用户数据到本地存储
-const saveUsers = () => {
+const confirmDeleteUser = async () => {
   try {
-    localStorage.setItem('usersList', JSON.stringify(usersList.value));
-    localStorage.setItem('rolesList', JSON.stringify(rolesList.value));
-    localStorage.setItem('policiesList', JSON.stringify(policiesList.value));
-  } catch (error) {
-    console.error('保存用户列表失败:', error);
-  }
-};
-
-// 从API加载用户数据
-const loadUsers = async () => {
-  try {
-    // 调用API获取用户列表
-    const response = await listuser();
-    await listpolicy();
-    await listgroup();
-    await listrole();
-    if (response.data) {
-      // 清空旧数据
-      usersList.value = [];
-      
-      // 处理API返回的数据
-      response.data.forEach((apiUser, index) => {
-        // 查找对应的组、角色和策略对象
-        const userGroups = apiUser.group?.map(groupName => ({
-          id: index + 1, // 生成临时ID
-          name: groupName,
-          description: ''
-        })) || [];
-
-        const userRoles = apiUser.role?.map(roleName => ({
-          id: index + 1, // 生成临时ID
-          name: roleName,
-          description: ''
-        })) || [];
-
-        const userPolicies = apiUser.attachPolicies?.map(policyName => ({
-          id: index + 1, // 生成临时ID
-          name: policyName,
-          description: ''
-        })) || [];
-
-        // 转换为前端需要的用户格式
-        usersList.value.push({
-          id: index + 1, // 生成临时ID，因为API不返回id
-          username: apiUser.username,
-          groups: userGroups,
-          roles: userRoles,
-          policies: userPolicies,
-          active: apiUser.enabled,
-          createdAt: new Date(apiUser.createdAt)
-        });
-      });
-
-      // 更新下一个用户ID
-      if (usersList.value.length > 0) {
-        nextUserId = Math.max(...usersList.value.map(user => user.id)) + 1;
-      }
+    const response = await deluser({ username: currentUserId.value });
+    if (response.code === 0) {
+      showToastMessage(t('user.userDeleted'), 'success');
+      await loadUsers(); // 重新加载用户列表
+      closeDeleteDialog();
     } else {
-      console.warn('API返回的数据无效，使用模拟数据');
+      showToastMessage(response.msg || t('user.deleteUserFailed'), 'error');
     }
   } catch (error) {
-    console.error('获取用户列表失败:', error);
-    ElMessage.error('获取用户列表失败，使用模拟数据');
+    console.error('删除用户失败:', error);
+    showToastMessage(t('user.deleteUserFailedRetry'), 'error');
   }
 };
 
-// 显示提示消息
+// 工具函数
 const showToastMessage = (message, type = 'success') => {
   toastMessage.value = message;
   toastType.value = type;
@@ -592,21 +572,12 @@ const showToastMessage = (message, type = 'success') => {
   }, 3000);
 };
 
-// 格式化日期
 const formatDate = (date) => {
   if (!(date instanceof Date)) {
     date = new Date(date);
   }
   return date.toLocaleString('zh-CN');
 };
-
-// 组件挂载时加载数据
-onMounted(async () => {
-  // 加载组、角色和策略的模拟数据，因为API只返回名称
-  // loadMockData();
-  // 异步加载用户数据
-  await loadUsers();
-});
 </script>
 
 <style scoped>

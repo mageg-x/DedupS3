@@ -24,9 +24,11 @@ import (
 	"fmt"
 	xhttp "github.com/mageg-x/boulder/internal/http"
 	"github.com/twmb/murmur3"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/mageg-x/boulder/internal/logger"
 	Rand "math/rand"
@@ -91,10 +93,12 @@ type MFADevice struct {
 
 // IamGroup 表示 IAM 用户组
 type IamGroup struct {
-	ARN              string   `json:"arn"`
-	Name             string   `json:"name"`
-	Users            []string `json:"users"`            // 组成员
-	AttachedPolicies []string `json:"attachedPolicies"` // 附加策略名称列表
+	ARN              string    `json:"arn"`
+	Name             string    `json:"name"`
+	Description      string    `json:"description"`
+	Users            []string  `json:"users"`            // 组成员
+	AttachedPolicies []string  `json:"attachedPolicies"` // 附加策略名称列表
+	CreateAt         time.Time `json:"createAt"`
 }
 
 // IamRole 表示 IAM 角色
@@ -174,7 +178,7 @@ func (a *IamAccount) CreateRootUser(username, password string) (*IamUser, error)
 		return nil, errors.New("root user already exists")
 	}
 
-	rootUser, err := a.CreateUser(username, password)
+	rootUser, err := a.CreateUser(username, password, nil, nil, nil, true)
 	if err != nil {
 		logger.GetLogger("boulder").Errorf("failed to create root user: %v", err)
 		return nil, err
@@ -207,19 +211,19 @@ func (a *IamAccount) IsRootUser(username string) bool {
 // ============================== 用户操作 ==============================
 
 // CreateUser 创建新用户
-func (a *IamAccount) CreateUser(username, password string) (*IamUser, error) {
-	if u, err := a.GetUser(username); err == nil || u != nil {
+func (a *IamAccount) CreateUser(username, password string, groups, roles, policies []string, enable bool) (*IamUser, error) {
+	if u, _ := a.GetUser(username); u != nil {
 		logger.GetLogger("boulder").Errorf("user %s already exists", username)
-		return nil, errors.New("user already exists")
+		return nil, xhttp.ToError(xhttp.ErrUserAlreadyExists)
 	}
 	if err := ValidateUsername(username); err != nil {
 		logger.GetLogger("boulder").Errorf("username %s is invalid format", username)
-		return nil, errors.New("username is invalid format")
+		return nil, xhttp.ToError(xhttp.ErrInvalidName)
 	}
 
 	if err := ValidatePassword(password, username); err != nil {
 		logger.GetLogger("boulder").Errorf("password for user %s is invalid: %v", username, err)
-		return nil, fmt.Errorf("password is invalid: %w", err)
+		return nil, xhttp.ToError(xhttp.ErrInvalidRequest)
 	}
 
 	user := &IamUser{
@@ -232,11 +236,69 @@ func (a *IamAccount) CreateUser(username, password string) (*IamUser, error) {
 		Groups:     make([]string, 0),
 		Roles:      make([]string, 0),
 		Tags:       make(map[string]string, 0),
-		Enabled:    true,
+		Enabled:    enable,
 	}
-
+	for _, group := range groups {
+		if a.Groups[group] != nil {
+			user.Groups = append(user.Groups, group)
+		}
+	}
+	for _, role := range roles {
+		if a.Roles[role] != nil {
+			user.Roles = append(user.Roles, role)
+		}
+	}
+	for _, policy := range policies {
+		if a.Policies[policy] != nil {
+			user.AttachedPolicies = append(user.AttachedPolicies, policy)
+		}
+	}
 	a.Users[username] = user
 	return user, nil
+}
+
+// CreateUser 创建新用户
+func (a *IamAccount) UpdateUser(username, password string, groups, roles, policies []string, enable bool) (*IamUser, error) {
+	u, err := a.GetUser(username)
+	if err != nil || u == nil {
+		logger.GetLogger("boulder").Errorf("user %s not exists", username)
+		return nil, xhttp.ToError(xhttp.ErrAdminNoSuchUser)
+	}
+	if err := ValidateUsername(username); err != nil {
+		logger.GetLogger("boulder").Errorf("username %s is invalid format", username)
+		return nil, xhttp.ToError(xhttp.ErrInvalidName)
+	}
+
+	if password != "" {
+		if err := ValidatePassword(password, username); err != nil {
+			logger.GetLogger("boulder").Errorf("password for user %s is invalid: %v", username, err)
+			return nil, xhttp.ToError(xhttp.ErrInvalidRequest)
+		}
+		u.Password = password
+	}
+
+	u.Enabled = enable
+	u.AttachedPolicies = make([]string, 0)
+	u.Groups = make([]string, 0)
+	u.Roles = make([]string, 0)
+
+	for _, group := range groups {
+		if a.Groups[group] != nil {
+			u.Groups = append(u.Groups, group)
+		}
+	}
+	for _, role := range roles {
+		if a.Roles[role] != nil {
+			u.Roles = append(u.Roles, role)
+		}
+	}
+	for _, policy := range policies {
+		if a.Policies[policy] != nil {
+			u.AttachedPolicies = append(u.AttachedPolicies, policy)
+		}
+	}
+	a.Users[username] = u
+	return u, nil
 }
 
 // GetUser 根据用户名获取用户信息，包括root用户
@@ -249,7 +311,7 @@ func (a *IamAccount) GetUser(username string) (*IamUser, error) {
 	if uExists && rootUser != nil && rootUser.Username == username {
 		return rootUser, nil
 	}
-	return nil, errors.New("user not found")
+	return nil, xhttp.ToError(xhttp.ErrAdminNoSuchUser)
 }
 
 func (a *IamAccount) GetAllUsers() []*IamUser {
@@ -298,7 +360,7 @@ func (a *IamAccount) DeleteUser(username string) error {
 	// 检查用户是否存在
 	user, exists := a.Users[username]
 	if !exists {
-		return errors.New("user not found")
+		return xhttp.ToError(xhttp.ErrAdminNoSuchUser)
 	}
 
 	// 检查是否是根用户
@@ -363,18 +425,64 @@ func (a *IamAccount) CreateAccessKey(username string, expiredAt time.Time, ak, s
 // ============================== 组操作 ==============================
 
 // CreateGroup 创建新用户组
-func (a *IamAccount) CreateGroup(caller *IamUser, name string) (*IamGroup, error) {
-	if !a.canManageIAM(caller) {
-		return nil, errors.New("unauthorized to create groups")
-	}
+func (a *IamAccount) CreateGroup(caller *IamUser, name, desc string, users, policies []string) (*IamGroup, error) {
+	//if !a.canManageIAM(caller) {
+	//	return nil, xhttp.ToError(xhttp.ErrAccessDenied)
+	//}
 
 	if _, exists := a.Groups[name]; exists {
-		return nil, errors.New("group already exists")
+		return nil, xhttp.ToError(xhttp.ErrPolicyAlreadyExists)
+	}
+	if !IsValidIAMName(name) {
+		return nil, xhttp.ToError(xhttp.ErrInvalidName)
 	}
 
 	group := &IamGroup{
-		ARN:  FormatGroupARN(a.AccountID, name),
-		Name: name,
+		ARN:         FormatGroupARN(a.AccountID, name),
+		Name:        name,
+		Description: desc,
+		CreateAt:    time.Now().UTC(),
+	}
+	for _, user := range users {
+		if _, ok := a.Users[user]; ok && user != "root" {
+			group.Users = append(group.Users, user)
+		}
+	}
+	for _, policy := range policies {
+		if _, ok := a.Policies[policy]; ok {
+			group.AttachedPolicies = append(group.AttachedPolicies, policy)
+		}
+	}
+	a.Groups[name] = group
+	return group, nil
+}
+
+func (a *IamAccount) UpdateGroup(caller *IamUser, name, desc string, users, policies []string) (*IamGroup, error) {
+	//if !a.canManageIAM(caller) {
+	//	return nil, xhttp.ToError(xhttp.ErrAccessDenied)
+	//}
+	oldGroup, exists := a.Groups[name]
+	if !exists {
+		return nil, xhttp.ToError(xhttp.ErrNoSuchGroup)
+	}
+
+	group := &IamGroup{
+		ARN:         FormatGroupARN(a.AccountID, name),
+		Name:        name,
+		Description: desc,
+	}
+	if oldGroup != nil {
+		group.CreateAt = oldGroup.CreateAt
+	}
+	for _, user := range users {
+		if _, ok := a.Users[user]; ok && user != "root" {
+			group.Users = append(group.Users, user)
+		}
+	}
+	for _, policy := range policies {
+		if _, ok := a.Policies[policy]; ok {
+			group.AttachedPolicies = append(group.AttachedPolicies, policy)
+		}
 	}
 
 	a.Groups[name] = group
@@ -382,11 +490,15 @@ func (a *IamAccount) CreateGroup(caller *IamUser, name string) (*IamGroup, error
 }
 
 // DeleteGroup 删除用户组
-func (a *IamAccount) DeleteGroup(groupName string) error {
+func (a *IamAccount) DeleteGroup(caller *IamUser, groupName string) error {
+	//if !a.canManageIAM(caller) {
+	//	return nil, xhttp.ToError(xhttp.ErrAccessDenied)
+	//}
+
 	// 检查组是否存在
 	group, exists := a.Groups[groupName]
 	if !exists {
-		return errors.New("group not found")
+		return xhttp.ToError(xhttp.ErrNoSuchGroup)
 	}
 
 	// 从组成员的用户中移除该组
@@ -441,6 +553,9 @@ func (a *IamAccount) CreatePolicy(caller *IamUser, name, description, document s
 	//if !a.canManageIAM(caller) {
 	//	return nil, xhttp.ToError(xhttp.ErrAccessDenied)
 	//}
+	if !IsValidIAMName(name) {
+		return nil, xhttp.ToError(xhttp.ErrInvalidName)
+	}
 
 	if _, exists := a.Policies[name]; exists {
 		return nil, xhttp.ToError(xhttp.ErrPolicyAlreadyExists)
@@ -550,7 +665,7 @@ func (a *IamAccount) AttachPolicyToUser(caller *IamUser, username, policyName st
 
 	user, exists := a.Users[username]
 	if !exists {
-		return errors.New("user not found")
+		return xhttp.ToError(xhttp.ErrAdminNoSuchUser)
 	}
 
 	if user.IsRoot {
@@ -559,13 +674,13 @@ func (a *IamAccount) AttachPolicyToUser(caller *IamUser, username, policyName st
 
 	// 检查策略是否存在
 	if _, pExists := a.Policies[policyName]; !pExists {
-		return errors.New("policy not found")
+		return xhttp.ToError(xhttp.ErrNoSuchBucketPolicy)
 	}
 
 	// 检查是否已附加
 	for _, p := range user.AttachedPolicies {
 		if p == policyName {
-			return errors.New("policy already attached")
+			return xhttp.ToError(xhttp.ErrPolicyAlreadyAttached)
 		}
 	}
 
@@ -592,7 +707,9 @@ func (a *IamAccount) CreateRole(caller *IamUser, name, desc, assumeRolePolicy st
 	//if !a.canManageIAM(caller) {
 	//	return nil, xhttp.ToError(xhttp.ErrAccessDenied)
 	//}
-
+	if !IsValidIAMName(name) {
+		return nil, xhttp.ToError(xhttp.ErrInvalidName)
+	}
 	if _, exists := a.Roles[name]; exists {
 		return nil, xhttp.ToError(xhttp.ErrRoleAlreadyExists)
 	}
@@ -680,7 +797,7 @@ func (a *IamAccount) UpdateAssumeRolePolicy(roleName, assumeRolePolicy string) e
 
 	// 验证新的信任策略
 	if !isValidJSON(assumeRolePolicy) {
-		return errors.New("assumeRolePolicy must be valid JSON")
+		return xhttp.ToError(xhttp.ErrInvalidPolicyDocument)
 	}
 
 	role.AssumeRolePolicy = assumeRolePolicy
@@ -728,7 +845,7 @@ func (a *IamAccount) DeleteRole(caller *IamUser, roleName string) error {
 func (a *IamAccount) DetachPolicyFromRole(roleName, policyName string) error {
 	role, exists := a.Roles[roleName]
 	if !exists {
-		return errors.New("role not found")
+		return xhttp.ToError(xhttp.ErrNoSuchRole)
 	}
 
 	newPolicies := make([]string, 0, len(role.AttachedPolicies))
@@ -743,7 +860,7 @@ func (a *IamAccount) DetachPolicyFromRole(roleName, policyName string) error {
 	}
 
 	if !found {
-		return errors.New("policy not attached to role")
+		return xhttp.ToError(xhttp.ErrPolicyAlreadyAttached)
 	}
 
 	role.AttachedPolicies = newPolicies
@@ -754,7 +871,7 @@ func (a *IamAccount) DetachPolicyFromRole(roleName, policyName string) error {
 func (a *IamAccount) GetRole(roleName string) (*IamRole, error) {
 	role, exists := a.Roles[roleName]
 	if !exists {
-		return nil, errors.New("role not found")
+		return nil, xhttp.ToError(xhttp.ErrNoSuchRole)
 	}
 	return role, nil
 }
@@ -770,7 +887,7 @@ func (a *IamAccount) CheckPermission(username, action, resource string) (bool, e
 		if rootExists && rootUser.Username == username {
 			user = rootUser
 		} else {
-			return false, errors.New("user not found")
+			return false, xhttp.ToError(xhttp.ErrAdminNoSuchUser)
 		}
 	}
 
@@ -1053,6 +1170,29 @@ func ValidateAccountID(accountID string) error {
 	}
 
 	return nil
+}
+
+// IsValidIAMName 检查是否为合法的 IAM 资源名称（Policy、Group、User、Role 等）
+func IsValidIAMName(name string) bool {
+	// 检查是否只包含 ASCII 字符
+	for i := 0; i < len(name); i++ {
+		if name[i] > 127 {
+			return false // 包含非 ASCII，如中文、日文等
+		}
+	}
+
+	// 检查长度
+	if n := utf8.RuneCountInString(name); n < 1 || n > 128 {
+		return false
+	}
+
+	// 使用正则检查字符集
+	matched, err := regexp.MatchString(`^[a-zA-Z0-9+=,.@_-]+$`, name)
+	if err != nil {
+		return false // 不应该发生
+	}
+
+	return matched
 }
 
 // ValidateUsername 验证用户名是否符合AWS IAM规范
