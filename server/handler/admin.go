@@ -147,8 +147,13 @@ func Prepare4S3(w http.ResponseWriter, r *http.Request, bucketName string) *Prep
 
 func AdminLoginHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+		AccessKeyId     string `json:"accessKeyId,omitempty"`
+		SecretAccessKey string `json:"secretAccessKey,omitempty"`
+		Username        string `json:"username,omitempty"`
+		Password        string `json:"password,omitempty"`
+		Remember        bool   `json:"remember,omitempty"`
+		Endpoint        string `json:"endpoint,omitempty"`
+		Region          string `json:"region,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		logger.GetLogger("boulder").Errorf("failed decoding request: %v", err)
@@ -949,8 +954,17 @@ func AdminGetUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	allPolices := pe.ac.GetUserAllPolicies(pe.user)
+	policyFilter := make(map[string]bool)
 	for _, policy := range allPolices {
-		if policy != nil && policy.Document != "" {
+		if policy == nil {
+			continue
+		}
+		if policyFilter[policy.Name] {
+			continue
+		} else {
+			policyFilter[policy.Name] = true
+		}
+		if policy.Document != "" {
 			var pd meta.PolicyDocument
 			err := json.Unmarshal([]byte(policy.Document), &pd)
 			if err != nil {
@@ -967,16 +981,143 @@ func AdminGetUserHandler(w http.ResponseWriter, r *http.Request) {
 	xhttp.AdminWriteJSONError(w, r, 0, "success", userInfo, http.StatusOK)
 }
 
-func AdminSetUserHandler(w http.ResponseWriter, r *http.Request) {
+func AdminCreateUserHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Errorf("[call adminCreateUserHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
+		return
+	}
 
+	type Req struct {
+		Username       string   `json:"username"`
+		Password       string   `json:"password,omitempty"`
+		Groups         []string `json:"groups,omitempty"`
+		Roles          []string `json:"roles,omitempty"`
+		AttachPolicies []string `json:"attachPolicies,omitempty"`
+		Enabled        bool     `json:"enabled"`
+	}
+
+	// 解析请求体
+	var req Req
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Username == "" || req.Password == "" {
+		logger.GetLogger("boulder").Errorf("failed to decode request: %v", err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
+		return
+	}
+
+	if pe.ac == nil || pe.user == nil {
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "invalid create user request", nil, http.StatusInternalServerError)
+		return
+	}
+
+	_, err := pe.iam.CreateUser(pe.accountID, req.Username, req.Password, req.Groups, req.Roles, req.AttachPolicies, req.Enabled)
+	if err != nil {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+		logger.GetLogger("boulder").Errorf("failed to create policy: %v", err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidName)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid name", nil, http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrUserAlreadyExists)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusConflict, "user already exists", nil, http.StatusConflict)
+			return
+		}
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid user document", nil, http.StatusBadRequest)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
 }
 
-func AdminCreateUserHandler(w http.ResponseWriter, r *http.Request) {
+func AdminUpdateUserHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Errorf("[call adminUpdateUserHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
+		return
+	}
 
+	type Req struct {
+		Username       string   `json:"username"`
+		Password       string   `json:"password,omitempty"`
+		Groups         []string `json:"groups,omitempty"`
+		Roles          []string `json:"roles,omitempty"`
+		AttachPolicies []string `json:"attachPolicies,omitempty"`
+		Enabled        bool     `json:"enabled"`
+	}
+
+	// 解析请求体
+	var req Req
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Username == "" {
+		logger.GetLogger("boulder").Errorf("failed to decode request: %v", err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
+		return
+	}
+
+	if pe.ac == nil || pe.user == nil {
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "invalid create user request", nil, http.StatusInternalServerError)
+		return
+	}
+
+	_, err := pe.iam.UpdateUser(pe.accountID, req.Username, req.Password, req.Groups, req.Roles, req.AttachPolicies, req.Enabled)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to create user: %v", err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidName)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid name", nil, http.StatusBadRequest)
+			return
+		}
+
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAdminNoSuchUser)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "user not exists", nil, http.StatusNotFound)
+			return
+		}
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid user document", nil, http.StatusBadRequest)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
 }
 
 func AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Errorf("[call adminDeleteUserHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
+		return
+	}
+	if pe.ac == nil || pe.user == nil {
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "invalid policy request", nil, http.StatusInternalServerError)
+		return
+	}
 
+	query := utils.DecodeQuerys(r.URL.Query())
+	username := query.Get("username")
+	username = strings.TrimSpace(username)
+
+	err := pe.iam.DeletePolicy(pe.accountID, pe.username, username)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to delete user: %v", err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAdminNoSuchUser)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "user not exists", nil, http.StatusNotFound)
+			return
+		}
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "delete user failed", nil, http.StatusBadRequest)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
 }
 
 func AdminListPolicyHandler(w http.ResponseWriter, r *http.Request) {
@@ -1019,7 +1160,7 @@ func AdminGetPolicyHandler(w http.ResponseWriter, r *http.Request) {
 	xhttp.AdminWriteJSONError(w, r, 0, "success", pe.ac.Policies[name], http.StatusOK)
 }
 
-func AdminSetPolicyHandler(w http.ResponseWriter, r *http.Request) {
+func AdminUpdatePolicyHandler(w http.ResponseWriter, r *http.Request) {
 	logger.GetLogger("boulder").Errorf("[call adminListPolicyHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil {
@@ -1094,6 +1235,10 @@ func AdminCreatePolicyHandler(w http.ResponseWriter, r *http.Request) {
 			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
 			return
 		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidName)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid name", nil, http.StatusBadRequest)
+			return
+		}
 		if errors.Is(err, xhttp.ToError(xhttp.ErrPolicyAlreadyExists)) {
 			xhttp.AdminWriteJSONError(w, r, http.StatusConflict, "policy already exists", nil, http.StatusConflict)
 			return
@@ -1137,22 +1282,6 @@ func AdminDeletePolicyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 返回成功响应
 	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
-}
-
-func AdminListGroupHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("boulder").Errorf("[call adminListGroupHandler] %#v", r.URL)
-	pe := Prepare4Iam(w, r)
-	if pe == nil {
-		return
-	}
-	groups := make([]*meta.IamGroup, 0)
-	if pe.ac.Groups != nil {
-		for _, group := range pe.ac.Groups {
-			groups = append(groups, group)
-		}
-	}
-	// 返回成功响应
-	xhttp.AdminWriteJSONError(w, r, 0, "success", groups, http.StatusOK)
 }
 
 func AdminListRoleHandler(w http.ResponseWriter, r *http.Request) {
@@ -1216,6 +1345,10 @@ func AdminCreateRoleHandler(w http.ResponseWriter, r *http.Request) {
 		logger.GetLogger("boulder").Errorf("failed to create role: %v", err)
 		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
 			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidName)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid name", nil, http.StatusBadRequest)
 			return
 		}
 		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchIamPolicy)) {
@@ -1299,6 +1432,155 @@ func AdminDeleteRoleHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "delete role failed", nil, http.StatusBadRequest)
+		return
+	}
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
+
+func AdminListGroupHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Errorf("[call adminListGroupHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
+		return
+	}
+	groups := make([]*meta.IamGroup, 0)
+	if pe.ac.Groups != nil {
+		for _, group := range pe.ac.Groups {
+			groups = append(groups, group)
+		}
+	}
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", groups, http.StatusOK)
+}
+
+func AdminGetGroupHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Errorf("[call adminGetGroupHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+	query := utils.DecodeQuerys(r.URL.Query())
+	name := query.Get("name")
+	name = strings.TrimSpace(name)
+	if p, exists := pe.ac.Groups[name]; !exists || p == nil {
+		logger.GetLogger("boulder").Errorf("group %s does not exist", name)
+		xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "group name does not exist", nil, http.StatusNotFound)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", pe.ac.Groups[name], http.StatusOK)
+}
+
+func AdminCreateGroupHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Errorf("[call adminCreateGroupHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
+		return
+	}
+
+	type Req struct {
+		Name           string   `json:"name"`
+		Desc           string   `json:"desc"`
+		Users          []string `json:"users"`
+		AttachPolicies []string `json:"attachPolicies"`
+	}
+
+	// 解析请求体
+	var req Req
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		logger.GetLogger("boulder").Errorf("failed to decode request: %v", err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
+		return
+	}
+
+	err := pe.iam.CreateGroup(pe.accountID, pe.username, req.Name, req.Desc, req.Users, req.AttachPolicies)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to create group: %v", err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidName)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid name", nil, http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrGroupAlreadyExists)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusConflict, "group already exists", nil, http.StatusConflict)
+			return
+		}
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "create role failed", nil, http.StatusBadRequest)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
+
+func AdminUpdateGroupHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Errorf("[call adminUpdateGroupHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
+		return
+	}
+
+	type Req struct {
+		Name           string   `json:"name"`
+		Desc           string   `json:"desc"`
+		Users          []string `json:"users"`
+		AttachPolicies []string `json:"attachPolicies"`
+	}
+
+	// 解析请求体
+	var req Req
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		logger.GetLogger("boulder").Errorf("failed to decode request: %v", err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
+		return
+	}
+
+	err := pe.iam.UpdateGroup(pe.accountID, pe.username, req.Name, req.Desc, req.Users, req.AttachPolicies)
+	if err != nil {
+		logger.GetLogger("boulder").Errorf("failed to create group: %v", err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchGroup)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "group not exists", nil, http.StatusNotFound)
+			return
+		}
+
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "create role failed", nil, http.StatusBadRequest)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
+
+func AdminDeleteGroupHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("boulder").Errorf("[call adminDeleteGroupHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+	query := utils.DecodeQuerys(r.URL.Query())
+	name := query.Get("name")
+	name = strings.TrimSpace(name)
+
+	if err := pe.iam.DeleteGroup(pe.accountID, pe.username, name); err != nil {
+		logger.GetLogger("boulder").Errorf("failed to delete group: %v", err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchGroup)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "group not exists", nil, http.StatusNotFound)
+			return
+		}
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "delete group failed", nil, http.StatusBadRequest)
 		return
 	}
 	// 返回成功响应
