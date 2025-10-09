@@ -7,25 +7,25 @@ import (
 
 	"github.com/gorilla/mux"
 
-	xhttp "github.com/mageg-x/boulder/internal/http"
-	"github.com/mageg-x/boulder/internal/logger"
-	"github.com/mageg-x/boulder/internal/utils"
-	"github.com/mageg-x/boulder/meta"
-	"github.com/mageg-x/boulder/service/bucket"
-	"github.com/mageg-x/boulder/service/iam"
-	"github.com/mageg-x/boulder/service/object"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
+	"github.com/mageg-x/dedups3/internal/logger"
+	"github.com/mageg-x/dedups3/internal/utils"
+	"github.com/mageg-x/dedups3/meta"
+	"github.com/mageg-x/dedups3/service/bucket"
+	"github.com/mageg-x/dedups3/service/iam"
+	"github.com/mageg-x/dedups3/service/object"
 )
 
 // S3AuthorizationMiddleware 提供S3 API的通用鉴权中间件，按照S3标准综合评估权限
 func S3AuthorizationMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		logger.GetLogger("boulder").Debugf("s3 authorization check for %s %s", r.Method, r.URL.Path)
+		logger.GetLogger("dedups3").Debugf("s3 authorization check for %s %s", r.Method, r.URL.Path)
 
 		// 从请求上下文获取访问密钥信息
 		ctx := r.Context()
 		accessKeyID, ok := ctx.Value("accesskey").(string)
 		if !ok || accessKeyID == "" {
-			logger.GetLogger("boulder").Errorf("no access key in context")
+			logger.GetLogger("dedups3").Errorf("no access key in context")
 			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
 			return
 		}
@@ -33,7 +33,7 @@ func S3AuthorizationMiddleware(next http.Handler) http.Handler {
 		// 获取IAM服务
 		iamService := iam.GetIamService()
 		if iamService == nil {
-			logger.GetLogger("boulder").Errorf("failed to get iam service")
+			logger.GetLogger("dedups3").Errorf("failed to get iam service")
 			xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 			return
 		}
@@ -41,19 +41,19 @@ func S3AuthorizationMiddleware(next http.Handler) http.Handler {
 		// 获取访问密钥信息
 		ak, err := iamService.GetAccessKey(accessKeyID)
 		if ak == nil || err != nil {
-			logger.GetLogger("boulder").Errorf("get access key failed: %v", err)
+			logger.GetLogger("dedups3").Errorf("get access key failed: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidAccessKeyID)
 			return
 		}
 
 		if ak.Status == meta.AccountOff {
-			logger.GetLogger("boulder").Errorf("access key offline")
+			logger.GetLogger("dedups3").Errorf("access key offline")
 			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessKeyDisabled)
 			return
 		}
 
 		if ak.IsExpired() {
-			logger.GetLogger("boulder").Errorf("access key is expired")
+			logger.GetLogger("dedups3").Errorf("access key is expired")
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidAccessKeyID)
 			return
 		}
@@ -70,9 +70,9 @@ func S3AuthorizationMiddleware(next http.Handler) http.Handler {
 			s3Action = route.GetName()
 		}
 
-		logger.GetLogger("boulder").Debugf("s3 action: %s, bucket: %s, object: %s", s3Action, bucketName, objectKey)
+		logger.GetLogger("dedups3").Debugf("s3 action: %s, bucket: %s, object: %s", s3Action, bucketName, objectKey)
 		if s3Action == "" {
-			logger.GetLogger("boulder").Errorf("s3 action not found")
+			logger.GetLogger("dedups3").Errorf("s3 action not found")
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
 			return
 		}
@@ -80,7 +80,7 @@ func S3AuthorizationMiddleware(next http.Handler) http.Handler {
 		// 鉴权
 		allow, errCode := IsAllowed(accessKeyID, ak.AccountID, ak.Username, bucketName, objectKey, s3Action)
 		if errCode != xhttp.ErrNone || !allow {
-			logger.GetLogger("boulder").Errorf("evaluate permission failed: %v", xhttp.ToError(errCode))
+			logger.GetLogger("dedups3").Errorf("evaluate permission failed: %v", xhttp.ToError(errCode))
 			xhttp.WriteAWSErr(w, r, errCode)
 			return
 		}
@@ -97,18 +97,18 @@ func S3AuthorizationMiddleware(next http.Handler) http.Handler {
 // 5、默认拒绝
 // IsAllowed 实现S3权限评估逻辑，根据S3标准综合评估用户是否有权限执行特定操作
 func IsAllowed(accessKeyID, accountID, userName, bucketName, objKey, s3Action string) (bool, xhttp.APIErrorCode) {
-	logger.GetLogger("boulder").Debugf("isallowed: action=%s, bucket=%s, object=%s, accountid=%s",
+	logger.GetLogger("dedups3").Debugf("isallowed: action=%s, bucket=%s, object=%s, accountid=%s",
 		s3Action, bucketName, objKey, accountID)
 
 	iamService := iam.GetIamService()
 	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
 		return false, xhttp.ErrInternalError
 	}
 
 	ac, err := iamService.GetAccount(accountID)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to get account info: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to get account info: %v", err)
 		return false, xhttp.ErrInternalError
 	}
 
@@ -125,14 +125,14 @@ func IsAllowed(accessKeyID, accountID, userName, bucketName, objKey, s3Action st
 
 	// 2. 对于需要bucket的操作，bucket名不能为空
 	if bucketName == "" {
-		logger.GetLogger("boulder").Errorf("bucket name is required for action: %s", s3Action)
+		logger.GetLogger("dedups3").Errorf("bucket name is required for action: %s", s3Action)
 		return false, xhttp.ErrInvalidArgument
 	}
 
 	// 3. 获取桶信息
 	bs := bucket.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("failed to get bucket service")
+		logger.GetLogger("dedups3").Errorf("failed to get bucket service")
 		return false, xhttp.ErrInternalError
 	}
 
@@ -142,10 +142,10 @@ func IsAllowed(accessKeyID, accountID, userName, bucketName, objKey, s3Action st
 	})
 	if err != nil {
 		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
-			logger.GetLogger("boulder").Debugf("bucket not found during permission check: %s", bucketName)
+			logger.GetLogger("dedups3").Debugf("bucket not found during permission check: %s", bucketName)
 			return false, xhttp.ErrNoSuchBucket
 		}
-		logger.GetLogger("boulder").Errorf("failed to get bucket info: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to get bucket info: %v", err)
 		return false, xhttp.ErrInternalError
 	}
 
@@ -158,13 +158,13 @@ func IsAllowed(accessKeyID, accountID, userName, bucketName, objKey, s3Action st
 
 	// 5、根据S3标准，桶所有者对桶和其中的对象有完全控制权
 	if bucketInfo.Owner.ID == accountID && ac.IsRootUser(userName) {
-		logger.GetLogger("boulder").Debugf("access allowed: user %s is bucket owner", userName)
+		logger.GetLogger("dedups3").Debugf("access allowed: user %s is bucket owner", userName)
 		return true, xhttp.ErrNone
 	}
 
 	// 6. 检查IAM策略（同一账户内，IAM策略优先于基于资源的策略）
 	if bucketInfo.Owner.ID == accountID && ac.IsAllow(userName, s3Action, resourceARN) {
-		logger.GetLogger("boulder").Debugf("allowed by IAM policy")
+		logger.GetLogger("dedups3").Debugf("allowed by IAM policy")
 		return true, xhttp.ErrNone
 	}
 
@@ -189,10 +189,10 @@ func IsAllowed(accessKeyID, accountID, userName, bucketName, objKey, s3Action st
 		for _, arn := range arnList {
 			allowedByPolicy, err := bucketInfo.Policy.IsAllowed(arn, s3Action, resourceARN, nil)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("error evaluating bucket policy: %v", err)
+				logger.GetLogger("dedups3").Errorf("error evaluating bucket policy: %v", err)
 			} else {
 				if allowedByPolicy {
-					logger.GetLogger("boulder").Debugf("allowed by bucket policy")
+					logger.GetLogger("dedups3").Debugf("allowed by bucket policy")
 					return true, xhttp.ErrNone
 				}
 			}
@@ -202,7 +202,7 @@ func IsAllowed(accessKeyID, accountID, userName, bucketName, objKey, s3Action st
 	// 8. 检查桶ACL
 	if bucketInfo.ACL != nil {
 		if bucketInfo.ACL.HasPermission(currentUser, requiredPermission) {
-			logger.GetLogger("boulder").Debugf("allowed by bucket ACL: %s", requiredPermission)
+			logger.GetLogger("dedups3").Debugf("allowed by bucket ACL: %s", requiredPermission)
 			return true, xhttp.ErrNone
 		}
 	}
@@ -211,15 +211,15 @@ func IsAllowed(accessKeyID, accountID, userName, bucketName, objKey, s3Action st
 	if objKey != "" && !isListBucketAction(s3Action) {
 		allowedByObjectACL, err := checkObjectACL(bucketName, objKey, accessKeyID, currentUser, requiredPermission)
 		if err != nil {
-			logger.GetLogger("boulder").Debugf("object ACL check error: %v", err)
+			logger.GetLogger("dedups3").Debugf("object ACL check error: %v", err)
 		} else if allowedByObjectACL {
-			logger.GetLogger("boulder").Debugf("allowed by object ACL: %s", requiredPermission)
+			logger.GetLogger("dedups3").Debugf("allowed by object ACL: %s", requiredPermission)
 			return true, xhttp.ErrNone
 		}
 	}
 
 	// 10. 默认拒绝
-	logger.GetLogger("boulder").Debugf("access denied by ACL checks")
+	logger.GetLogger("dedups3").Debugf("access denied by ACL checks")
 	return false, xhttp.ErrAccessDenied
 }
 

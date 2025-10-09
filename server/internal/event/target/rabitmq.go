@@ -12,7 +12,7 @@ import (
 
 	amqp "github.com/rabbitmq/amqp091-go"
 
-	"github.com/mageg-x/boulder/internal/utils"
+	"github.com/mageg-x/dedups3/internal/utils"
 )
 
 // RabbitMQArgs 包含RabbitMQ目标的配置参数

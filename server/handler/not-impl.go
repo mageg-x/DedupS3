@@ -19,7 +19,7 @@ package handler
 import (
 	"net/http"
 
-	"github.com/mageg-x/boulder/internal/logger"
+	"github.com/mageg-x/dedups3/internal/logger"
 )
 
 type rejectedAPI struct {
@@ -109,22 +109,22 @@ var RejectedBucketAPIs = []rejectedAPI{
 
 func ErrorResponseHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: ErrorResponseHandler")
+	logger.GetLogger("dedups3").Infof("API called: ErrorResponseHandler")
 	// TODO: 实现错误响应逻辑
 	http.Error(w, "Method Not Allowed or Operation Not Supported", http.StatusMethodNotAllowed)
 }
 
 func NotImplementedHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("boulder").Infof("API called: NotImplementedHandler, %v", r)
+	logger.GetLogger("dedups3").Infof("API called: NotImplementedHandler, %v", r)
 	http.Error(w, "API not implemented", http.StatusNotImplemented)
 }
 
 func NotFoundHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("boulder").Errorf("API called: NotFoundHandler, %v", r)
+	logger.GetLogger("dedups3").Errorf("API called: NotFoundHandler, %v", r)
 	http.Error(w, "The specified path does not exist", http.StatusNotFound)
 }
 
 func NotAllowedHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("boulder").Errorf("API called: NotAllowedHandler, %v", r)
+	logger.GetLogger("dedups3").Errorf("API called: NotAllowedHandler, %v", r)
 	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 }

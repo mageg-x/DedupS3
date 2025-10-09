@@ -21,17 +21,17 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"github.com/mageg-x/boulder/service/stats"
+	"github.com/mageg-x/dedups3/service/stats"
 	"sync"
 	"time"
 
-	xhttp "github.com/mageg-x/boulder/internal/http"
-	xcache "github.com/mageg-x/boulder/internal/storage/cache"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
+	xcache "github.com/mageg-x/dedups3/internal/storage/cache"
 
-	"github.com/mageg-x/boulder/internal/logger"
-	"github.com/mageg-x/boulder/internal/storage/kv"
-	"github.com/mageg-x/boulder/meta"
-	"github.com/mageg-x/boulder/service/iam"
+	"github.com/mageg-x/dedups3/internal/logger"
+	"github.com/mageg-x/dedups3/internal/storage/kv"
+	"github.com/mageg-x/dedups3/meta"
+	"github.com/mageg-x/dedups3/service/iam"
 )
 
 const (
@@ -96,7 +96,7 @@ func GetBucketService() *BucketService {
 
 	store, err := kv.GetKvStore()
 	if err != nil || store == nil {
-		logger.GetLogger("boulder").Errorf("failed to get kv store: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to get kv store: %v", err)
 		return nil
 	}
 	instance = &BucketService{
@@ -108,31 +108,31 @@ func GetBucketService() *BucketService {
 func (b *BucketService) CreateBucket(params *BaseBucketParams) error {
 	iamService := iam.GetIamService()
 	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
 		return errors.New("failed to get iam service")
 	}
 
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
-		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		logger.GetLogger("dedups3").Errorf("failed to get access key %s", params.AccessKeyID)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
 	ac, err := iamService.GetAccount(ak.AccountID)
 	if err != nil || ac == nil {
-		logger.GetLogger("boulder").Errorf("failed to get account %s", ak.AccountID)
+		logger.GetLogger("dedups3").Errorf("failed to get account %s", ak.AccountID)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
 	u, err := ac.GetUser(ak.Username)
 	if err != nil || u == nil {
-		logger.GetLogger("boulder").Errorf("failed to get user %s", ak.Username)
+		logger.GetLogger("dedups3").Errorf("failed to get user %s", ak.Username)
 		return fmt.Errorf("failed to get user %s", ak.Username)
 	}
 
 	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
 		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
@@ -147,10 +147,10 @@ func (b *BucketService) CreateBucket(params *BaseBucketParams) error {
 	exist, err := txn.Get(key, &bucket)
 	if exist && err == nil {
 		if bucket.Owner.ID == ac.AccountID {
-			logger.GetLogger("boulder").Warnf("bucket %s already owned by you", params.BucketName)
+			logger.GetLogger("dedups3").Warnf("bucket %s already owned by you", params.BucketName)
 			return xhttp.ToError(xhttp.ErrBucketAlreadyOwnedByYou)
 		}
-		logger.GetLogger("boulder").Warnf("bucket %s already exists", params.BucketName)
+		logger.GetLogger("dedups3").Warnf("bucket %s already exists", params.BucketName)
 		return xhttp.ToError(xhttp.ErrBucketAlreadyExists)
 	}
 
@@ -163,12 +163,12 @@ func (b *BucketService) CreateBucket(params *BaseBucketParams) error {
 
 	err = txn.Set(key, &bm)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to put bucket: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to put bucket: %v", err)
 		return fmt.Errorf("failed to put bucket: %w", err)
 	}
 
 	if err := txn.Commit(); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	txn = nil
@@ -189,19 +189,19 @@ func (b *BucketService) CreateBucket(params *BaseBucketParams) error {
 func (b *BucketService) GetBucketInfo(params *BaseBucketParams) (*meta.BucketMetadata, error) {
 	iamService := iam.GetIamService()
 	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
 		return nil, errors.New("failed to get iam service")
 	}
 
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
-		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		logger.GetLogger("dedups3").Errorf("failed to get access key %s", params.AccessKeyID)
 		return nil, xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
 	ac, err := iamService.GetAccount(ak.AccountID)
 	if err != nil || ac == nil {
-		logger.GetLogger("boulder").Errorf("failed to get account %s", ak.AccountID)
+		logger.GetLogger("dedups3").Errorf("failed to get account %s", ak.AccountID)
 		return nil, xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
@@ -220,7 +220,7 @@ func (b *BucketService) GetBucketInfo(params *BaseBucketParams) (*meta.BucketMet
 	var bucket meta.BucketMetadata
 	exist, err := b.kvstore.Get(key, &bucket)
 	if !exist || err != nil {
-		logger.GetLogger("boulder").Errorf("bucket %s does not exist", params.BucketName)
+		logger.GetLogger("dedups3").Errorf("bucket %s does not exist", params.BucketName)
 		return nil, xhttp.ToError(xhttp.ErrNoSuchBucket)
 	}
 
@@ -234,19 +234,19 @@ func (b *BucketService) GetBucketInfo(params *BaseBucketParams) (*meta.BucketMet
 func (b *BucketService) ListBuckets(params *BaseBucketParams) ([]*meta.BucketMetadata, *meta.Owner, error) {
 	iamService := iam.GetIamService()
 	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
 		return nil, nil, errors.New("failed to get iam service")
 	}
 
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
-		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		logger.GetLogger("dedups3").Errorf("failed to get access key %s", params.AccessKeyID)
 		return nil, nil, xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
 	ac, err := iamService.GetAccount(ak.AccountID)
 	if err != nil || ac == nil {
-		logger.GetLogger("boulder").Errorf("failed to get account %s", ak.AccountID)
+		logger.GetLogger("dedups3").Errorf("failed to get account %s", ak.AccountID)
 		return nil, nil, xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 	owner := meta.Owner{
@@ -256,7 +256,7 @@ func (b *BucketService) ListBuckets(params *BaseBucketParams) ([]*meta.BucketMet
 
 	txn, err := b.kvstore.BeginTxn(context.Background(), &kv.TxnOpt{IsReadOnly: true})
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
 		return nil, nil, fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 
@@ -265,18 +265,18 @@ func (b *BucketService) ListBuckets(params *BaseBucketParams) ([]*meta.BucketMet
 	prefix := "aws:bucket:" + ak.AccountID + ":"
 	buckets, _, err := txn.Scan(prefix, "", MAX_BUCKET_NUM)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to list buckets: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to list buckets: %v", err)
 		return nil, nil, fmt.Errorf("failed to list buckets: %w", err)
 	}
 
-	logger.GetLogger("boulder").Tracef("list buckets: %v", buckets)
+	logger.GetLogger("dedups3").Tracef("list buckets: %v", buckets)
 
 	var allBuckets []*meta.BucketMetadata
 	for _, name := range buckets {
 		bucket := &meta.BucketMetadata{}
 		exist, err := txn.Get(name, &bucket)
 		if err != nil || !exist {
-			logger.GetLogger("boulder").Errorf("failed to get bucket %s: %v", name, err)
+			logger.GetLogger("dedups3").Errorf("failed to get bucket %s: %v", name, err)
 			continue
 		}
 		allBuckets = append(allBuckets, bucket)
@@ -288,20 +288,20 @@ func (b *BucketService) DeleteBucket(params *BaseBucketParams) error {
 	// 获取IAM服务
 	iamService := iam.GetIamService()
 	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
 		return errors.New("failed to get iam service")
 	}
 
 	// 验证访问密钥
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
-		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		logger.GetLogger("dedups3").Errorf("failed to get access key %s", params.AccessKeyID)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
 	ac, err := iamService.GetAccount(ak.AccountID)
 	if err != nil || ac == nil {
-		logger.GetLogger("boulder").Errorf("failed to get account %s", ak.AccountID)
+		logger.GetLogger("dedups3").Errorf("failed to get account %s", ak.AccountID)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
@@ -311,7 +311,7 @@ func (b *BucketService) DeleteBucket(params *BaseBucketParams) error {
 	// 开始事务
 	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
 		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
@@ -324,13 +324,13 @@ func (b *BucketService) DeleteBucket(params *BaseBucketParams) error {
 	var bucket meta.BucketMetadata
 	exist, err := txn.Get(bucketKey, &bucket)
 	if !exist || err != nil {
-		logger.GetLogger("boulder").Errorf("bucket %s does not exist", params.BucketName)
+		logger.GetLogger("dedups3").Errorf("bucket %s does not exist", params.BucketName)
 		return xhttp.ToError(xhttp.ErrNoSuchBucket)
 	}
 
 	// 检查用户是否是存储桶所有者
 	if bucket.Owner.ID != ac.AccountID {
-		logger.GetLogger("boulder").Errorf("access denied: user %s :%s is not the owner of bucket %s", ac.AccountID, bucket.Owner.ID, params.BucketName)
+		logger.GetLogger("dedups3").Errorf("access denied: user %s :%s is not the owner of bucket %s", ac.AccountID, bucket.Owner.ID, params.BucketName)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
@@ -339,7 +339,7 @@ func (b *BucketService) DeleteBucket(params *BaseBucketParams) error {
 	objectPrefix := "aws:object:" + ac.AccountID + ":" + params.BucketName + "/"
 	objects, _, err := txn.Scan(objectPrefix, "", 1)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to scan objects in bucket %s: %v", params.BucketName, err)
+		logger.GetLogger("dedups3").Errorf("failed to scan objects in bucket %s: %v", params.BucketName, err)
 		return fmt.Errorf("failed to scan objects: %w", err)
 	}
 
@@ -347,24 +347,24 @@ func (b *BucketService) DeleteBucket(params *BaseBucketParams) error {
 	multipartPrefix := "aws:object:" + ak.AccountID + ":" + params.BucketName + "/"
 	multiparts, _, err := txn.Scan(multipartPrefix, "", 1)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to scan multipart uploads in bucket %s: %v", params.BucketName, err)
+		logger.GetLogger("dedups3").Errorf("failed to scan multipart uploads in bucket %s: %v", params.BucketName, err)
 		return fmt.Errorf("failed to scan multipart uploads: %w", err)
 	}
 
 	if len(objects) > 0 || len(multiparts) > 0 {
-		logger.GetLogger("boulder").Tracef("bucket %s not empty", params.BucketName)
+		logger.GetLogger("dedups3").Tracef("bucket %s not empty", params.BucketName)
 		return xhttp.ToError(xhttp.ErrBucketNotEmpty)
 	}
 
 	// 删除存储桶元数据
 	if err := txn.Delete(bucketKey); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to delete bucket %s metadata: %v", params.BucketName, err)
+		logger.GetLogger("dedups3").Errorf("failed to delete bucket %s metadata: %v", params.BucketName, err)
 		return fmt.Errorf("failed to delete bucket metadata: %w", err)
 	}
 
 	// 提交事务
 	if err := txn.Commit(); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	txn = nil
@@ -379,7 +379,7 @@ func (b *BucketService) DeleteBucket(params *BaseBucketParams) error {
 		_stats.RefreshAccountStats(ak.AccountID)
 	}
 
-	logger.GetLogger("boulder").Tracef("successfully deleted bucket: %s", params.BucketName)
+	logger.GetLogger("dedups3").Tracef("successfully deleted bucket: %s", params.BucketName)
 	return nil
 }
 
@@ -387,20 +387,20 @@ func (b *BucketService) PutBucketTagging(params *BaseBucketParams) error {
 	// 获取IAM服务
 	iamService := iam.GetIamService()
 	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
 		return errors.New("failed to get iam service")
 	}
 
 	// 验证访问密钥
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
-		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		logger.GetLogger("dedups3").Errorf("failed to get access key %s", params.AccessKeyID)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
 	ac, err := iamService.GetAccount(ak.AccountID)
 	if err != nil || ac == nil {
-		logger.GetLogger("boulder").Errorf("failed to get account %s", ak.AccountID)
+		logger.GetLogger("dedups3").Errorf("failed to get account %s", ak.AccountID)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
@@ -410,7 +410,7 @@ func (b *BucketService) PutBucketTagging(params *BaseBucketParams) error {
 	// 开始事务
 	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
 		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
@@ -423,20 +423,20 @@ func (b *BucketService) PutBucketTagging(params *BaseBucketParams) error {
 	var bucket meta.BucketMetadata
 	exist, err := txn.Get(bucketKey, &bucket)
 	if !exist || err != nil {
-		logger.GetLogger("boulder").Errorf("bucket %s does not exist", params.BucketName)
+		logger.GetLogger("dedups3").Errorf("bucket %s does not exist", params.BucketName)
 		return xhttp.ToError(xhttp.ErrNoSuchBucket)
 	}
 
 	// 检查用户是否是存储桶所有者
 	if bucket.Owner.ID != ac.AccountID {
-		logger.GetLogger("boulder").Errorf("access denied: user %s :%s is not the owner of bucket %s", ac.AccountID, bucket.Owner.ID, params.BucketName)
+		logger.GetLogger("dedups3").Errorf("access denied: user %s :%s is not the owner of bucket %s", ac.AccountID, bucket.Owner.ID, params.BucketName)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
 	if params.ExpectedOwnerID != "" {
 		// 检查存储桶的实际所有者是否与请求的所有者匹配
 		if bucket.Owner.ID != params.ExpectedOwnerID {
-			logger.GetLogger("boulder").Errorf("bucket owner mismatch: expected %s, got %s", params.ExpectedOwnerID, bucket.Owner.ID)
+			logger.GetLogger("dedups3").Errorf("bucket owner mismatch: expected %s, got %s", params.ExpectedOwnerID, bucket.Owner.ID)
 			return xhttp.ToError(xhttp.ErrAccessDenied)
 		}
 	}
@@ -447,13 +447,13 @@ func (b *BucketService) PutBucketTagging(params *BaseBucketParams) error {
 
 	err = txn.Set(bucketKey, &bucket)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to set bucket tags: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to set bucket tags: %v", err)
 		return fmt.Errorf("failed to set bucket tags: %w", err)
 	}
 
 	// 提交事务
 	if err := txn.Commit(); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	txn = nil
@@ -471,20 +471,20 @@ func (b *BucketService) PutBucketLifecycle(params *BaseBucketParams, lifecycle *
 	// 获取IAM服务
 	iamService := iam.GetIamService()
 	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
 		return errors.New("failed to get iam service")
 	}
 
 	// 验证访问密钥
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
-		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		logger.GetLogger("dedups3").Errorf("failed to get access key %s", params.AccessKeyID)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
 	ac, err := iamService.GetAccount(ak.AccountID)
 	if err != nil || ac == nil {
-		logger.GetLogger("boulder").Errorf("failed to get account %s", ak.AccountID)
+		logger.GetLogger("dedups3").Errorf("failed to get account %s", ak.AccountID)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
@@ -494,7 +494,7 @@ func (b *BucketService) PutBucketLifecycle(params *BaseBucketParams, lifecycle *
 	// 开始事务
 	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
 		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
@@ -507,20 +507,20 @@ func (b *BucketService) PutBucketLifecycle(params *BaseBucketParams, lifecycle *
 	var bucket meta.BucketMetadata
 	exist, err := txn.Get(bucketKey, &bucket)
 	if !exist || err != nil {
-		logger.GetLogger("boulder").Errorf("bucket %s does not exist", params.BucketName)
+		logger.GetLogger("dedups3").Errorf("bucket %s does not exist", params.BucketName)
 		return xhttp.ToError(xhttp.ErrNoSuchBucket)
 	}
 
 	// 检查用户是否是存储桶所有者
 	if bucket.Owner.ID != ac.AccountID {
-		logger.GetLogger("boulder").Errorf("access denied: user %s :%s is not the owner of bucket %s", ac.AccountID, bucket.Owner.ID, params.BucketName)
+		logger.GetLogger("dedups3").Errorf("access denied: user %s :%s is not the owner of bucket %s", ac.AccountID, bucket.Owner.ID, params.BucketName)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
 	if params.ExpectedOwnerID != "" {
 		// 检查存储桶的实际所有者是否与请求的所有者匹配
 		if bucket.Owner.ID != params.ExpectedOwnerID {
-			logger.GetLogger("boulder").Errorf("bucket owner mismatch: expected %s, got %s", params.ExpectedOwnerID, bucket.Owner.ID)
+			logger.GetLogger("dedups3").Errorf("bucket owner mismatch: expected %s, got %s", params.ExpectedOwnerID, bucket.Owner.ID)
 			return xhttp.ToError(xhttp.ErrAccessDenied)
 		}
 	}
@@ -541,13 +541,13 @@ func (b *BucketService) PutBucketLifecycle(params *BaseBucketParams, lifecycle *
 
 	err = txn.Set(bucketKey, &bucket)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to set bucket lifecycle configuration: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to set bucket lifecycle configuration: %v", err)
 		return fmt.Errorf("failed to set bucket lifecycle configuration: %w", err)
 	}
 
 	// 提交事务
 	if err := txn.Commit(); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	txn = nil
@@ -557,7 +557,7 @@ func (b *BucketService) PutBucketLifecycle(params *BaseBucketParams, lifecycle *
 		_ = cache.Del(context.Background(), bucketKey)
 	}
 
-	logger.GetLogger("boulder").Tracef("successfully set lifecycle configuration for bucket: %s", params.BucketName)
+	logger.GetLogger("dedups3").Tracef("successfully set lifecycle configuration for bucket: %s", params.BucketName)
 	return nil
 }
 
@@ -566,20 +566,20 @@ func (b *BucketService) PutBucketNotification(params *BaseBucketParams, notifica
 	// 获取IAM服务
 	iamService := iam.GetIamService()
 	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
 		return errors.New("failed to get iam service")
 	}
 
 	// 验证访问密钥
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
-		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		logger.GetLogger("dedups3").Errorf("failed to get access key %s", params.AccessKeyID)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
 	ac, err := iamService.GetAccount(ak.AccountID)
 	if err != nil || ac == nil {
-		logger.GetLogger("boulder").Errorf("failed to get account %s", ak.AccountID)
+		logger.GetLogger("dedups3").Errorf("failed to get account %s", ak.AccountID)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
@@ -589,7 +589,7 @@ func (b *BucketService) PutBucketNotification(params *BaseBucketParams, notifica
 	// 开始事务
 	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
 		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
@@ -602,20 +602,20 @@ func (b *BucketService) PutBucketNotification(params *BaseBucketParams, notifica
 	var bucket meta.BucketMetadata
 	exist, err := txn.Get(bucketKey, &bucket)
 	if !exist || err != nil {
-		logger.GetLogger("boulder").Errorf("bucket %s does not exist", params.BucketName)
+		logger.GetLogger("dedups3").Errorf("bucket %s does not exist", params.BucketName)
 		return xhttp.ToError(xhttp.ErrNoSuchBucket)
 	}
 
 	// 检查用户是否是存储桶所有者
 	if bucket.Owner.ID != ac.AccountID {
-		logger.GetLogger("boulder").Errorf("access denied: user %s :%s is not the owner of bucket %s", ac.AccountID, bucket.Owner.ID, params.BucketName)
+		logger.GetLogger("dedups3").Errorf("access denied: user %s :%s is not the owner of bucket %s", ac.AccountID, bucket.Owner.ID, params.BucketName)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
 	if params.ExpectedOwnerID != "" {
 		// 检查存储桶的实际所有者是否与请求的所有者匹配
 		if bucket.Owner.ID != params.ExpectedOwnerID {
-			logger.GetLogger("boulder").Errorf("bucket owner mismatch: expected %s, got %s", params.ExpectedOwnerID, bucket.Owner.ID)
+			logger.GetLogger("dedups3").Errorf("bucket owner mismatch: expected %s, got %s", params.ExpectedOwnerID, bucket.Owner.ID)
 			return xhttp.ToError(xhttp.ErrAccessDenied)
 		}
 	}
@@ -636,13 +636,13 @@ func (b *BucketService) PutBucketNotification(params *BaseBucketParams, notifica
 
 	err = txn.Set(bucketKey, &bucket)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to set bucket notification configuration: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to set bucket notification configuration: %v", err)
 		return fmt.Errorf("failed to set bucket notification configuration: %w", err)
 	}
 
 	// 提交事务
 	if err := txn.Commit(); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	txn = nil
@@ -652,7 +652,7 @@ func (b *BucketService) PutBucketNotification(params *BaseBucketParams, notifica
 		_ = cache.Del(context.Background(), bucketKey)
 	}
 
-	logger.GetLogger("boulder").Tracef("successfully set notification configuration for bucket: %s", params.BucketName)
+	logger.GetLogger("dedups3").Tracef("successfully set notification configuration for bucket: %s", params.BucketName)
 	return nil
 }
 
@@ -661,20 +661,20 @@ func (b *BucketService) PutBucketObjectLockConfig(params *BaseBucketParams, conf
 	// 获取IAM服务
 	iamService := iam.GetIamService()
 	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
 		return errors.New("failed to get iam service")
 	}
 
 	// 验证访问密钥
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
-		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		logger.GetLogger("dedups3").Errorf("failed to get access key %s", params.AccessKeyID)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
 	ac, err := iamService.GetAccount(ak.AccountID)
 	if err != nil || ac == nil {
-		logger.GetLogger("boulder").Errorf("failed to get account %s", ak.AccountID)
+		logger.GetLogger("dedups3").Errorf("failed to get account %s", ak.AccountID)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
@@ -684,7 +684,7 @@ func (b *BucketService) PutBucketObjectLockConfig(params *BaseBucketParams, conf
 	// 开始事务
 	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
 		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
@@ -697,20 +697,20 @@ func (b *BucketService) PutBucketObjectLockConfig(params *BaseBucketParams, conf
 	var bucket meta.BucketMetadata
 	exist, err := txn.Get(bucketKey, &bucket)
 	if !exist || err != nil {
-		logger.GetLogger("boulder").Errorf("bucket %s does not exist", params.BucketName)
+		logger.GetLogger("dedups3").Errorf("bucket %s does not exist", params.BucketName)
 		return xhttp.ToError(xhttp.ErrNoSuchBucket)
 	}
 
 	// 检查用户是否是存储桶所有者
 	if bucket.Owner.ID != ac.AccountID {
-		logger.GetLogger("boulder").Errorf("access denied: user %s :%s is not the owner of bucket %s", ac.AccountID, bucket.Owner.ID, params.BucketName)
+		logger.GetLogger("dedups3").Errorf("access denied: user %s :%s is not the owner of bucket %s", ac.AccountID, bucket.Owner.ID, params.BucketName)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
 	if params.ExpectedOwnerID != "" {
 		// 检查存储桶的实际所有者是否与请求的所有者匹配
 		if bucket.Owner.ID != params.ExpectedOwnerID {
-			logger.GetLogger("boulder").Errorf("bucket owner mismatch: expected %s, got %s", params.ExpectedOwnerID, bucket.Owner.ID)
+			logger.GetLogger("dedups3").Errorf("bucket owner mismatch: expected %s, got %s", params.ExpectedOwnerID, bucket.Owner.ID)
 			return xhttp.ToError(xhttp.ErrAccessDenied)
 		}
 	}
@@ -730,13 +730,13 @@ func (b *BucketService) PutBucketObjectLockConfig(params *BaseBucketParams, conf
 
 	err = txn.Set(bucketKey, &bucket)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to set bucket object lock configuration: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to set bucket object lock configuration: %v", err)
 		return fmt.Errorf("failed to set bucket object lock configuration: %w", err)
 	}
 
 	// 提交事务
 	if err := txn.Commit(); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	txn = nil
@@ -746,7 +746,7 @@ func (b *BucketService) PutBucketObjectLockConfig(params *BaseBucketParams, conf
 		_ = cache.Del(context.Background(), bucketKey)
 	}
 
-	logger.GetLogger("boulder").Tracef("successfully set object lock configuration for bucket: %s", params.BucketName)
+	logger.GetLogger("dedups3").Tracef("successfully set object lock configuration for bucket: %s", params.BucketName)
 	return nil
 }
 
@@ -755,20 +755,20 @@ func (b *BucketService) PutBucketACL(params *BaseBucketParams, acl *meta.AccessC
 	// 获取IAM服务
 	iamService := iam.GetIamService()
 	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
 		return errors.New("failed to get iam service")
 	}
 
 	// 验证访问密钥
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
-		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		logger.GetLogger("dedups3").Errorf("failed to get access key %s", params.AccessKeyID)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
 	ac, err := iamService.GetAccount(ak.AccountID)
 	if err != nil || ac == nil {
-		logger.GetLogger("boulder").Errorf("failed to get account %s", ak.AccountID)
+		logger.GetLogger("dedups3").Errorf("failed to get account %s", ak.AccountID)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
@@ -778,7 +778,7 @@ func (b *BucketService) PutBucketACL(params *BaseBucketParams, acl *meta.AccessC
 	// 开始事务
 	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
 		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
@@ -791,20 +791,20 @@ func (b *BucketService) PutBucketACL(params *BaseBucketParams, acl *meta.AccessC
 	var bucket meta.BucketMetadata
 	exist, err := txn.Get(bucketKey, &bucket)
 	if !exist || err != nil {
-		logger.GetLogger("boulder").Errorf("bucket %s does not exist", params.BucketName)
+		logger.GetLogger("dedups3").Errorf("bucket %s does not exist", params.BucketName)
 		return xhttp.ToError(xhttp.ErrNoSuchBucket)
 	}
 
 	// 检查用户是否是存储桶所有者
 	if bucket.Owner.ID != ac.AccountID {
-		logger.GetLogger("boulder").Errorf("access denied: user %s :%s is not the owner of bucket %s", ac.AccountID, bucket.Owner.ID, params.BucketName)
+		logger.GetLogger("dedups3").Errorf("access denied: user %s :%s is not the owner of bucket %s", ac.AccountID, bucket.Owner.ID, params.BucketName)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
 	if params.ExpectedOwnerID != "" {
 		// 检查存储桶的实际所有者是否与请求的所有者匹配
 		if bucket.Owner.ID != params.ExpectedOwnerID {
-			logger.GetLogger("boulder").Errorf("bucket owner mismatch: expected %s, got %s", params.ExpectedOwnerID, bucket.Owner.ID)
+			logger.GetLogger("dedups3").Errorf("bucket owner mismatch: expected %s, got %s", params.ExpectedOwnerID, bucket.Owner.ID)
 			return xhttp.ToError(xhttp.ErrAccessDenied)
 		}
 	}
@@ -827,13 +827,13 @@ func (b *BucketService) PutBucketACL(params *BaseBucketParams, acl *meta.AccessC
 
 	err = txn.Set(bucketKey, &bucket)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to set bucket ACL: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to set bucket ACL: %v", err)
 		return fmt.Errorf("failed to set bucket ACL: %w", err)
 	}
 
 	// 提交事务
 	if err := txn.Commit(); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 	txn = nil
@@ -843,7 +843,7 @@ func (b *BucketService) PutBucketACL(params *BaseBucketParams, acl *meta.AccessC
 		_ = cache.Del(context.Background(), bucketKey)
 	}
 
-	logger.GetLogger("boulder").Tracef("successfully set ACL for bucket: %s", params.BucketName)
+	logger.GetLogger("dedups3").Tracef("successfully set ACL for bucket: %s", params.BucketName)
 	return nil
 }
 
@@ -851,20 +851,20 @@ func (b *BucketService) PutBucketPolicy(params *BaseBucketParams, policy *meta.B
 	// 获取IAM服务
 	iamService := iam.GetIamService()
 	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
 		return errors.New("failed to get iam service")
 	}
 
 	// 验证访问密钥
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
-		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		logger.GetLogger("dedups3").Errorf("failed to get access key %s", params.AccessKeyID)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
 	ac, err := iamService.GetAccount(ak.AccountID)
 	if err != nil || ac == nil {
-		logger.GetLogger("boulder").Errorf("failed to get account %s", ak.AccountID)
+		logger.GetLogger("dedups3").Errorf("failed to get account %s", ak.AccountID)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
@@ -874,7 +874,7 @@ func (b *BucketService) PutBucketPolicy(params *BaseBucketParams, policy *meta.B
 	// 开始事务
 	txn, err := b.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
 		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
@@ -887,20 +887,20 @@ func (b *BucketService) PutBucketPolicy(params *BaseBucketParams, policy *meta.B
 	var bucket meta.BucketMetadata
 	exist, err := txn.Get(bucketKey, &bucket)
 	if !exist || err != nil {
-		logger.GetLogger("boulder").Errorf("bucket %s does not exist", params.BucketName)
+		logger.GetLogger("dedups3").Errorf("bucket %s does not exist", params.BucketName)
 		return xhttp.ToError(xhttp.ErrNoSuchBucket)
 	}
 
 	// 检查用户是否是存储桶所有者
 	if bucket.Owner.ID != ac.AccountID {
-		logger.GetLogger("boulder").Errorf("access denied: user %s :%s is not the owner of bucket %s", ac.AccountID, bucket.Owner.ID, params.BucketName)
+		logger.GetLogger("dedups3").Errorf("access denied: user %s :%s is not the owner of bucket %s", ac.AccountID, bucket.Owner.ID, params.BucketName)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
 	if params.ExpectedOwnerID != "" {
 		// 检查存储桶的实际所有者是否与请求的所有者匹配
 		if bucket.Owner.ID != params.ExpectedOwnerID {
-			logger.GetLogger("boulder").Errorf("bucket owner mismatch: expected %s, got %s", params.ExpectedOwnerID, bucket.Owner.ID)
+			logger.GetLogger("dedups3").Errorf("bucket owner mismatch: expected %s, got %s", params.ExpectedOwnerID, bucket.Owner.ID)
 			return xhttp.ToError(xhttp.ErrAccessDenied)
 		}
 	}
@@ -912,13 +912,13 @@ func (b *BucketService) PutBucketPolicy(params *BaseBucketParams, policy *meta.B
 	bucket.Policy = policy
 	err = txn.Set(bucketKey, &bucket)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to set bucket Policy: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to set bucket Policy: %v", err)
 		return fmt.Errorf("failed to set bucket Policy: %w", err)
 	}
 
 	// 提交事务
 	if err := txn.Commit(); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
 		return fmt.Errorf("failed to commit transaction: %v", err)
 	}
 	txn = nil
@@ -928,6 +928,6 @@ func (b *BucketService) PutBucketPolicy(params *BaseBucketParams, policy *meta.B
 		_ = cache.Del(context.Background(), bucketKey)
 	}
 
-	logger.GetLogger("boulder").Tracef("successfully set Policy for bucket: %s", params.BucketName)
+	logger.GetLogger("dedups3").Tracef("successfully set Policy for bucket: %s", params.BucketName)
 	return nil
 }

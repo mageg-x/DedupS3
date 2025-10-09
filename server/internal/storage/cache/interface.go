@@ -20,8 +20,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/mageg-x/boulder/internal/config"
-	"github.com/mageg-x/boulder/internal/logger"
+	"github.com/mageg-x/dedups3/internal/config"
+	"github.com/mageg-x/dedups3/internal/logger"
 	"sync"
 	"time"
 )
@@ -75,7 +75,7 @@ func Get[T any](cache Cache, ctx context.Context, key string) (*T, bool, error) 
 
 	var value T
 	if err := json.Unmarshal(data, &value); err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to deserialize value for key %s: %v", key, err)
+		logger.GetLogger("dedups3").Errorf("Failed to deserialize value for key %s: %v", key, err)
 		return nil, false, fmt.Errorf("failed to deserialize value: %w", err)
 	}
 	return &value, exists, nil
@@ -90,7 +90,7 @@ func MGet[T any](cache Cache, ctx context.Context, keys []string) (map[string]*T
 	for k, v := range m {
 		var value T
 		if err := json.Unmarshal(v, &value); err != nil {
-			logger.GetLogger("boulder").Errorf("Failed to deserialize value for key %s: %v", k, err)
+			logger.GetLogger("dedups3").Errorf("Failed to deserialize value for key %s: %v", k, err)
 			return nil, fmt.Errorf("failed to unmarshal: %w", err)
 		}
 		result[k] = &value

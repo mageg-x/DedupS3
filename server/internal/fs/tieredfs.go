@@ -16,8 +16,8 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/mageg-x/boulder/internal/logger"
-	"github.com/mageg-x/boulder/internal/utils"
+	"github.com/mageg-x/dedups3/internal/logger"
+	"github.com/mageg-x/dedups3/internal/utils"
 )
 
 const (
@@ -165,7 +165,7 @@ func NewTieredFs(config *Config) (*TieredFs, error) {
 	// 创建文件后，用 fallocate 预分配空间
 	err = unix.Fallocate(int(file.Fd()), 0, 0, config.MmapSize)
 	if err != nil {
-		logger.GetLogger("boulder").Warnf("failed to fallocate mmap file: %v", err)
+		logger.GetLogger("dedups3").Warnf("failed to fallocate mmap file: %v", err)
 	}
 
 	// mmap 映射
@@ -195,7 +195,7 @@ func NewTieredFs(config *Config) (*TieredFs, error) {
 	if err := fs.loadMetadata(); err != nil {
 		_ = file.Close()
 		// 如果加载失败，记录警告日志并继续，使用空的文件系统
-		logger.GetLogger("boulder").Warnf("Failed to load metadata, starting fresh: %v", err)
+		logger.GetLogger("dedups3").Warnf("Failed to load metadata, starting fresh: %v", err)
 		return nil, fmt.Errorf("failed to load metadata: %w", err)
 	}
 
@@ -250,7 +250,7 @@ func (fs *TieredFs) loadMetadata() error {
 	err = fs.freeManager.AllocAt(0, MetadataTotalSize)
 	// 保留元数据区域不被分配
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("allocate meta region failed: %v", err)
+		logger.GetLogger("dedups3").Errorf("allocate meta region failed: %v", err)
 		return fmt.Errorf("allocate meta region failed: %w", err)
 	}
 
@@ -280,17 +280,17 @@ func (fs *TieredFs) loadMetadata() error {
 
 	// 重建 fs.syncManager 同步任务
 	for _, file := range fs.files {
-		logger.GetLogger("boulder").Debugf("restore file %s meta form mmap", file.BlockID)
+		logger.GetLogger("dedups3").Debugf("restore file %s meta form mmap", file.BlockID)
 		fs.syncManager.Submit(file, 0, nil)
 	}
-	logger.GetLogger("boulder").Infof("Loaded %#v files", fs.files)
+	logger.GetLogger("dedups3").Infof("Loaded %#v files", fs.files)
 	return nil
 }
 
 // saveMetadata 将元数据保存到mmap_cache.dat文件
 func (fs *TieredFs) saveMetadata() error {
 	if fs.mmapData == nil || fs.mmapFile == nil {
-		logger.GetLogger("boulder").Errorf("mmap data is empty")
+		logger.GetLogger("dedups3").Errorf("mmap data is empty")
 		return fmt.Errorf("mmap data or file is empty")
 	}
 
@@ -303,7 +303,7 @@ func (fs *TieredFs) saveMetadata() error {
 	metaPtr.Version = MetadataVersion
 
 	if len(fs.files) > MetadataMaxFiles {
-		logger.GetLogger("boulder").Errorf("too many files")
+		logger.GetLogger("dedups3").Errorf("too many files")
 		return fmt.Errorf("too many files")
 	}
 	idx := 0
@@ -349,7 +349,7 @@ func (fs *TieredFs) WriteFile(storageID, blockID string, chunks [][]byte, ver in
 	}
 
 	if len(fs.files) >= MetadataMaxFiles {
-		logger.GetLogger("boulder").Errorf("too many files")
+		logger.GetLogger("dedups3").Errorf("too many files")
 		return fmt.Errorf("too many files")
 	}
 
@@ -360,7 +360,7 @@ func (fs *TieredFs) WriteFile(storageID, blockID string, chunks [][]byte, ver in
 	}
 
 	if totalLen == 0 {
-		logger.GetLogger("boulder").Errorf("write 0 bytes to file %s", blockID)
+		logger.GetLogger("dedups3").Errorf("write 0 bytes to file %s", blockID)
 		return fs.Remove(storageID, blockID) // 空文件视为删除
 	}
 
@@ -371,7 +371,7 @@ func (fs *TieredFs) WriteFile(storageID, blockID string, chunks [][]byte, ver in
 	// 分配空间
 	offset, err := fs.freeManager.BestFitAlloc(totalLen)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("no space for alloc: %v", err)
+		logger.GetLogger("dedups3").Errorf("no space for alloc: %v", err)
 		return fmt.Errorf("no space for alloc %w", err)
 	}
 
@@ -382,7 +382,7 @@ func (fs *TieredFs) WriteFile(storageID, blockID string, chunks [][]byte, ver in
 	}
 
 	fs.mu.Lock()
-	//logger.GetLogger("boulder").Errorf("block %s get write region [%d-%d]", path, offset, offset+totalLen)
+	//logger.GetLogger("dedups3").Errorf("block %s get write region [%d-%d]", path, offset, offset+totalLen)
 	oldRegion := fs.files[blockID]
 	if oldRegion != nil && ver < oldRegion.Ver {
 		// 现有的版本更新
@@ -654,7 +654,7 @@ func (fs *TieredFs) Exists(strorageID, blockID string) bool {
 	if exists {
 		return true
 	} else {
-		logger.GetLogger("boulder").Debugf("file %s %s does not exist in %#v", strorageID, blockID, fs.files)
+		logger.GetLogger("dedups3").Debugf("file %s %s does not exist in %#v", strorageID, blockID, fs.files)
 	}
 
 	// 检查磁盘
@@ -782,7 +782,7 @@ func (fs *TieredFs) flushToTarget(region *FileRegion) error {
 		currentRegion, exists := fs.files[region.BlockID]
 		if !exists || !region.Equals(currentRegion) {
 			fs.mu.RUnlock()
-			logger.GetLogger("boulder").Infof("skip flush req %#v %#v ", currentRegion, region)
+			logger.GetLogger("dedups3").Infof("skip flush req %#v %#v ", currentRegion, region)
 			return nil
 		}
 		// 复制数据避免竞态
@@ -797,7 +797,7 @@ func (fs *TieredFs) flushToTarget(region *FileRegion) error {
 			fs.mu.Lock()
 			if t := fs.targetTasks[region.BlockID]; t != nil {
 				if t.ver < region.Ver && t.cancel != nil {
-					logger.GetLogger("boulder").Errorf("cancel old ver %d for block %s flush target task", t.ver, t.blockID)
+					logger.GetLogger("dedups3").Errorf("cancel old ver %d for block %s flush target task", t.ver, t.blockID)
 					t.cancel()
 				}
 			}
@@ -833,7 +833,7 @@ func (fs *TieredFs) flushToTarget(region *FileRegion) error {
 			}
 			return err
 		} else {
-			logger.GetLogger("boulder").Debugf("no flush targer to do for block  %s ", region.BlockID)
+			logger.GetLogger("dedups3").Debugf("no flush targer to do for block  %s ", region.BlockID)
 			return fmt.Errorf("no flush targer to do for %s ", region.BlockID)
 		}
 	})
@@ -851,6 +851,6 @@ func (fs *TieredFs) discardRegion(region *FileRegion) {
 		uintptr(unix.MADV_DONTNEED),
 	)
 	if errno != 0 {
-		logger.GetLogger("boulder").Warnf("madvise MADV_DONTNEED failed: %v", errno)
+		logger.GetLogger("dedups3").Warnf("madvise MADV_DONTNEED failed: %v", errno)
 	}
 }

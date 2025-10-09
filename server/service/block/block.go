@@ -29,14 +29,14 @@ import (
 	"github.com/twmb/murmur3"
 	"github.com/vmihailenco/msgpack/v5"
 
-	xconf "github.com/mageg-x/boulder/internal/config"
-	"github.com/mageg-x/boulder/internal/logger"
-	sb "github.com/mageg-x/boulder/internal/storage/block"
-	xcache "github.com/mageg-x/boulder/internal/storage/cache"
-	"github.com/mageg-x/boulder/internal/storage/kv"
-	"github.com/mageg-x/boulder/internal/utils"
-	"github.com/mageg-x/boulder/meta"
-	"github.com/mageg-x/boulder/service/storage"
+	xconf "github.com/mageg-x/dedups3/internal/config"
+	"github.com/mageg-x/dedups3/internal/logger"
+	sb "github.com/mageg-x/dedups3/internal/storage/block"
+	xcache "github.com/mageg-x/dedups3/internal/storage/cache"
+	"github.com/mageg-x/dedups3/internal/storage/kv"
+	"github.com/mageg-x/dedups3/internal/utils"
+	"github.com/mageg-x/dedups3/meta"
+	"github.com/mageg-x/dedups3/service/storage"
 )
 
 var (
@@ -67,7 +67,7 @@ func (b *BlockCache) Add(storageID, blockID string, ver int32, data []byte) {
 	cacheKey := fmt.Sprintf("block:%s:%s", storageID, blockID)
 	// 写入block缓存
 	if ver == meta.BLOCK_FINALY_VER {
-		logger.GetLogger("boulder").Debugf("store block %s to block cache", blockID)
+		logger.GetLogger("dedups3").Debugf("store block %s to block cache", blockID)
 		bcItem := &BlockCacheItem{
 			data:   data,
 			access: time.Now().UTC(),
@@ -137,7 +137,7 @@ func GetBlockService() *BlockService {
 
 	store, err := kv.GetKvStore()
 	if err != nil || store == nil {
-		logger.GetLogger("boulder").Errorf("failed to get kv store: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to get kv store: %v", err)
 		return nil
 	}
 	cfg := xconf.Get()
@@ -162,12 +162,12 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 	err := utils.WithLock(&s.lockers[i], func() error {
 		if chunk != nil {
 			if chunk.Size != int32(len(chunk.Data)) {
-				logger.GetLogger("boulder").Errorf("chunk %s/%s/%s size %d:%d not match", obj.Bucket, obj.Key, chunk.Hash, chunk.Size, len(chunk.Data))
+				logger.GetLogger("dedups3").Errorf("chunk %s/%s/%s size %d:%d not match", obj.Bucket, obj.Key, chunk.Hash, chunk.Size, len(chunk.Data))
 				return fmt.Errorf("chunk %s/%s/%s size %d:%d not match", obj.Bucket, obj.Key, chunk.Hash, chunk.Size, len(chunk.Data))
 			}
 
 			if chunk.Data == nil {
-				logger.GetLogger("boulder").Errorf("chunk data is nil: %#v", chunk)
+				logger.GetLogger("dedups3").Errorf("chunk data is nil: %#v", chunk)
 				return fmt.Errorf("chunk %s data is nil ", chunk.Hash)
 			}
 
@@ -205,7 +205,7 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 			flushBlock = s.preBlocks[i]
 			// 一小时还没有更新和提交的快，当成终结块提交吧
 			if flushBlock != nil && time.Since(flushBlock.UpdatedAt) > cfg.Block.MaxRetentionTime {
-				logger.GetLogger("boulder").Errorf("pass time %v:%v", time.Since(flushBlock.UpdatedAt), cfg.Block.MaxRetentionTime)
+				logger.GetLogger("dedups3").Errorf("pass time %v:%v", time.Since(flushBlock.UpdatedAt), cfg.Block.MaxRetentionTime)
 				flushBlock.Finally = true
 			}
 		}
@@ -218,14 +218,14 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 				flushBlock.Ver += 1
 			}
 
-			logger.GetLogger("boulder").Infof("ready to flush one block %s,  %d chunks", flushBlock.ID, len(flushBlock.ChunkList))
+			logger.GetLogger("dedups3").Infof("ready to flush one block %s,  %d chunks", flushBlock.ID, len(flushBlock.ChunkList))
 			err := s.doFlushBlock(context.Background(), flushBlock)
 			if err != nil {
 				// 恢复
 				flushBlock.Ver = oldVer + 1
 				flushBlock.Finally = false
 
-				logger.GetLogger("boulder").Warnf("failed to flush block %s: %v", flushBlock.ID, err)
+				logger.GetLogger("dedups3").Warnf("failed to flush block %s: %v", flushBlock.ID, err)
 				return fmt.Errorf("failed to flush block %s: %w", flushBlock.ID, err)
 			} else if flushBlock.Finally {
 				// 成功的话， 把 flushBlock 摘出来
@@ -267,7 +267,7 @@ func (s *BlockService) doFlushBlock(ctx context.Context, block *meta.Block) erro
 		size1 += block.ChunkList[i].Size
 		size2 += int32(len(block.ChunkList[i].Data))
 		if block.ChunkList[i].Size != int32(len(block.ChunkList[i].Data)) {
-			logger.GetLogger("boulder").Errorf("chunk %s size not match %d:%d", block.ChunkList[i].Hash, block.ChunkList[i].Size, len(block.ChunkList[i].Data))
+			logger.GetLogger("dedups3").Errorf("chunk %s size not match %d:%d", block.ChunkList[i].Hash, block.ChunkList[i].Size, len(block.ChunkList[i].Data))
 			return fmt.Errorf("chunk %s size not match", block.ChunkList[i].Hash)
 		}
 		_chunk := meta.BlockChunk{
@@ -281,10 +281,10 @@ func (s *BlockService) doFlushBlock(ctx context.Context, block *meta.Block) erro
 	blockData.RealSize = block.TotalSize
 	block.RealSize = block.TotalSize
 	if size1 != size2 || blockData.TotalSize != blockData.RealSize {
-		logger.GetLogger("boulder").Errorf("flush block %s size mot match %d:%d:%d:%d", block.ID, size1, size2, blockData.RealSize, blockData.RealSize)
+		logger.GetLogger("dedups3").Errorf("flush block %s size mot match %d:%d:%d:%d", block.ID, size1, size2, blockData.RealSize, blockData.RealSize)
 		return fmt.Errorf("flush block %s size mot match %d:%d:%d:%d", block.ID, size1, size2, blockData.RealSize, blockData.RealSize)
 	}
-	logger.GetLogger("boulder").Infof("flush block data %s total size %d real size %d data size %d",
+	logger.GetLogger("dedups3").Infof("flush block data %s total size %d real size %d data size %d",
 		blockData.ID, blockData.TotalSize, blockData.RealSize, len(blockData.Data))
 
 	// 计算md5，数据校验
@@ -297,7 +297,7 @@ func (s *BlockService) doFlushBlock(ctx context.Context, block *meta.Block) erro
 			// 被取消
 			return nil
 		}
-		logger.GetLogger("boulder").Warnf("failed to WriteBlock %s: %v", block.ID, err)
+		logger.GetLogger("dedups3").Warnf("failed to WriteBlock %s: %v", block.ID, err)
 		return fmt.Errorf("failed to WriteBlock %s: %w", block.ID, err)
 	}
 	block.Compressed = blockData.Compressed
@@ -333,33 +333,33 @@ func (s *BlockService) WriteBlock(ctx context.Context, storageID string, blockDa
 		}
 	}
 
-	logger.GetLogger("boulder").Infof("flush block data size %d:%d, compress rate %.2f%%",
+	logger.GetLogger("dedups3").Infof("flush block data size %d:%d, compress rate %.2f%%",
 		blockData.TotalSize, blockData.RealSize, float64(100.0*blockData.RealSize)/float64(blockData.TotalSize))
 
 	data, err := msgpack.Marshal(&blockData)
 	if err != nil {
-		logger.GetLogger("boulder").Debugf("msgpack marshal %s failed: %v", blockData.ID, err)
+		logger.GetLogger("dedups3").Debugf("msgpack marshal %s failed: %v", blockData.ID, err)
 		return fmt.Errorf("msgpack marshal %s failed: %w", blockData.ID, err)
 	}
 
 	ss := storage.GetStorageService()
 	if ss == nil {
-		logger.GetLogger("boulder").Errorf("get nil storage service")
+		logger.GetLogger("dedups3").Errorf("get nil storage service")
 		return fmt.Errorf("get nil storage service")
 	}
 
 	st, err := ss.GetStorage(storageID)
 	if err != nil || st == nil || st.Instance == nil {
-		logger.GetLogger("boulder").Errorf("get nil storage instance id %s ", storageID)
+		logger.GetLogger("dedups3").Errorf("get nil storage instance id %s ", storageID)
 		return fmt.Errorf("get nil storage instance: %w", err)
 	}
 
 	err = st.Instance.WriteBlock(ctx, blockData.ID, data, blockData.Ver)
 	if err != nil {
-		logger.GetLogger("boulder").Debugf("write block %s failed: %v", blockData.ID, err)
+		logger.GetLogger("dedups3").Debugf("write block %s failed: %v", blockData.ID, err)
 		return fmt.Errorf("write block %s failed: %w", blockData.ID, err)
 	} else {
-		logger.GetLogger("boulder").Infof("finish write block %s success", blockData.ID)
+		logger.GetLogger("dedups3").Infof("finish write block %s success", blockData.ID)
 	}
 
 	return nil
@@ -369,16 +369,16 @@ func (s *BlockService) ReadBlock(storageID, blockID string) (*meta.BlockData, er
 	cacheKey := fmt.Sprintf("block:%s:%s", storageID, blockID)
 	data := bc.Get(storageID, cacheKey)
 	if data == nil {
-		logger.GetLogger("boulder").Debugf("block %s not found in block cache", blockID)
+		logger.GetLogger("dedups3").Debugf("block %s not found in block cache", blockID)
 		ss := storage.GetStorageService()
 		if ss == nil {
-			logger.GetLogger("boulder").Errorf("get nil storage service")
+			logger.GetLogger("dedups3").Errorf("get nil storage service")
 			return nil, fmt.Errorf("get nil storage service")
 		}
 
 		st, err := ss.GetStorage(storageID)
 		if err != nil || st == nil || st.Instance == nil {
-			logger.GetLogger("boulder").Errorf("get nil storage instance")
+			logger.GetLogger("dedups3").Errorf("get nil storage instance")
 			return nil, fmt.Errorf("get nil storage instance: %w", err)
 		}
 
@@ -387,7 +387,7 @@ func (s *BlockService) ReadBlock(storageID, blockID string) (*meta.BlockData, er
 		var blockMeta meta.Block
 		exists, err := s.kvstore.Get(blockKey, &blockMeta)
 		if err != nil && !exists {
-			logger.GetLogger("boulder").Debugf("read block meta %s failed: %v", blockID, err)
+			logger.GetLogger("dedups3").Debugf("read block meta %s failed: %v", blockID, err)
 			return nil, fmt.Errorf("read block meta %s failed: %w", blockID, err)
 		}
 
@@ -400,7 +400,7 @@ func (s *BlockService) ReadBlock(storageID, blockID string) (*meta.BlockData, er
 
 			data, err = st.Instance.ReadBlock(blockMeta.Location, blockID, 0, 0)
 			if err != nil || len(data) == 0 {
-				logger.GetLogger("boulder").Errorf("read block %s failed: %v", blockID, err)
+				logger.GetLogger("dedups3").Errorf("read block %s failed: %v", blockID, err)
 				return fmt.Errorf("read block %s failed: %w", blockID, err)
 			}
 
@@ -419,7 +419,7 @@ func (s *BlockService) ReadBlock(storageID, blockID string) (*meta.BlockData, er
 	}
 
 	if data == nil {
-		logger.GetLogger("boulder").Errorf("block %s not found", blockID)
+		logger.GetLogger("dedups3").Errorf("block %s not found", blockID)
 		return nil, fmt.Errorf("block %s not found", blockID)
 	}
 
@@ -427,24 +427,24 @@ func (s *BlockService) ReadBlock(storageID, blockID string) (*meta.BlockData, er
 	err := msgpack.Unmarshal(data, &blockData)
 	if err != nil {
 		bc.Del(storageID, blockID)
-		logger.GetLogger("boulder").Errorf("msgpack unmarshal block %s  data %d to struct failed: %v", blockID, len(data), err)
+		logger.GetLogger("dedups3").Errorf("msgpack unmarshal block %s  data %d to struct failed: %v", blockID, len(data), err)
 		return nil, fmt.Errorf("msgpack unmarshal block %s  data %d to struct failed: %w", blockID, len(data), err)
 	} else {
-		logger.GetLogger("boulder").Debugf("unmarshal block %s size %d  %#v success", blockID, len(data), blockData.BlockHeader)
+		logger.GetLogger("dedups3").Debugf("unmarshal block %s size %d  %#v success", blockID, len(data), blockData.BlockHeader)
 	}
 	if blockID != blockData.ID {
 		bc.Del(storageID, blockID)
-		logger.GetLogger("boulder").Errorf("read block %s id not match block %s ", blockID, blockData.ID)
+		logger.GetLogger("dedups3").Errorf("read block %s id not match block %s ", blockID, blockData.ID)
 		return nil, fmt.Errorf("read block %s id not match block %s ", blockID, blockData.ID)
 	}
 	if blockData.Encrypted {
 		_d, err := utils.Decrypt(blockData.Data, blockID)
 		if err != nil {
 			bc.Del(storageID, blockID)
-			logger.GetLogger("boulder").Errorf("decrypt block %s:%s size %d:%d failed: %v", blockID, blockData.ID, len(blockData.Data), blockData.RealSize, err)
+			logger.GetLogger("dedups3").Errorf("decrypt block %s:%s size %d:%d failed: %v", blockID, blockData.ID, len(blockData.Data), blockData.RealSize, err)
 			return nil, fmt.Errorf("decrypt block %s failed: %w", blockID, err)
 		} else {
-			logger.GetLogger("boulder").Debugf("success decrypt block %s:%s size %d:%d", blockID, blockData.ID, len(blockData.Data), blockData.RealSize)
+			logger.GetLogger("dedups3").Debugf("success decrypt block %s:%s size %d:%d", blockID, blockData.ID, len(blockData.Data), blockData.RealSize)
 		}
 		blockData.Data = _d
 	}
@@ -453,14 +453,14 @@ func (s *BlockService) ReadBlock(storageID, blockID string) (*meta.BlockData, er
 		_d, err := utils.Decompress(blockData.Data)
 		if err != nil {
 			bc.Del(storageID, blockID)
-			logger.GetLogger("boulder").Errorf("decompress block %s data failed: %v", blockID, err)
+			logger.GetLogger("dedups3").Errorf("decompress block %s data failed: %v", blockID, err)
 			return nil, fmt.Errorf("decompress block %s data failed: %w", blockID, err)
 		}
 		blockData.Data = _d
 	}
 	if blockData.TotalSize != int64(len(blockData.Data)) {
 		bc.Del(storageID, blockID)
-		logger.GetLogger("boulder").Errorf("read block %s size not match %d:%d ", blockID, blockData.TotalSize, len(blockData.Data))
+		logger.GetLogger("dedups3").Errorf("read block %s size not match %d:%d ", blockID, blockData.TotalSize, len(blockData.Data))
 		return nil, fmt.Errorf("block %s  data be damaged size not match %d:%d", blockID, blockData.TotalSize, len(blockData.Data))
 	}
 	return &blockData, nil
@@ -469,13 +469,13 @@ func (s *BlockService) ReadBlock(storageID, blockID string) (*meta.BlockData, er
 func (s *BlockService) ReadBlockHead(storageID, blockID string) (*meta.BlockHeader, error) {
 	ss := storage.GetStorageService()
 	if ss == nil {
-		logger.GetLogger("boulder").Errorf("get nil storage service")
+		logger.GetLogger("dedups3").Errorf("get nil storage service")
 		return nil, fmt.Errorf("get nil storage service")
 	}
 
 	st, err := ss.GetStorage(storageID)
 	if err != nil || st == nil || st.Instance == nil {
-		logger.GetLogger("boulder").Errorf("get nil storage instance")
+		logger.GetLogger("dedups3").Errorf("get nil storage instance")
 		return nil, fmt.Errorf("get nil storage instance: %w", err)
 	}
 	cfg := xconf.Get()
@@ -485,13 +485,13 @@ func (s *BlockService) ReadBlockHead(storageID, blockID string) (*meta.BlockHead
 	var blockMeta meta.Block
 	exists, err := s.kvstore.Get(blockKey, &blockMeta)
 	if err != nil && !exists {
-		logger.GetLogger("boulder").Debugf("read block meta %s failed: %v", blockID, err)
+		logger.GetLogger("dedups3").Debugf("read block meta %s failed: %v", blockID, err)
 		return nil, fmt.Errorf("read block meta %s failed: %w", blockID, err)
 	}
 
 	data, err := st.Instance.ReadBlock(blockMeta.Location, blockID, 0, int64(cfg.Block.MaxHeadSize))
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("read block header %s failed: %v", blockID, err)
+		logger.GetLogger("dedups3").Errorf("read block header %s failed: %v", blockID, err)
 		return nil, fmt.Errorf("read block header %s failed: %w", blockID, err)
 	}
 
@@ -499,7 +499,7 @@ func (s *BlockService) ReadBlockHead(storageID, blockID string) (*meta.BlockHead
 	var header meta.BlockHeader
 	err = dec.Decode(&header)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("decode block header %s failed: %v", blockID, err)
+		logger.GetLogger("dedups3").Errorf("decode block header %s failed: %v", blockID, err)
 		return nil, fmt.Errorf("decode block header %s failed: %w", blockID, err)
 	}
 
@@ -509,13 +509,13 @@ func (s *BlockService) ReadBlockHead(storageID, blockID string) (*meta.BlockHead
 func (s *BlockService) RemoveBlock(storageID, blockID string) error {
 	ss := storage.GetStorageService()
 	if ss == nil {
-		logger.GetLogger("boulder").Errorf("get nil storage service")
+		logger.GetLogger("dedups3").Errorf("get nil storage service")
 		return fmt.Errorf("get nil storage service")
 	}
 
 	st, err := ss.GetStorage(storageID)
 	if err != nil || st == nil || st.Instance == nil {
-		logger.GetLogger("boulder").Errorf("get nil storage instance")
+		logger.GetLogger("dedups3").Errorf("get nil storage instance")
 		return fmt.Errorf("get nil storage instance: %w", err)
 	}
 
@@ -524,7 +524,7 @@ func (s *BlockService) RemoveBlock(storageID, blockID string) error {
 		if errors.Is(err, sb.ErrBlockNotFound) {
 			return nil
 		}
-		logger.GetLogger("boulder").Debugf("failed to remove block %s: %v", blockID, err)
+		logger.GetLogger("dedups3").Debugf("failed to remove block %s: %v", blockID, err)
 		return fmt.Errorf("failed to remove block %s: %w", blockID, err)
 	}
 	return nil
@@ -570,14 +570,14 @@ func (s *BlockService) BatchGet(storageID string, blockIds []string) ([]*meta.Bl
 
 		result, err := s.kvstore.BatchGet(batchKeys)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to batchGet blocks: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to batchGet blocks: %v", err)
 			return nil, fmt.Errorf("failed to batchGet blocks: %w", err)
 		}
 		for k, v := range result {
 			var block meta.Block
 			err := json.Unmarshal(v, &block)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("failed to Unmarshal block %s err: %v", k, err)
+				logger.GetLogger("dedups3").Errorf("failed to Unmarshal block %s err: %v", k, err)
 				return nil, fmt.Errorf("failed to Unmarshal block %s err: %w", k, err)
 			}
 			blockMap[block.ID] = &block
@@ -586,7 +586,7 @@ func (s *BlockService) BatchGet(storageID string, blockIds []string) ([]*meta.Bl
 				blockKey := meta.GenBlockKey(storageID, block.ID)
 				err := cache.Set(context.Background(), blockKey, &block, time.Second*600)
 				if err != nil {
-					logger.GetLogger("boulder").Errorf("set block %s to cache failed: %v", blockKey, err)
+					logger.GetLogger("dedups3").Errorf("set block %s to cache failed: %v", blockKey, err)
 				}
 			}
 		}
@@ -596,7 +596,7 @@ func (s *BlockService) BatchGet(storageID string, blockIds []string) ([]*meta.Bl
 	for _, blockID := range blockIds {
 		block, ok := blockMap[blockID]
 		if !ok {
-			logger.GetLogger("boulder").Errorf("block %s not exist", blockID)
+			logger.GetLogger("dedups3").Errorf("block %s not exist", blockID)
 			return nil, fmt.Errorf("block %s not exist", blockID)
 		}
 		blocks = append(blocks, block)

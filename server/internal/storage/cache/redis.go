@@ -25,8 +25,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/mageg-x/boulder/internal/config"
-	"github.com/mageg-x/boulder/internal/logger"
+	"github.com/mageg-x/dedups3/internal/config"
+	"github.com/mageg-x/dedups3/internal/logger"
 )
 
 // Redis 基于 go-redis 的实现
@@ -47,11 +47,11 @@ func NewRedis(cfg *config.RedisConfig) (*Redis, error) {
 	// 可选：测试连接
 	ctx := context.Background()
 	if err := client.Ping(ctx).Err(); err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to connect to redis: %v", err)
+		logger.GetLogger("dedups3").Errorf("Failed to connect to redis: %v", err)
 		return nil, fmt.Errorf("failed to connect to redis: %w", err)
 	}
 
-	logger.GetLogger("boulder").Infof("Redis client initialized successfully")
+	logger.GetLogger("dedups3").Infof("Redis client initialized successfully")
 	return &Redis{client: client}, nil
 }
 
@@ -59,7 +59,7 @@ func NewRedis(cfg *config.RedisConfig) (*Redis, error) {
 func (r *Redis) Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error {
 	serialized, err := json.Marshal(value)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to serialize value for key %s: %v", key, err)
+		logger.GetLogger("dedups3").Errorf("Failed to serialize value for key %s: %v", key, err)
 		return fmt.Errorf("failed to serialize value: %w", err)
 	}
 
@@ -71,11 +71,11 @@ func (r *Redis) Set(ctx context.Context, key string, value interface{}, ttl time
 	}
 
 	if err := e.Err(); err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to set key %s: %v", key, err)
+		logger.GetLogger("dedups3").Errorf("Failed to set key %s: %v", key, err)
 		return fmt.Errorf("failed to set key: %w", err)
 	}
 
-	logger.GetLogger("boulder").Debugf("Successfully set key in Redis: %s", key)
+	logger.GetLogger("dedups3").Debugf("Successfully set key in Redis: %s", key)
 	return nil
 }
 
@@ -83,26 +83,26 @@ func (r *Redis) Set(ctx context.Context, key string, value interface{}, ttl time
 func (r *Redis) Get(ctx context.Context, key string) ([]byte, bool, error) {
 	val, err := r.client.Get(ctx, key).Bytes()
 	if err == redis.Nil {
-		logger.GetLogger("boulder").Debugf("Key not found in Redis: %s", key)
+		logger.GetLogger("dedups3").Debugf("Key not found in Redis: %s", key)
 		return nil, false, nil
 	}
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to get key %s: %v", key, err)
+		logger.GetLogger("dedups3").Errorf("Failed to get key %s: %v", key, err)
 		return nil, false, fmt.Errorf("failed to get key: %w", err)
 	}
 
-	logger.GetLogger("boulder").Debugf("Successfully got key from Redis: %s", key)
+	logger.GetLogger("dedups3").Debugf("Successfully got key from Redis: %s", key)
 	return val, true, nil
 }
 
 // Del 删除
 func (r *Redis) Del(ctx context.Context, key string) error {
 	if err := r.client.Del(ctx, key).Err(); err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to delete key %s: %v", key, err)
+		logger.GetLogger("dedups3").Errorf("Failed to delete key %s: %v", key, err)
 		return fmt.Errorf("failed to delete key: %w", err)
 	}
 
-	logger.GetLogger("boulder").Debugf("Successfully deleted key from Redis: %s", key)
+	logger.GetLogger("dedups3").Debugf("Successfully deleted key from Redis: %s", key)
 	return nil
 }
 
@@ -112,24 +112,24 @@ func (r *Redis) MSet(ctx context.Context, items map[string]Item) error {
 	for key, item := range items {
 		serialized, err := json.Marshal(item.Value)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("Failed to serialize value for key %s: %v", key, err)
+			logger.GetLogger("dedups3").Errorf("Failed to serialize value for key %s: %v", key, err)
 			return fmt.Errorf("failed to serialize value for key %s: %w", key, err)
 		}
 
 		cmd := pipe.Set(ctx, key, serialized, item.TTL)
 		if cmd.Err() != nil {
-			logger.GetLogger("boulder").Errorf("Pipeline set error for key %s: %v", key, cmd.Err())
+			logger.GetLogger("dedups3").Errorf("Pipeline set error for key %s: %v", key, cmd.Err())
 			return fmt.Errorf("pipeline set error for key %s: %w", key, cmd.Err())
 		}
 	}
 
 	_, err := pipe.Exec(ctx)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to execute pipeline: %v", err)
+		logger.GetLogger("dedups3").Errorf("Failed to execute pipeline: %v", err)
 		return fmt.Errorf("failed to execute pipeline: %w", err)
 	}
 
-	logger.GetLogger("boulder").Debugf("Successfully batch set %d items in Redis", len(items))
+	logger.GetLogger("dedups3").Debugf("Successfully batch set %d items in Redis", len(items))
 	return nil
 }
 
@@ -137,19 +137,19 @@ func (r *Redis) MSet(ctx context.Context, items map[string]Item) error {
 func (r *Redis) MGet(ctx context.Context, keys []string) (map[string][]byte, error) {
 	values := make(map[string][]byte, 0)
 	if len(keys) == 0 {
-		logger.GetLogger("boulder").Debugf("No keys provided for batch get")
+		logger.GetLogger("dedups3").Debugf("No keys provided for batch get")
 		return values, nil
 	}
 
 	vals, err := r.client.MGet(ctx, keys...).Result()
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("MGET failed: %v", err)
+		logger.GetLogger("dedups3").Errorf("MGET failed: %v", err)
 		return nil, fmt.Errorf("mget failed: %w", err)
 	}
 
 	for i, v := range vals {
 		if v == nil {
-			logger.GetLogger("boulder").Debugf("Key not found in batch get: %s", keys[i])
+			logger.GetLogger("dedups3").Debugf("Key not found in batch get: %s", keys[i])
 			continue
 		}
 		// v 是 string 类型
@@ -161,7 +161,7 @@ func (r *Redis) MGet(ctx context.Context, keys []string) (map[string][]byte, err
 		values[keys[i]] = data
 	}
 
-	logger.GetLogger("boulder").Debugf("Successfully batch got %d keys from Redis", len(values))
+	logger.GetLogger("dedups3").Debugf("Successfully batch got %d keys from Redis", len(values))
 	return values, nil
 }
 
@@ -171,11 +171,11 @@ func (r *Redis) MDel(ctx context.Context, keys []string) error {
 		return nil
 	}
 	if err := r.client.Del(ctx, keys...).Err(); err != nil {
-		logger.GetLogger("boulder").Errorf("Batch delete failed: %v", err)
+		logger.GetLogger("dedups3").Errorf("Batch delete failed: %v", err)
 		return fmt.Errorf("batch delete failed: %w", err)
 	}
 
-	logger.GetLogger("boulder").Debugf("Successfully batch deleted %d keys from Redis", len(keys))
+	logger.GetLogger("dedups3").Debugf("Successfully batch deleted %d keys from Redis", len(keys))
 	return nil
 }
 
@@ -183,21 +183,21 @@ func (r *Redis) MDel(ctx context.Context, keys []string) error {
 func (r *Redis) Exists(ctx context.Context, key string) (bool, error) {
 	n, err := r.client.Exists(ctx, key).Result()
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to check existence of key %s: %v", key, err)
+		logger.GetLogger("dedups3").Errorf("Failed to check existence of key %s: %v", key, err)
 	}
 
-	logger.GetLogger("boulder").Debugf("Key %s exists: %v", key, n > 0)
+	logger.GetLogger("dedups3").Debugf("Key %s exists: %v", key, n > 0)
 	return n > 0, err
 }
 
 // Clear 清空当前 DB
 func (r *Redis) Clear(ctx context.Context) error {
 	if err := r.client.FlushDB(ctx).Err(); err != nil {
-		logger.GetLogger("boulder").Errorf("FlushDB failed: %v", err)
+		logger.GetLogger("dedups3").Errorf("FlushDB failed: %v", err)
 		return fmt.Errorf("flushdb failed: %w", err)
 	}
 
-	logger.GetLogger("boulder").Debugf("Successfully cleared Redis database")
+	logger.GetLogger("dedups3").Debugf("Successfully cleared Redis database")
 	return nil
 }
 
@@ -205,9 +205,9 @@ func (r *Redis) Clear(ctx context.Context) error {
 func (r *Redis) Close() error {
 	err := r.client.Close()
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to close Redis connection: %v", err)
+		logger.GetLogger("dedups3").Errorf("Failed to close Redis connection: %v", err)
 	}
 
-	logger.GetLogger("boulder").Debugf("Redis connection closed")
+	logger.GetLogger("dedups3").Debugf("Redis connection closed")
 	return err
 }

@@ -2,17 +2,17 @@ package middleware
 
 import (
 	"context"
-	"github.com/mageg-x/boulder/internal/config"
-	xhttp "github.com/mageg-x/boulder/internal/http"
-	"github.com/mageg-x/boulder/internal/logger"
-	"github.com/mageg-x/boulder/internal/utils"
+	"github.com/mageg-x/dedups3/internal/config"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
+	"github.com/mageg-x/dedups3/internal/logger"
+	"github.com/mageg-x/dedups3/internal/utils"
 	"net/http"
 	"strings"
 )
 
 func AdminAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		logger.GetLogger("boulder").Errorf("access request %s %s", r.Method, r.URL.Path)
+		logger.GetLogger("dedups3").Errorf("access request %s %s", r.Method, r.URL.Path)
 
 		// 允许跨域并支持凭据
 		origin := r.Header.Get("Origin")
@@ -49,7 +49,7 @@ func AdminAuthMiddleware(next http.Handler) http.Handler {
 		// 调用 VerifyToken 校验并可能返回新 token ===
 		loginname, newToken, err := utils.VerifyToken(tokenString)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("Error verifying token: %v", err)
+			logger.GetLogger("dedups3").Errorf("Error verifying token: %v", err)
 			xhttp.AdminWriteJSONError(w, r, http.StatusUnauthorized, "invalid token", nil, http.StatusUnauthorized)
 			return
 		}
@@ -62,7 +62,7 @@ func AdminAuthMiddleware(next http.Handler) http.Handler {
 		//提取account 和 username
 		username, account := ParseLoginUsername(loginname)
 		if account == "" || username == "" {
-			logger.GetLogger("boulder").Errorf("failed get account name %s", loginname)
+			logger.GetLogger("dedups3").Errorf("failed get account name %s", loginname)
 			xhttp.AdminWriteJSONError(w, r, http.StatusUnauthorized, "invalid token", nil, http.StatusUnauthorized)
 		}
 		ctx := r.Context()

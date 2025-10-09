@@ -20,8 +20,8 @@ package meta
 import (
 	"fmt"
 
-	"github.com/mageg-x/boulder/internal/config"
-	"github.com/mageg-x/boulder/internal/storage/block"
+	"github.com/mageg-x/dedups3/internal/config"
+	"github.com/mageg-x/dedups3/internal/storage/block"
 )
 
 const (

@@ -4,15 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/mageg-x/boulder/internal/queue"
-	"github.com/mageg-x/boulder/internal/utils"
+	"github.com/mageg-x/dedups3/internal/queue"
+	"github.com/mageg-x/dedups3/internal/utils"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/mageg-x/boulder/internal/logger"
-	"github.com/mageg-x/boulder/internal/storage/kv"
-	"github.com/mageg-x/boulder/meta"
+	"github.com/mageg-x/dedups3/internal/logger"
+	"github.com/mageg-x/dedups3/internal/storage/kv"
+	"github.com/mageg-x/dedups3/meta"
 )
 
 const (
@@ -85,7 +85,7 @@ func GetStatsService() *StatsService {
 
 	_kv, err := kv.GetKvStore()
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Error getting kv store for stats service: %v", err)
+		logger.GetLogger("dedups3").Errorf("Error getting kv store for stats service: %v", err)
 		return nil
 	}
 
@@ -95,7 +95,7 @@ func GetStatsService() *StatsService {
 		mutex:   sync.Mutex{},
 		taskQ:   queue.NewMergeQueue(nil),
 	}
-	logger.GetLogger("boulder").Info("Starting stats service")
+	logger.GetLogger("dedups3").Info("Starting stats service")
 	return instance
 }
 
@@ -104,14 +104,14 @@ func (s *StatsService) Start() error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if s.running.Load() {
-		logger.GetLogger("boulder").Infof("stats service is already running")
+		logger.GetLogger("dedups3").Infof("stats service is already running")
 		return nil
 	}
 
 	s.running.Store(true)
 
 	go s.loop()
-	logger.GetLogger("boulder").Infof("stats service started successfully")
+	logger.GetLogger("dedups3").Infof("stats service started successfully")
 	return nil
 }
 
@@ -120,7 +120,7 @@ func (s *StatsService) Stop() {
 	s.mutex.Lock()
 	s.mutex.Unlock()
 	s.running.Store(false)
-	logger.GetLogger("boulder").Infof("stats service stopped successfully")
+	logger.GetLogger("dedups3").Infof("stats service stopped successfully")
 }
 
 func (s *StatsService) GetBucketStats(bucketID string) (*StatsOfBucket, error) {
@@ -205,7 +205,7 @@ func (s *StatsService) loop() {
 }
 
 func (s *StatsService) doStats4Account(accountID string) error {
-	logger.GetLogger("boulder").Errorf("doStats4Account %s", accountID)
+	logger.GetLogger("dedups3").Errorf("doStats4Account %s", accountID)
 	// 避免多个并发统计同一accountID
 	lockKey := "aws:lock:stats:" + accountID
 	if ok, _ := s.kvstore.TryLock(lockKey, "StatsService", time.Hour); !ok {
@@ -215,7 +215,7 @@ func (s *StatsService) doStats4Account(accountID string) error {
 
 	txn, err := s.kvstore.BeginTxn(context.Background(), &kv.TxnOpt{IsReadOnly: true})
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
 		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 
@@ -233,7 +233,7 @@ func (s *StatsService) doStats4Account(accountID string) error {
 		for {
 			bucketKeys, nk, err := txn.Scan(bkPrefix, nk, 1000)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("failed to scan buckets for account %s: %v", accountID, err)
+				logger.GetLogger("dedups3").Errorf("failed to scan buckets for account %s: %v", accountID, err)
 				return fmt.Errorf("failed to scan buckets for account %s: %w", accountID, err)
 			}
 			for _, bkID := range bucketKeys {
@@ -246,7 +246,7 @@ func (s *StatsService) doStats4Account(accountID string) error {
 		}
 	}
 	myStats.BucketCount += int64(len(myBuckets))
-	logger.GetLogger("boulder").Tracef("get %d buckets for account %s", len(myBuckets), accountID)
+	logger.GetLogger("dedups3").Tracef("get %d buckets for account %s", len(myBuckets), accountID)
 
 	// 统计每个 account下的 object 数量
 	type statsObject struct {
@@ -261,7 +261,7 @@ func (s *StatsService) doStats4Account(accountID string) error {
 		for {
 			objKeys, nk, err := txn.Scan(objPrefix, nk, 1000)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("failed to scan objects for account %s bucket %s: %v", accountID, bucketID, err)
+				logger.GetLogger("dedups3").Errorf("failed to scan objects for account %s bucket %s: %v", accountID, bucketID, err)
 				return fmt.Errorf("failed to scan objects for account %s bucket %s: %w", accountID, bucketID, err)
 			}
 			for _, objKey := range objKeys {
@@ -275,7 +275,7 @@ func (s *StatsService) doStats4Account(accountID string) error {
 		bucketOfAccount[bucketID] = _bucketStats
 	}
 	myStats.ObjectCount += int64(len(myObjects))
-	logger.GetLogger("boulder").Tracef("get %d objects for account %s", len(myObjects), accountID)
+	logger.GetLogger("dedups3").Tracef("get %d objects for account %s", len(myObjects), accountID)
 
 	// 批量获取object 信息， 统计 chunk 数量
 	type statsChunk struct {
@@ -303,7 +303,7 @@ func (s *StatsService) doStats4Account(accountID string) error {
 		// 批量获取对象信息
 		results, err := txn.BatchGet(batchKeys)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to batch get objects for account %s: %v", accountID, err)
+			logger.GetLogger("dedups3").Errorf("failed to batch get objects for account %s: %v", accountID, err)
 			return fmt.Errorf("failed to batch get objects for account %s: %w", accountID, err)
 		}
 
@@ -311,7 +311,7 @@ func (s *StatsService) doStats4Account(accountID string) error {
 		for key, data := range results {
 			var obj meta.Object
 			if err := json.Unmarshal(data, &obj); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to unmarshal object %s: %v", key, err)
+				logger.GetLogger("dedups3").Errorf("failed to unmarshal object %s: %v", key, err)
 				continue
 			}
 
@@ -329,7 +329,7 @@ func (s *StatsService) doStats4Account(accountID string) error {
 			}
 		}
 	}
-	logger.GetLogger("boulder").Tracef("get %d chunks for account %s", len(myChunks), accountID)
+	logger.GetLogger("dedups3").Tracef("get %d chunks for account %s", len(myChunks), accountID)
 
 	// 统计去重后的chunk数量
 	dedupChunkMap := make(map[string]*statsChunk)
@@ -371,7 +371,7 @@ func (s *StatsService) doStats4Account(accountID string) error {
 		// 批量获取chunk信息
 		chunkResults, err := txn.BatchGet(chunkKeys)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to batch get chunks for account %s: %v", accountID, err)
+			logger.GetLogger("dedups3").Errorf("failed to batch get chunks for account %s: %v", accountID, err)
 			return fmt.Errorf("failed to batch get chunks for account %s: %w", accountID, err)
 		}
 
@@ -379,7 +379,7 @@ func (s *StatsService) doStats4Account(accountID string) error {
 		for chunkKey, chunkData := range chunkResults {
 			var chunk meta.Chunk
 			if err := json.Unmarshal(chunkData, &chunk); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to unmarshal chunk %s: %v", chunkKey, err)
+				logger.GetLogger("dedups3").Errorf("failed to unmarshal chunk %s: %v", chunkKey, err)
 				continue
 			}
 
@@ -425,7 +425,7 @@ func (s *StatsService) doStats4Account(accountID string) error {
 		// 批量获取block信息
 		blockResults, err := txn.BatchGet(blockKeys)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to batch get blocks for account %s: %v", accountID, err)
+			logger.GetLogger("dedups3").Errorf("failed to batch get blocks for account %s: %v", accountID, err)
 			return fmt.Errorf("failed to batch get blocks for account %s: %w", accountID, err)
 		}
 
@@ -447,7 +447,7 @@ func (s *StatsService) doStats4Account(accountID string) error {
 		// 开始事务
 		_txn, _err := s.kvstore.BeginTxn(context.Background(), nil)
 		if _err != nil {
-			logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", _err)
+			logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", _err)
 			return fmt.Errorf("failed to initialize kvstore txn: %w", _err)
 		}
 		defer func() {
@@ -459,7 +459,7 @@ func (s *StatsService) doStats4Account(accountID string) error {
 		accountStatsKey := STATS_PREKEY + "account:" + accountID + ":" + time.Now().Format("200601")
 		myStats.UpdateAt = time.Now().UTC()
 		if _err := _txn.Set(accountStatsKey, myStats); _err != nil {
-			logger.GetLogger("boulder").Errorf("failed to set stats for account %s: %v", accountID, _err)
+			logger.GetLogger("dedups3").Errorf("failed to set stats for account %s: %v", accountID, _err)
 			return fmt.Errorf("failed to set stats for account %s: %w", accountID, _err)
 		}
 
@@ -467,13 +467,13 @@ func (s *StatsService) doStats4Account(accountID string) error {
 			bucketStatsKey := STATS_PREKEY + "bucket:" + bucketID + ":" + time.Now().Format("200601")
 			bucketStats.UpdateAt = time.Now().UTC()
 			if _err := _txn.Set(bucketStatsKey, bucketStats); _err != nil {
-				logger.GetLogger("boulder").Errorf("failed to set stats for bucket %s: %v", bucketID, _err)
+				logger.GetLogger("dedups3").Errorf("failed to set stats for bucket %s: %v", bucketID, _err)
 				return fmt.Errorf("failed to set stats for bucket %s: %w", bucketID, _err)
 			}
 		}
 		// 提交事务
 		if _err := _txn.Commit(); _err != nil {
-			logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", _err)
+			logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", _err)
 			return fmt.Errorf("failed to commit transaction: %w", _err)
 		}
 		_txn = nil
@@ -485,7 +485,7 @@ func (s *StatsService) doStats4Account(accountID string) error {
 	}
 	jsonAccountStats, _ := json.Marshal(myStats)
 	jsonBucketStats, _ := json.Marshal(bucketOfAccount)
-	logger.GetLogger("boulder").Errorf("account %s  stats %s bucket stats %s", accountID, string(jsonAccountStats), string(jsonBucketStats))
+	logger.GetLogger("dedups3").Errorf("account %s  stats %s bucket stats %s", accountID, string(jsonAccountStats), string(jsonBucketStats))
 	return nil
 }
 
@@ -499,7 +499,7 @@ func (s *StatsService) doStats4Global() error {
 
 	txn, err := s.kvstore.BeginTxn(context.Background(), &kv.TxnOpt{IsReadOnly: true})
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
 		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 
@@ -514,7 +514,7 @@ func (s *StatsService) doStats4Global() error {
 		for {
 			acs, nk, err := txn.Scan(acPrefix, nk, 1000)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("failed to scan more accounts: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to scan more accounts: %v", err)
 				return fmt.Errorf("failed to scan more accounts: %w", err)
 			}
 			// 收集所有账户ID
@@ -527,7 +527,7 @@ func (s *StatsService) doStats4Global() error {
 			}
 		}
 
-		logger.GetLogger("boulder").Tracef("get %d account", len(allAccounts))
+		logger.GetLogger("dedups3").Tracef("get %d account", len(allAccounts))
 	}
 	globalStats.AccountCount = int64(len(allAccounts))
 
@@ -539,7 +539,7 @@ func (s *StatsService) doStats4Global() error {
 		for {
 			bucketKeys, nextKey, err := txn.Scan(bucketPrefix, nk, 1000)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("failed to scan buckets: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to scan buckets: %v", err)
 				return fmt.Errorf("failed to scan buckets: %w", err)
 			}
 			for _, bucketKey := range bucketKeys {
@@ -551,7 +551,7 @@ func (s *StatsService) doStats4Global() error {
 			}
 		}
 		globalStats.BucketCount = int64(len(allBuckets))
-		logger.GetLogger("boulder").Tracef("global bucket count: %d", globalStats.BucketCount)
+		logger.GetLogger("dedups3").Tracef("global bucket count: %d", globalStats.BucketCount)
 	}
 
 	// 遍历统计object数量和大小
@@ -565,7 +565,7 @@ func (s *StatsService) doStats4Global() error {
 		for {
 			objectKeys, nextKey, err := txn.Scan(objectPrefix, nk, 1000)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("failed to scan objects: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to scan objects: %v", err)
 				return fmt.Errorf("failed to scan objects: %w", err)
 			}
 
@@ -579,7 +579,7 @@ func (s *StatsService) doStats4Global() error {
 					// 批量获取object信息
 					results, err := txn.BatchGet(batchObjectKeys)
 					if err != nil {
-						logger.GetLogger("boulder").Errorf("failed to batch get objects: %v", err)
+						logger.GetLogger("dedups3").Errorf("failed to batch get objects: %v", err)
 					} else {
 						for _, data := range results {
 							var object meta.Object
@@ -613,7 +613,7 @@ func (s *StatsService) doStats4Global() error {
 			}
 		}
 		globalStats.ObjectCount = int64(len(allObjects))
-		logger.GetLogger("boulder").Tracef("global object count: %d, size: %d", globalStats.ObjectCount, globalStats.ObjectSize)
+		logger.GetLogger("dedups3").Tracef("global object count: %d, size: %d", globalStats.ObjectCount, globalStats.ObjectSize)
 	}
 
 	// 遍历统计chunk数量和大小
@@ -627,7 +627,7 @@ func (s *StatsService) doStats4Global() error {
 		for {
 			chunkKeys, nextKey, err := txn.Scan(chunkPrefix, nk, 1000)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("failed to scan chunks: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to scan chunks: %v", err)
 				return fmt.Errorf("failed to scan chunks: %w", err)
 			}
 
@@ -641,7 +641,7 @@ func (s *StatsService) doStats4Global() error {
 					// 批量获取chunk信息
 					results, err := txn.BatchGet(batchChunkKeys)
 					if err != nil {
-						logger.GetLogger("boulder").Errorf("failed to batch get chunks: %v", err)
+						logger.GetLogger("dedups3").Errorf("failed to batch get chunks: %v", err)
 					} else {
 						for _, data := range results {
 							var chunk meta.Chunk
@@ -675,7 +675,7 @@ func (s *StatsService) doStats4Global() error {
 			}
 		}
 		globalStats.ChunkCount = int64(len(allChunks))
-		logger.GetLogger("boulder").Tracef("global chunk count: %d, size: %d", globalStats.ChunkCount, globalStats.ChunkSize)
+		logger.GetLogger("dedups3").Tracef("global chunk count: %d, size: %d", globalStats.ChunkCount, globalStats.ChunkSize)
 	}
 
 	// 遍历统计 block数量
@@ -689,7 +689,7 @@ func (s *StatsService) doStats4Global() error {
 		for {
 			blockKeys, nextKey, err := txn.Scan(blockPrefix, nk, 1000)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("failed to scan blocks: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to scan blocks: %v", err)
 				return fmt.Errorf("failed to scan blocks: %w", err)
 			}
 
@@ -703,7 +703,7 @@ func (s *StatsService) doStats4Global() error {
 					// 批量获取block信息
 					results, err := txn.BatchGet(batchBlockKeys)
 					if err != nil {
-						logger.GetLogger("boulder").Errorf("failed to batch get blocks: %v", err)
+						logger.GetLogger("dedups3").Errorf("failed to batch get blocks: %v", err)
 					} else {
 						for _, data := range results {
 							var block meta.Block
@@ -739,7 +739,7 @@ func (s *StatsService) doStats4Global() error {
 			}
 		}
 		globalStats.BlockCount = int64(len(allBlocks))
-		logger.GetLogger("boulder").Tracef("global block count: %d, size: %d, %d", globalStats.BlockCount, globalStats.BlockSize1, globalStats.BlockSize2)
+		logger.GetLogger("dedups3").Tracef("global block count: %d, size: %d, %d", globalStats.BlockCount, globalStats.BlockSize1, globalStats.BlockSize2)
 	}
 
 	// 写入全局统计数据
@@ -747,7 +747,7 @@ func (s *StatsService) doStats4Global() error {
 		// 开始事务
 		_txn, _err := s.kvstore.BeginTxn(context.Background(), nil)
 		if _err != nil {
-			logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", _err)
+			logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", _err)
 			return fmt.Errorf("failed to initialize kvstore txn: %w", _err)
 		}
 		defer func() {
@@ -759,12 +759,12 @@ func (s *StatsService) doStats4Global() error {
 		globalStatsKey := STATS_PREKEY + "global" + ":" + time.Now().Format("200601")
 		globalStats.UpdateAt = time.Now().UTC()
 		if _err := _txn.Set(globalStatsKey, globalStats); _err != nil {
-			logger.GetLogger("boulder").Errorf("failed to set global stats: %v", _err)
+			logger.GetLogger("dedups3").Errorf("failed to set global stats: %v", _err)
 			return fmt.Errorf("failed to set global stats: %w", _err)
 		}
 		// 提交事务
 		if _err := _txn.Commit(); _err != nil {
-			logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", _err)
+			logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", _err)
 			return fmt.Errorf("failed to commit transaction: %w", _err)
 		}
 		_txn = nil
@@ -775,6 +775,6 @@ func (s *StatsService) doStats4Global() error {
 		return errMsg
 	}
 	jsonBytes, _ := json.Marshal(globalStats)
-	logger.GetLogger("boulder").Errorf("global stats: %s", string(jsonBytes))
+	logger.GetLogger("dedups3").Errorf("global stats: %s", string(jsonBytes))
 	return nil
 }

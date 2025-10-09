@@ -26,22 +26,22 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mageg-x/boulder/internal/aws"
+	"github.com/mageg-x/dedups3/internal/aws"
 
-	"github.com/mageg-x/boulder/meta"
+	"github.com/mageg-x/dedups3/meta"
 
-	xhttp "github.com/mageg-x/boulder/internal/http"
-	"github.com/mageg-x/boulder/internal/utils"
-	"github.com/mageg-x/boulder/service/multipart"
-	"github.com/mageg-x/boulder/service/object"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
+	"github.com/mageg-x/dedups3/internal/utils"
+	"github.com/mageg-x/dedups3/service/multipart"
+	"github.com/mageg-x/dedups3/service/object"
 
-	"github.com/mageg-x/boulder/internal/logger"
+	"github.com/mageg-x/dedups3/internal/logger"
 )
 
 // CompleteMultipartUploadHandler 完成分段上传
 func CompleteMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: CompleteMultipartUploadHandler")
+	logger.GetLogger("dedups3").Infof("API called: CompleteMultipartUploadHandler")
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 	query := utils.DecodeQuerys(r.URL.Query())
 	uploadID := query.Get("uploadId")
@@ -56,7 +56,7 @@ func CompleteMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 	var completeXML meta.CompleteMultipartUpload
 	err := xml.NewDecoder(r.Body).Decode(&completeXML)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to parse request body: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to parse request body: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedXML)
 		return
 	}
@@ -72,7 +72,7 @@ func CompleteMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	_mps := multipart.GetMultiPartService()
 	if _mps == nil {
-		logger.GetLogger("boulder").Errorf("multipart service not initialized")
+		logger.GetLogger("dedups3").Errorf("multipart service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -107,7 +107,7 @@ func CompleteMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("error completing multipart upload: %s", err)
+		logger.GetLogger("dedups3").Errorf("error completing multipart upload: %s", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -128,23 +128,23 @@ func CompleteMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 // NewMultipartUploadHandler 创建分段上传
 func NewMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: NewMultipartUploadHandler")
+	logger.GetLogger("dedups3").Infof("API called: NewMultipartUploadHandler")
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 	if err := utils.CheckValidBucketName(bucket); err != nil {
-		logger.GetLogger("boulder").Errorf("Invalid bucket name: %s", objectKey)
+		logger.GetLogger("dedups3").Errorf("Invalid bucket name: %s", objectKey)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketName)
 		return
 	}
 
 	if err := utils.CheckValidObjectName(objectKey); err != nil {
-		logger.GetLogger("boulder").Errorf("Invalid object name: %s", objectKey)
+		logger.GetLogger("dedups3").Errorf("Invalid object name: %s", objectKey)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
 		return
 	}
 
 	_mps := multipart.GetMultiPartService()
 	if _mps == nil {
-		logger.GetLogger("boulder").Errorf("Object service not initialized")
+		logger.GetLogger("dedups3").Errorf("Object service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -171,7 +171,7 @@ func NewMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Error creating multipart upload: %s", err)
+		logger.GetLogger("dedups3").Errorf("Error creating multipart upload: %s", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -189,7 +189,7 @@ func NewMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 // AbortMultipartUploadHandler AbortMultipartUpload  中止分段上传
 func AbortMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Debugf("API called: AbortMultipartUploadHandler")
+	logger.GetLogger("dedups3").Debugf("API called: AbortMultipartUploadHandler")
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 	// 对所有查询参数进行URL解码
 	query := utils.DecodeQuerys(r.URL.Query())
@@ -197,7 +197,7 @@ func AbortMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	_mps := multipart.GetMultiPartService()
 	if _mps == nil {
-		logger.GetLogger("boulder").Errorf("Object service not initialized")
+		logger.GetLogger("dedups3").Errorf("Object service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -215,7 +215,7 @@ func AbortMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Error aborting multipart upload: %s", err)
+		logger.GetLogger("dedups3").Errorf("Error aborting multipart upload: %s", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -223,11 +223,11 @@ func AbortMultipartUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 // ListMultipartUploadsHandler  ListMultipartUploads 列出bucket下所有的正在上传的uploadid
 func ListMultipartUploadsHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("boulder").Infof("API called: ListMultipartUploadsHandler")
+	logger.GetLogger("dedups3").Infof("API called: ListMultipartUploadsHandler")
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 	// 验证bucket名称
 	if err := utils.CheckValidBucketName(bucket); err != nil || accessKeyID == "" {
-		logger.GetLogger("boulder").Errorf("Invalid bucket name: %s", bucket)
+		logger.GetLogger("dedups3").Errorf("Invalid bucket name: %s", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketName)
 		return
 	}
@@ -245,7 +245,7 @@ func ListMultipartUploadsHandler(w http.ResponseWriter, r *http.Request) {
 	if maxUploadsStr != "" {
 		parsedMaxUploads, err := strconv.ParseInt(maxUploadsStr, 10, 64)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("Invalid max-uploads: %s", maxUploadsStr)
+			logger.GetLogger("dedups3").Errorf("Invalid max-uploads: %s", maxUploadsStr)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
 			return
 		}
@@ -260,7 +260,7 @@ func ListMultipartUploadsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// 验证encoding-type参数
 	if encodingType != "" && encodingType != "url" {
-		logger.GetLogger("boulder").Errorf("Invalid encoding-type: %s", encodingType)
+		logger.GetLogger("dedups3").Errorf("Invalid encoding-type: %s", encodingType)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
 		return
 	}
@@ -268,7 +268,7 @@ func ListMultipartUploadsHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取MultiPartService实例
 	_mps := multipart.GetMultiPartService()
 	if _mps == nil {
-		logger.GetLogger("boulder").Errorf("multipart service not initialized")
+		logger.GetLogger("dedups3").Errorf("multipart service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -300,7 +300,7 @@ func ListMultipartUploadsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Error listing multipart uploads: %s", err)
+		logger.GetLogger("dedups3").Errorf("Error listing multipart uploads: %s", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -368,12 +368,12 @@ func ListMultipartUploadsHandler(w http.ResponseWriter, r *http.Request) {
 
 // CopyObjectPartHandler  UploadPartCopy
 func CopyObjectPartHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("boulder").Infof("API called: CopyObjectPartHandler")
+	logger.GetLogger("dedups3").Infof("API called: CopyObjectPartHandler")
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 
 	// 验证bucket名称
 	if err := utils.CheckValidBucketName(bucket); err != nil || accessKeyID == "" {
-		logger.GetLogger("boulder").Errorf("Invalid bucket name: %s", bucket)
+		logger.GetLogger("dedups3").Errorf("Invalid bucket name: %s", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketName)
 		return
 	}
@@ -383,21 +383,21 @@ func CopyObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 	partNumberStr := query.Get("partNumber")
 	partNumber, err := strconv.Atoi(partNumberStr)
 	if err != nil || partNumber < 1 || partNumber > 10000 {
-		logger.GetLogger("boulder").Errorf("Invalid part number: %s", partNumberStr)
+		logger.GetLogger("dedups3").Errorf("Invalid part number: %s", partNumberStr)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidPartNumber)
 		return
 	}
 	// 获取源对象信息
 	source := r.Header.Get(xhttp.AmzCopySource)
 	if source == "" {
-		logger.GetLogger("boulder").Errorf("Missing x-amz-copy-source header")
+		logger.GetLogger("dedups3").Errorf("Missing x-amz-copy-source header")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
 		return
 	}
 	// 解析源对象路径，格式通常为 "/bucket/key"
 	sourceParts := strings.SplitN(source, "/", 3)
 	if len(sourceParts) < 3 {
-		logger.GetLogger("boulder").Errorf("Invalid x-amz-copy-source format: %s", source)
+		logger.GetLogger("dedups3").Errorf("Invalid x-amz-copy-source format: %s", source)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
 		return
 	}
@@ -408,7 +408,7 @@ func CopyObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 	rangeHeadStr := r.Header.Get(xhttp.AmzCopySourceRange)
 	// 不支持 range 复制
 	if rangeHeadStr != "" {
-		logger.GetLogger("boulder").Errorf("invalid range header: %s, error: %v", rangeHeadStr, err)
+		logger.GetLogger("dedups3").Errorf("invalid range header: %s, error: %v", rangeHeadStr, err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidRange)
 		return
 	}
@@ -421,7 +421,7 @@ func CopyObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取MultiPartService实例
 	_mps := multipart.GetMultiPartService()
 	if _mps == nil {
-		logger.GetLogger("boulder").Errorf("multipart service not initialized")
+		logger.GetLogger("dedups3").Errorf("multipart service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -439,7 +439,7 @@ func CopyObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("%s/%s/%s/%d copy object part  failed : %v", bucket, objectKey, uploadID, partNumber, err)
+		logger.GetLogger("dedups3").Errorf("%s/%s/%s/%d copy object part  failed : %v", bucket, objectKey, uploadID, partNumber, err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -456,7 +456,7 @@ func CopyObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 // PutObjectPartHandler UploadPart 请求
 func PutObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: PutObjectPartHandler")
+	logger.GetLogger("dedups3").Infof("API called: PutObjectPartHandler")
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 
 	query := utils.DecodeQuerys(r.URL.Query())
@@ -464,7 +464,7 @@ func PutObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 	partNumberStr := query.Get("partNumber")
 	partNumber, err := strconv.Atoi(partNumberStr)
 	if err != nil || partNumber < 1 || partNumber > 10000 {
-		logger.GetLogger("boulder").Errorf("Invalid part number: %s", partNumberStr)
+		logger.GetLogger("dedups3").Errorf("Invalid part number: %s", partNumberStr)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidPartNumber)
 		return
 	}
@@ -485,13 +485,13 @@ func PutObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 	if contentLenStr != "" {
 		contentLength, err = strconv.ParseInt(contentLenStr, 10, 64)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("Invalid X-Amz-Decoded-Content-Length: %s", contentLenStr)
+			logger.GetLogger("dedups3").Errorf("Invalid X-Amz-Decoded-Content-Length: %s", contentLenStr)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidDigest) // 或 ErrMalformedRequestBody
 			return
 		}
 	}
 	if contentLength < 0 {
-		logger.GetLogger("boulder").Errorf("Negative content length: %d", contentLength)
+		logger.GetLogger("dedups3").Errorf("Negative content length: %d", contentLength)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidDigest)
 		return
 	}
@@ -503,7 +503,7 @@ func PutObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 
 	_mps := multipart.GetMultiPartService()
 	if _mps == nil {
-		logger.GetLogger("boulder").Errorf("Object service not initialized")
+		logger.GetLogger("dedups3").Errorf("Object service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -538,7 +538,7 @@ func PutObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("upload %s : %d failed: %s", uploadID, partNumber, err)
+		logger.GetLogger("dedups3").Errorf("upload %s : %d failed: %s", uploadID, partNumber, err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		return
 	}
@@ -551,7 +551,7 @@ func PutObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 // ListObjectPartsHandler 处理 ListParts请求  列出uploadid中已上传的分段
 func ListObjectPartsHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: ListObjectPartsHandler")
+	logger.GetLogger("dedups3").Infof("API called: ListObjectPartsHandler")
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 	// 解析查询参数
 	query := utils.DecodeQuerys(r.URL.Query())
@@ -564,7 +564,7 @@ func ListObjectPartsHandler(w http.ResponseWriter, r *http.Request) {
 	if maxPartsStr != "" {
 		parsedMaxParts, err := strconv.Atoi(maxPartsStr)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("invalid max-parts: %s", maxPartsStr)
+			logger.GetLogger("dedups3").Errorf("invalid max-parts: %s", maxPartsStr)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
 			return
 		}
@@ -579,7 +579,7 @@ func ListObjectPartsHandler(w http.ResponseWriter, r *http.Request) {
 	if partNumberMarkerStr != "" {
 		parsedMarker, err := strconv.Atoi(partNumberMarkerStr)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("invalid part-number-marker: %s", partNumberMarkerStr)
+			logger.GetLogger("dedups3").Errorf("invalid part-number-marker: %s", partNumberMarkerStr)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
 			return
 		}
@@ -589,7 +589,7 @@ func ListObjectPartsHandler(w http.ResponseWriter, r *http.Request) {
 	// 调用MultiPartService获取分段列表
 	_mps := multipart.GetMultiPartService()
 	if _mps == nil {
-		logger.GetLogger("boulder").Errorf("multipart service not initialized")
+		logger.GetLogger("dedups3").Errorf("multipart service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -617,7 +617,7 @@ func ListObjectPartsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("error listing object parts: %s", err)
+		logger.GetLogger("dedups3").Errorf("error listing object parts: %s", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}

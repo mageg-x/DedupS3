@@ -5,10 +5,10 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/mageg-x/boulder/handler"
-	"github.com/mageg-x/boulder/internal/config"
-	xhttp "github.com/mageg-x/boulder/internal/http"
-	"github.com/mageg-x/boulder/middleware"
+	"github.com/mageg-x/dedups3/handler"
+	"github.com/mageg-x/dedups3/internal/config"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
+	"github.com/mageg-x/dedups3/middleware"
 )
 
 func registerAPIRouter(mr *mux.Router) {

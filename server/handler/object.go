@@ -28,23 +28,23 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mageg-x/boulder/internal/aws"
-	"github.com/mageg-x/boulder/meta"
+	"github.com/mageg-x/dedups3/internal/aws"
+	"github.com/mageg-x/dedups3/meta"
 
-	xhttp "github.com/mageg-x/boulder/internal/http"
-	"github.com/mageg-x/boulder/internal/utils"
-	"github.com/mageg-x/boulder/service/object"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
+	"github.com/mageg-x/dedups3/internal/utils"
+	"github.com/mageg-x/dedups3/service/object"
 
-	"github.com/mageg-x/boulder/internal/logger"
+	"github.com/mageg-x/dedups3/internal/logger"
 )
 
 func HeadObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: HeadObjectHandler")
-	//logger.GetLogger("boulder").Infof("head obect header %#v", r.Header)
+	logger.GetLogger("dedups3").Infof("API called: HeadObjectHandler")
+	//logger.GetLogger("dedups3").Infof("head obect header %#v", r.Header)
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 	if err := utils.CheckValidObjectName(objectKey); err != nil {
-		logger.GetLogger("boulder").Errorf("invalid object name: %s", objectKey)
+		logger.GetLogger("dedups3").Errorf("invalid object name: %s", objectKey)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
 		return
 	}
@@ -58,7 +58,7 @@ func HeadObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	_os := object.GetObjectService()
 	if _os == nil {
-		logger.GetLogger("boulder").Errorf("object service not initialized")
+		logger.GetLogger("dedups3").Errorf("object service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -80,28 +80,28 @@ func HeadObjectHandler(w http.ResponseWriter, r *http.Request) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchKey)
 			return
 		}
-		logger.GetLogger("boulder").Errorf("object %s not found err: %v", objectKey, err)
+		logger.GetLogger("dedups3").Errorf("object %s not found err: %v", objectKey, err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
 	if objInfo == nil {
-		logger.GetLogger("boulder").Errorf("object %s not found", objectKey)
+		logger.GetLogger("dedups3").Errorf("object %s not found", objectKey)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
 		return
 	}
 
-	logger.GetLogger("boulder").Debugf("headObject object %#v", objInfo)
+	logger.GetLogger("dedups3").Debugf("headObject object %#v", objInfo)
 
 	// If-Match
 	if ifMatch != "" && string(objInfo.ETag) != ifMatch {
-		logger.GetLogger("boulder").Errorf("Object %s is not matched with If-Match ETag %s:%s", objectKey, ifMatch, objInfo.ETag)
+		logger.GetLogger("dedups3").Errorf("Object %s is not matched with If-Match ETag %s:%s", objectKey, ifMatch, objInfo.ETag)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrPreconditionFailed)
 		return
 	}
 
 	// If-None-Match
 	if ifnoneMatch != "" && string(objInfo.ETag) != ifnoneMatch {
-		logger.GetLogger("boulder").Errorf("object %s is not matched with If-None-Match ETag %s:%s", objectKey, ifnoneMatch, objInfo.ETag)
+		logger.GetLogger("dedups3").Errorf("object %s is not matched with If-None-Match ETag %s:%s", objectKey, ifnoneMatch, objInfo.ETag)
 		xhttp.WriteAWSErr(w, r, xhttp.ERRNotModify)
 		return
 	}
@@ -110,7 +110,7 @@ func HeadObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if ifmodifiedSince != "" {
 		if since, err := http.ParseTime(ifmodifiedSince); err == nil {
 			if !objInfo.LastModified.After(since) {
-				logger.GetLogger("boulder").Errorf("object %s is not last modified since %s", objectKey, since)
+				logger.GetLogger("dedups3").Errorf("object %s is not last modified since %s", objectKey, since)
 				xhttp.WriteAWSErr(w, r, xhttp.ERRNotModify)
 				return
 			}
@@ -152,7 +152,7 @@ func HeadObjectHandler(w http.ResponseWriter, r *http.Request) {
 // GetObjectAttributesHandler 处理 GET Object Attributes 请求
 func GetObjectAttributesHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetObjectAttributesHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetObjectAttributesHandler")
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -160,12 +160,12 @@ func GetObjectAttributesHandler(w http.ResponseWriter, r *http.Request) {
 // GetObjectACLHandler 处理 GET Object ACL 请求
 func GetObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetObjectACLHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetObjectACLHandler")
 
 	// 获取请求参数
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 	if err := utils.CheckValidObjectName(objectKey); err != nil {
-		logger.GetLogger("boulder").Errorf("invalid object name: %s", objectKey)
+		logger.GetLogger("dedups3").Errorf("invalid object name: %s", objectKey)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
 		return
 	}
@@ -173,7 +173,7 @@ func GetObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取对象服务
 	_os := object.GetObjectService()
 	if _os == nil {
-		logger.GetLogger("boulder").Errorf("object service not initialized")
+		logger.GetLogger("dedups3").Errorf("object service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -188,13 +188,13 @@ func GetObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 	obj, err := _os.HeadObject(params)
 	if err != nil {
 		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchKey)) {
-			logger.GetLogger("boulder").Errorf("object %s/%s does not exist", bucket, objectKey)
+			logger.GetLogger("dedups3").Errorf("object %s/%s does not exist", bucket, objectKey)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchKey)
 		} else if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
-			logger.GetLogger("boulder").Errorf("access denied for %s", accessKeyID)
+			logger.GetLogger("dedups3").Errorf("access denied for %s", accessKeyID)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
 		} else {
-			logger.GetLogger("boulder").Errorf("failed to get object: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to get object: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		}
 		return
@@ -217,12 +217,12 @@ func GetObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 // PutObjectACLHandler 处理 PUT Object ACL 请求
 func PutObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: PutObjectACLHandler")
+	logger.GetLogger("dedups3").Infof("API called: PutObjectACLHandler")
 
 	// 获取请求参数
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 	if err := utils.CheckValidObjectName(objectKey); err != nil {
-		logger.GetLogger("boulder").Errorf("invalid object name: %s", objectKey)
+		logger.GetLogger("dedups3").Errorf("invalid object name: %s", objectKey)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
 		return
 	}
@@ -230,7 +230,7 @@ func PutObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取对象服务
 	_os := object.GetObjectService()
 	if _os == nil {
-		logger.GetLogger("boulder").Errorf("object service not initialized")
+		logger.GetLogger("dedups3").Errorf("object service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -243,13 +243,13 @@ func PutObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchKey)) {
-			logger.GetLogger("boulder").Errorf("object %s/%s does not exist", bucket, objectKey)
+			logger.GetLogger("dedups3").Errorf("object %s/%s does not exist", bucket, objectKey)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchKey)
 		} else if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
-			logger.GetLogger("boulder").Errorf("access denied for %s", accessKeyID)
+			logger.GetLogger("dedups3").Errorf("access denied for %s", accessKeyID)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
 		} else {
-			logger.GetLogger("boulder").Errorf("failed to get object: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to get object: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		}
 		return
@@ -261,25 +261,25 @@ func PutObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 	})
 	// 处理x-amz-acl头部
 	if aclHeader := r.Header.Get(xhttp.AmzACL); aclHeader != "" {
-		logger.GetLogger("boulder").Debugf("Processing x-amz-acl: %s", aclHeader)
+		logger.GetLogger("dedups3").Debugf("Processing x-amz-acl: %s", aclHeader)
 		switch aclHeader {
 		case "private":
 			// 默认权限，仅保留所有者权限
 		case "public-read":
 			if err := acp.GrantPublicRead(); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to set public-read ACL: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to set public-read ACL: %v", err)
 				xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 				return
 			}
 		case "public-read-write":
 			if err := acp.GrantPublicReadWrite(); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to set public-read-write ACL: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to set public-read-write ACL: %v", err)
 				xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 				return
 			}
 		case "authenticated-read":
 			if err := acp.AddGrant("Group", "", "", "", meta.AuthUsersGroup, meta.PermissionRead); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to set authenticated-read ACL: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to set authenticated-read ACL: %v", err)
 				xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 				return
 			}
@@ -288,7 +288,7 @@ func PutObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 		case "bucket-owner-full-control":
 			// 此处应该获取存储桶所有者信息并授予完全控制权限
 		default:
-			logger.GetLogger("boulder").Errorf("invalid x-amz-acl value: %s", aclHeader)
+			logger.GetLogger("dedups3").Errorf("invalid x-amz-acl value: %s", aclHeader)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
 			return
 		}
@@ -297,7 +297,7 @@ func PutObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 	// 处理x-amz-grant-*系列头部
 	processGrantHeader := func(headerName, permission string) {
 		if headerValue := r.Header.Get(headerName); headerValue != "" {
-			logger.GetLogger("boulder").Debugf("Processing %s: %s", headerName, headerValue)
+			logger.GetLogger("dedups3").Debugf("Processing %s: %s", headerName, headerValue)
 			// 完整解析授权信息
 			// 支持格式：
 			// 1. 单一CanonicalUser ID: "1234567890123456789012345678901234567890123456789012345678901234"
@@ -344,7 +344,7 @@ func PutObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 
 			// 调用AddGrant添加授权
 			if err := acp.AddGrant(granteeType, id, displayName, email, uri, permission); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to process grant header %s: %v", headerName, err)
+				logger.GetLogger("dedups3").Errorf("failed to process grant header %s: %v", headerName, err)
 				xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
 				return
 			}
@@ -361,16 +361,16 @@ func PutObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	defer r.Body.Close()
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to read request body: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to read request body: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrBadRequest)
 		return
 	}
 
 	// 如果有XML请求体，并且之前没有通过头部设置ACL，则解析XML
 	if len(body) > 0 && len(acp.AccessControlList.Grants) == 0 {
-		logger.GetLogger("boulder").Debugf("Parsing ACL from XML request body")
+		logger.GetLogger("dedups3").Debugf("Parsing ACL from XML request body")
 		if err := acp.ParseXML(body); err != nil {
-			logger.GetLogger("boulder").Errorf("failed to parse ACL XML: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to parse ACL XML: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedXML)
 			return
 		}
@@ -378,11 +378,11 @@ func PutObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 处理Content-MD5验证
 	if contentMD5 := r.Header.Get(xhttp.ContentMD5); contentMD5 != "" && len(body) > 0 {
-		logger.GetLogger("boulder").Debugf("Processing Content-MD5 validation")
+		logger.GetLogger("dedups3").Debugf("Processing Content-MD5 validation")
 		hash := md5.Sum(body)
 		computedMD5 := hex.EncodeToString(hash[:])
 		if computedMD5 != contentMD5 {
-			logger.GetLogger("boulder").Errorf("Content-MD5 mismatch: computed=%s, header=%s", computedMD5, contentMD5)
+			logger.GetLogger("dedups3").Errorf("Content-MD5 mismatch: computed=%s, header=%s", computedMD5, contentMD5)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidDigest)
 			return
 		}
@@ -396,13 +396,13 @@ func PutObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchKey)) {
-			logger.GetLogger("boulder").Errorf("object %s/%s does not exist", bucket, objectKey)
+			logger.GetLogger("dedups3").Errorf("object %s/%s does not exist", bucket, objectKey)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchKey)
 		} else if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
-			logger.GetLogger("boulder").Errorf("access denied for %s", accessKeyID)
+			logger.GetLogger("dedups3").Errorf("access denied for %s", accessKeyID)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
 		} else {
-			logger.GetLogger("boulder").Errorf("failed to get object: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to get object: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		}
 		return
@@ -416,10 +416,10 @@ func PutObjectACLHandler(w http.ResponseWriter, r *http.Request) {
 // GetObjectTaggingHandler 处理 GET Object Tagging 请求
 func GetObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetObjectTaggingHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetObjectTaggingHandler")
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 	if err := utils.CheckValidObjectName(objectKey); err != nil {
-		logger.GetLogger("boulder").Errorf("invalid object name: %s", objectKey)
+		logger.GetLogger("dedups3").Errorf("invalid object name: %s", objectKey)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
 		return
 	}
@@ -427,7 +427,7 @@ func GetObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取对象服务
 	_os := object.GetObjectService()
 	if _os == nil {
-		logger.GetLogger("boulder").Errorf("object service not initialized")
+		logger.GetLogger("dedups3").Errorf("object service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -447,7 +447,7 @@ func GetObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to get object: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to get object: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		return
 	}
@@ -474,10 +474,10 @@ func GetObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 // PutObjectTaggingHandler 处理 PUT Object Tagging 请求
 func PutObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: PutObjectTaggingHandler")
+	logger.GetLogger("dedups3").Infof("API called: PutObjectTaggingHandler")
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 	if err := utils.CheckValidObjectName(objectKey); err != nil {
-		logger.GetLogger("boulder").Errorf("invalid object name: %s", objectKey)
+		logger.GetLogger("dedups3").Errorf("invalid object name: %s", objectKey)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
 		return
 	}
@@ -485,7 +485,7 @@ func PutObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	// 读取请求体
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to read request body: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to read request body: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedRequestBody)
 		return
 	}
@@ -494,7 +494,7 @@ func PutObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	// 解析XML标签数据
 	var tagging meta.Tagging
 	if err := xml.Unmarshal(bodyBytes, &tagging); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to unmarshal tagging XML: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to unmarshal tagging XML: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedXML)
 		return
 	}
@@ -504,12 +504,12 @@ func PutObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	for _, tag := range tagging.TagSet.Tags {
 		// 验证标签键和值
 		if len(tag.Key) == 0 || len(tag.Key) > 128 {
-			logger.GetLogger("boulder").Errorf("invalid tag key length: %d", len(tag.Key))
+			logger.GetLogger("dedups3").Errorf("invalid tag key length: %d", len(tag.Key))
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
 			return
 		}
 		if len(tag.Value) == 0 || len(tag.Value) > 256 {
-			logger.GetLogger("boulder").Errorf("invalid tag value length: %d", len(tag.Value))
+			logger.GetLogger("dedups3").Errorf("invalid tag value length: %d", len(tag.Value))
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
 			return
 		}
@@ -519,7 +519,7 @@ func PutObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取对象服务
 	_os := object.GetObjectService()
 	if _os == nil {
-		logger.GetLogger("boulder").Errorf("object service not initialized")
+		logger.GetLogger("dedups3").Errorf("object service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -539,7 +539,7 @@ func PutObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchKey)
 			return
 		}
-		logger.GetLogger("boulder").Errorf("failed to put object tagging: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to put object tagging: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		return
 	}
@@ -552,12 +552,12 @@ func PutObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 // DeleteObjectTaggingHandler 处理 DELETE Object Tagging 请求
 func DeleteObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: DeleteObjectTaggingHandler")
+	logger.GetLogger("dedups3").Infof("API called: DeleteObjectTaggingHandler")
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 
 	// 验证对象名是否有效
 	if err := utils.CheckValidObjectName(objectKey); err != nil {
-		logger.GetLogger("boulder").Errorf("invalid object name: %s", objectKey)
+		logger.GetLogger("dedups3").Errorf("invalid object name: %s", objectKey)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
 		return
 	}
@@ -565,7 +565,7 @@ func DeleteObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取对象服务
 	_os := object.GetObjectService()
 	if _os == nil {
-		logger.GetLogger("boulder").Errorf("object service not initialized")
+		logger.GetLogger("dedups3").Errorf("object service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -592,7 +592,7 @@ func DeleteObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to delete object tags: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to delete object tags: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		return
 	}
@@ -604,7 +604,7 @@ func DeleteObjectTaggingHandler(w http.ResponseWriter, r *http.Request) {
 // SelectObjectContentHandler 处理 SELECT Object Content 请求
 func SelectObjectContentHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: SelectObjectContentHandler")
+	logger.GetLogger("dedups3").Infof("API called: SelectObjectContentHandler")
 	// TODO: 实现 SELECT Object Content 逻辑
 	w.WriteHeader(http.StatusOK)
 }
@@ -612,7 +612,7 @@ func SelectObjectContentHandler(w http.ResponseWriter, r *http.Request) {
 // GetObjectRetentionHandler 处理 GET Object Retention 请求
 func GetObjectRetentionHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetObjectRetentionHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetObjectRetentionHandler")
 	// TODO: 实现 GET Object Retention 逻辑
 	w.WriteHeader(http.StatusOK)
 }
@@ -620,7 +620,7 @@ func GetObjectRetentionHandler(w http.ResponseWriter, r *http.Request) {
 // GetObjectLegalHoldHandler 处理 GET Object Legal Hold 请求
 func GetObjectLegalHoldHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetObjectLegalHoldHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetObjectLegalHoldHandler")
 	// TODO: 实现 GET Object Legal Hold 逻辑
 	w.WriteHeader(http.StatusOK)
 }
@@ -628,7 +628,7 @@ func GetObjectLegalHoldHandler(w http.ResponseWriter, r *http.Request) {
 // GetObjectLambdaHandler 处理 GET Object with Lambda ARN 请求
 func GetObjectLambdaHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetObjectLambdaHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetObjectLambdaHandler")
 	// TODO: 实现 GET Object with Lambda ARN 逻辑
 	w.WriteHeader(http.StatusOK)
 }
@@ -636,11 +636,11 @@ func GetObjectLambdaHandler(w http.ResponseWriter, r *http.Request) {
 // GetObjectHandler 获取对象
 func GetObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetObjectHandler")
-	//logger.GetLogger("boulder").Infof("head obect header %#v", r.Header)
+	logger.GetLogger("dedups3").Infof("API called: GetObjectHandler")
+	//logger.GetLogger("dedups3").Infof("head obect header %#v", r.Header)
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 	if err := utils.CheckValidObjectName(objectKey); err != nil {
-		logger.GetLogger("boulder").Errorf("invalid object name: %s", objectKey)
+		logger.GetLogger("dedups3").Errorf("invalid object name: %s", objectKey)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
 		return
 	}
@@ -648,14 +648,14 @@ func GetObjectHandler(w http.ResponseWriter, r *http.Request) {
 	rangeHeadStr := r.Header.Get(xhttp.Range)
 	rangeHead, err := xhttp.ParseRequestRangeSpec(rangeHeadStr)
 	if err != nil && rangeHeadStr != "" {
-		logger.GetLogger("boulder").Errorf("invalid range header: %s, error: %v", rangeHeadStr, err)
+		logger.GetLogger("dedups3").Errorf("invalid range header: %s, error: %v", rangeHeadStr, err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidRange)
 		return
 	}
 
 	_os := object.GetObjectService()
 	if _os == nil {
-		logger.GetLogger("boulder").Errorf("object service not initialized")
+		logger.GetLogger("dedups3").Errorf("object service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -676,7 +676,7 @@ func GetObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to fetch object %s: %v", objectKey, err)
+		logger.GetLogger("dedups3").Errorf("failed to fetch object %s: %v", objectKey, err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		return
 	}
@@ -710,7 +710,7 @@ func GetObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if rangeHead != nil {
 		start, length, err := rangeHead.GetOffsetLength(obj.Size)
 		if err != nil || length <= 0 {
-			logger.GetLogger("boulder").Errorf("invalid range head: %s, error: %v", rangeHeadStr, err)
+			logger.GetLogger("dedups3").Errorf("invalid range head: %s, error: %v", rangeHeadStr, err)
 			// 返回 416
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidRange)
 			return
@@ -732,9 +732,9 @@ func GetObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorMsg := strings.ToLower(err.Error())
 		if strings.Contains(errorMsg, "broken pipe") || strings.Contains(errorMsg, "epipe") || strings.Contains(errorMsg, "connection reset by peer") {
 			// 不算服务端错误，不用 error 级别
-			logger.GetLogger("boulder").Infof("client disconnected during download: %v", err)
+			logger.GetLogger("dedups3").Infof("client disconnected during download: %v", err)
 		} else {
-			logger.GetLogger("boulder").Errorf("write response body failed: %v", err)
+			logger.GetLogger("dedups3").Errorf("write response body failed: %v", err)
 		}
 		return
 	}
@@ -743,10 +743,10 @@ func GetObjectHandler(w http.ResponseWriter, r *http.Request) {
 // CopyObjectHandler 复制对象
 func CopyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: CopyObjectHandler")
+	logger.GetLogger("dedups3").Infof("API called: CopyObjectHandler")
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 	if err := utils.CheckValidObjectName(objectKey); err != nil {
-		logger.GetLogger("boulder").Errorf("invalid object name: %s", objectKey)
+		logger.GetLogger("dedups3").Errorf("invalid object name: %s", objectKey)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
 		return
 	}
@@ -786,7 +786,7 @@ func CopyObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	_os := object.GetObjectService()
 	if _os == nil {
-		logger.GetLogger("boulder").Errorf("object service not initialized")
+		logger.GetLogger("dedups3").Errorf("object service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -820,7 +820,7 @@ func CopyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to copy object %s: %v", objectKey, err)
+		logger.GetLogger("dedups3").Errorf("failed to copy object %s: %v", objectKey, err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		return
 	}
@@ -838,7 +838,7 @@ func CopyObjectHandler(w http.ResponseWriter, r *http.Request) {
 // PutObjectRetentionHandler 处理 PUT Object Retention 请求
 func PutObjectRetentionHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: PutObjectRetentionHandler")
+	logger.GetLogger("dedups3").Infof("API called: PutObjectRetentionHandler")
 	// TODO: 实现 PUT Object Retention 逻辑
 	w.WriteHeader(http.StatusOK)
 }
@@ -846,7 +846,7 @@ func PutObjectRetentionHandler(w http.ResponseWriter, r *http.Request) {
 // PutObjectLegalHoldHandler 处理 PUT Object Legal Hold 请求
 func PutObjectLegalHoldHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: PutObjectLegalHoldHandler")
+	logger.GetLogger("dedups3").Infof("API called: PutObjectLegalHoldHandler")
 	// TODO: 实现 PUT Object Legal Hold 逻辑
 	w.WriteHeader(http.StatusOK)
 }
@@ -854,7 +854,7 @@ func PutObjectLegalHoldHandler(w http.ResponseWriter, r *http.Request) {
 // PutObjectExtractHandler 处理 PUT Object with auto-extract 请求
 func PutObjectExtractHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: PutObjectExtractHandler")
+	logger.GetLogger("dedups3").Infof("API called: PutObjectExtractHandler")
 	// TODO: 实现 PUT Object with auto-extract 逻辑
 	w.WriteHeader(http.StatusOK)
 }
@@ -862,11 +862,11 @@ func PutObjectExtractHandler(w http.ResponseWriter, r *http.Request) {
 // PutObjectHandler 上传对象
 func PutObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: PutObjectHandler")
-	//logger.GetLogger("boulder").Infof("putobect header %#v", r.Header)
+	logger.GetLogger("dedups3").Infof("API called: PutObjectHandler")
+	//logger.GetLogger("dedups3").Infof("putobect header %#v", r.Header)
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 	if err := utils.CheckValidObjectName(objectKey); err != nil {
-		logger.GetLogger("boulder").Errorf("Invalid object name: %s", objectKey)
+		logger.GetLogger("dedups3").Errorf("Invalid object name: %s", objectKey)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
 		return
 	}
@@ -891,7 +891,7 @@ func PutObjectHandler(w http.ResponseWriter, r *http.Request) {
 	sc = strings.TrimSpace(sc)
 	if sc != "" {
 		if err := utils.CheckValidStorageClass(sc); err != nil {
-			logger.GetLogger("boulder").Errorf("Invalid storage class: %s", sc)
+			logger.GetLogger("dedups3").Errorf("Invalid storage class: %s", sc)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidStorageClass)
 			return
 		}
@@ -913,13 +913,13 @@ func PutObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if contentLenStr != "" {
 		contentLength, err = strconv.ParseInt(contentLenStr, 10, 64)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("Invalid X-Amz-Decoded-Content-Length: %s", contentLenStr)
+			logger.GetLogger("dedups3").Errorf("Invalid X-Amz-Decoded-Content-Length: %s", contentLenStr)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidDigest) // 或 ErrMalformedRequestBody
 			return
 		}
 	}
 	if contentLength < 0 {
-		logger.GetLogger("boulder").Errorf("Negative content length: %d", contentLength)
+		logger.GetLogger("dedups3").Errorf("Negative content length: %d", contentLength)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidDigest)
 		return
 	}
@@ -928,7 +928,7 @@ func PutObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	_os := object.GetObjectService()
 	if _os == nil {
-		logger.GetLogger("boulder").Errorf("Object service not initialized")
+		logger.GetLogger("dedups3").Errorf("Object service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -955,7 +955,7 @@ func PutObjectHandler(w http.ResponseWriter, r *http.Request) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
 			return
 		}
-		logger.GetLogger("boulder").Errorf("Error putting object: %s", err)
+		logger.GetLogger("dedups3").Errorf("Error putting object: %s", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -967,19 +967,19 @@ func PutObjectHandler(w http.ResponseWriter, r *http.Request) {
 // DeleteObjectHandler 删除对象
 func DeleteObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: DeleteObjectHandler")
-	logger.GetLogger("boulder").Infof("API called: PutObjectHandler")
-	//logger.GetLogger("boulder").Infof("putobect header %#v", r.Header)
+	logger.GetLogger("dedups3").Infof("API called: DeleteObjectHandler")
+	logger.GetLogger("dedups3").Infof("API called: PutObjectHandler")
+	//logger.GetLogger("dedups3").Infof("putobect header %#v", r.Header)
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 	if err := utils.CheckValidObjectName(objectKey); err != nil {
-		logger.GetLogger("boulder").Errorf("Invalid object name: %s", objectKey)
+		logger.GetLogger("dedups3").Errorf("Invalid object name: %s", objectKey)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
 		return
 	}
 
 	_os := object.GetObjectService()
 	if _os == nil {
-		logger.GetLogger("boulder").Errorf("Object service not initialized")
+		logger.GetLogger("dedups3").Errorf("Object service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -1002,13 +1002,13 @@ func DeleteObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 // DeleteMultipleObjectsHandler  批量删除多个对象 DeleteObjects
 func DeleteMultipleObjectsHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("boulder").Infof("API called: DeleteMultipleObjectsHandler")
+	logger.GetLogger("dedups3").Infof("API called: DeleteMultipleObjectsHandler")
 	bucket, _, _, accessKeyID := GetReqVar(r)
 
 	// 读取请求体
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to read request body: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to read request body: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrBadRequest)
 		return
 	}
@@ -1016,20 +1016,20 @@ func DeleteMultipleObjectsHandler(w http.ResponseWriter, r *http.Request) {
 
 	var deleteReq object.DeleteObjectsRequest
 	if err := xml.Unmarshal(body, &deleteReq); err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to decode DeleteObjects XML: %v", err)
+		logger.GetLogger("dedups3").Errorf("Failed to decode DeleteObjects XML: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedXML)
 		return
 	}
 
 	if err := utils.CheckValidBucketName(bucket); err != nil {
-		logger.GetLogger("boulder").Errorf("Invalid bucket name: %s", bucket)
+		logger.GetLogger("dedups3").Errorf("Invalid bucket name: %s", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketName)
 	}
 
 	// 获取对象服务
 	_os := object.GetObjectService()
 	if _os == nil {
-		logger.GetLogger("boulder").Errorf("Object service not initialized")
+		logger.GetLogger("dedups3").Errorf("Object service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -1057,7 +1057,7 @@ func DeleteMultipleObjectsHandler(w http.ResponseWriter, r *http.Request) {
 			if !quiet {
 				result.Deleted = append(result.Deleted, object.DeletedObject{Key: obj.Key})
 			}
-			logger.GetLogger("boulder").Tracef("Successfully deleted object: %s", obj.Key)
+			logger.GetLogger("dedups3").Tracef("Successfully deleted object: %s", obj.Key)
 		} else {
 			if !quiet {
 				// 确定错误类型
@@ -1085,17 +1085,17 @@ func DeleteMultipleObjectsHandler(w http.ResponseWriter, r *http.Request) {
 // PostRestoreObjectHandler 处理 POST Restore Object 请求
 func RestoreObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: PostRestoreObjectHandler")
+	logger.GetLogger("dedups3").Infof("API called: PostRestoreObjectHandler")
 	// TODO: 实现 POST Restore Object 逻辑
 	w.WriteHeader(http.StatusOK)
 }
 
 func ListObjectsV1Handler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("boulder").Infof("API called: ListObjectsV1Handler header is %#v", r.Header)
+	logger.GetLogger("dedups3").Infof("API called: ListObjectsV1Handler header is %#v", r.Header)
 
 	bucket, _, _, accessKeyID := GetReqVar(r)
 	if err := utils.CheckValidBucketName(bucket); err != nil {
-		logger.GetLogger("boulder").Errorf("invalid bucket name: %s", bucket)
+		logger.GetLogger("dedups3").Errorf("invalid bucket name: %s", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketName)
 		return
 	}
@@ -1113,10 +1113,10 @@ func ListObjectsV1Handler(w http.ResponseWriter, r *http.Request) {
 	marker := query.Get("marker")
 	delimiter := query.Get("delimiter")
 	encodingType := query.Get("encoding-type")
-	logger.GetLogger("boulder").Infof("get query %#v", query)
+	logger.GetLogger("dedups3").Infof("get query %#v", query)
 	if prefix != "" {
 		if err := utils.CheckValidObjectNamePrefix(prefix); err != nil {
-			logger.GetLogger("boulder").Errorf("invalid prefix: %s", prefix)
+			logger.GetLogger("dedups3").Errorf("invalid prefix: %s", prefix)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
 			return
 		}
@@ -1124,7 +1124,7 @@ func ListObjectsV1Handler(w http.ResponseWriter, r *http.Request) {
 
 	if encodingType != "" {
 		if !strings.EqualFold(encodingType, "url") {
-			logger.GetLogger("boulder").Errorf("invalid encoding-type: %s", encodingType)
+			logger.GetLogger("dedups3").Errorf("invalid encoding-type: %s", encodingType)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidEncodingMethod)
 			return
 		}
@@ -1133,7 +1133,7 @@ func ListObjectsV1Handler(w http.ResponseWriter, r *http.Request) {
 
 	_os := object.GetObjectService()
 	if _os == nil {
-		logger.GetLogger("boulder").Errorf("object service not initialized")
+		logger.GetLogger("dedups3").Errorf("object service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -1148,7 +1148,7 @@ func ListObjectsV1Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Error listing objects: %s", err)
+		logger.GetLogger("dedups3").Errorf("Error listing objects: %s", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -1225,18 +1225,18 @@ func ListObjectsV1Handler(w http.ResponseWriter, r *http.Request) {
 // ListObjectsV2MHandler 处理 List Objects V2 with metadata 请求
 func ListObjectsV2MHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: ListObjectsV2MHandler")
+	logger.GetLogger("dedups3").Infof("API called: ListObjectsV2MHandler")
 	// TODO: 实现 List Objects V2 逻辑
 	w.WriteHeader(http.StatusOK)
 }
 
 // ListObjectsV2Handler 处理 List Objects V2 请求
 func ListObjectsV2Handler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("boulder").Infof("API called: ListObjectsV2Handler")
+	logger.GetLogger("dedups3").Infof("API called: ListObjectsV2Handler")
 
 	bucket, _, _, accessKeyID := GetReqVar(r)
 	if err := utils.CheckValidBucketName(bucket); err != nil {
-		logger.GetLogger("boulder").Errorf("invalid bucket name: %s", bucket)
+		logger.GetLogger("dedups3").Errorf("invalid bucket name: %s", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketName)
 		return
 	}
@@ -1255,10 +1255,10 @@ func ListObjectsV2Handler(w http.ResponseWriter, r *http.Request) {
 	startAfter := query.Get("start-after")
 	delimiter := query.Get("delimiter")
 	encodingType := query.Get("encoding-type")
-	logger.GetLogger("boulder").Infof("get query %#v", query)
+	logger.GetLogger("dedups3").Infof("get query %#v", query)
 	if prefix != "" {
 		if err := utils.CheckValidObjectNamePrefix(prefix); err != nil {
-			logger.GetLogger("boulder").Errorf("invalid prefix: %s", prefix)
+			logger.GetLogger("dedups3").Errorf("invalid prefix: %s", prefix)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
 			return
 		}
@@ -1266,7 +1266,7 @@ func ListObjectsV2Handler(w http.ResponseWriter, r *http.Request) {
 
 	if encodingType != "" {
 		if !strings.EqualFold(encodingType, "url") {
-			logger.GetLogger("boulder").Errorf("invalid encoding-type: %s", encodingType)
+			logger.GetLogger("dedups3").Errorf("invalid encoding-type: %s", encodingType)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidEncodingMethod)
 			return
 		}
@@ -1275,7 +1275,7 @@ func ListObjectsV2Handler(w http.ResponseWriter, r *http.Request) {
 
 	_os := object.GetObjectService()
 	if _os == nil {
-		logger.GetLogger("boulder").Errorf("object service not initialized")
+		logger.GetLogger("dedups3").Errorf("object service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -1290,7 +1290,7 @@ func ListObjectsV2Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Error listing objects: %s", err)
+		logger.GetLogger("dedups3").Errorf("Error listing objects: %s", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -1367,7 +1367,7 @@ func ListObjectsV2Handler(w http.ResponseWriter, r *http.Request) {
 // ListObjectVersionsMHandler 处理 List Object Versions with metadata 请求
 func ListObjectVersionsMHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: ListObjectVersionsMHandler")
+	logger.GetLogger("dedups3").Infof("API called: ListObjectVersionsMHandler")
 	// TODO: 实现 List Object Versions with metadata 逻辑
 	w.WriteHeader(http.StatusOK)
 }
@@ -1375,7 +1375,7 @@ func ListObjectVersionsMHandler(w http.ResponseWriter, r *http.Request) {
 // ListObjectVersionsHandler 处理 List Object Versions 请求
 func ListObjectVersionsHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: ListObjectVersionsHandler")
+	logger.GetLogger("dedups3").Infof("API called: ListObjectVersionsHandler")
 	// TODO: 实现 List Object Versions 逻辑
 	w.WriteHeader(http.StatusOK)
 }
@@ -1383,11 +1383,11 @@ func ListObjectVersionsHandler(w http.ResponseWriter, r *http.Request) {
 // RenameObjectHandler 处理 PUT Object rename 请求
 func RenameObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: RenameObjectHandler")
+	logger.GetLogger("dedups3").Infof("API called: RenameObjectHandler")
 
 	bucket, objectKey, _, accessKeyID := GetReqVar(r)
 	if err := utils.CheckValidObjectName(objectKey); err != nil {
-		logger.GetLogger("boulder").Errorf("Invalid object name: %s", objectKey)
+		logger.GetLogger("dedups3").Errorf("Invalid object name: %s", objectKey)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidObjectName)
 		return
 	}
@@ -1395,7 +1395,7 @@ func RenameObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取请求头中的参数
 	renameSource := r.Header.Get(xhttp.AmzRenameSource)
 	if renameSource == "" {
-		logger.GetLogger("boulder").Errorf("Missing %s header", xhttp.AmzRenameSource)
+		logger.GetLogger("dedups3").Errorf("Missing %s header", xhttp.AmzRenameSource)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
 		return
 	}
@@ -1415,12 +1415,12 @@ func RenameObjectHandler(w http.ResponseWriter, r *http.Request) {
 	// 客户端令牌
 	clientToken := r.Header.Get(xhttp.AmzClientToken)
 
-	logger.GetLogger("boulder").Infof("Rename %s object from %s to %s", bucket, renameSource, objectKey)
+	logger.GetLogger("dedups3").Infof("Rename %s object from %s to %s", bucket, renameSource, objectKey)
 
 	// 获取对象服务
 	_os := object.GetObjectService()
 	if _os == nil {
-		logger.GetLogger("boulder").Errorf("Object service not initialized")
+		logger.GetLogger("dedups3").Errorf("Object service not initialized")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -1443,16 +1443,16 @@ func RenameObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchKey)) {
-			logger.GetLogger("boulder").Errorf("object %s/%s does not exist", bucket, objectKey)
+			logger.GetLogger("dedups3").Errorf("object %s/%s does not exist", bucket, objectKey)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchKey)
 		} else if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
-			logger.GetLogger("boulder").Errorf("access denied for %s", accessKeyID)
+			logger.GetLogger("dedups3").Errorf("access denied for %s", accessKeyID)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
 		} else if errors.Is(err, xhttp.ToError(xhttp.ErrPreconditionFailed)) {
-			logger.GetLogger("boulder").Errorf("object %s/%s condition failed", bucket, objectKey)
+			logger.GetLogger("dedups3").Errorf("object %s/%s condition failed", bucket, objectKey)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrPreconditionFailed)
 		} else {
-			logger.GetLogger("boulder").Errorf("failed to get object: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to get object: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		}
 		return

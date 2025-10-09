@@ -22,7 +22,7 @@ import (
 	"encoding/xml"
 	"net/http"
 
-	"github.com/mageg-x/boulder/internal/logger"
+	"github.com/mageg-x/dedups3/internal/logger"
 )
 
 // 通用响应结构
@@ -90,7 +90,7 @@ func WriteAWSError(w http.ResponseWriter, r *http.Request, code, message string,
 	// 添加XML声明
 	xmlHeader := []byte(xml.Header)
 	if _, err := w.Write(xmlHeader); err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to write XML header: %v", err)
+		logger.GetLogger("dedups3").Errorf("Failed to write XML header: %v", err)
 		return
 	}
 
@@ -98,7 +98,7 @@ func WriteAWSError(w http.ResponseWriter, r *http.Request, code, message string,
 	encoder := xml.NewEncoder(w)
 	encoder.Indent("", "  ") // 添加缩进提高可读性
 	if err := encoder.Encode(errorResponse); err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to marshal error response: %v", err)
+		logger.GetLogger("dedups3").Errorf("Failed to marshal error response: %v", err)
 		// 尝试回退到简单错误响应，包含命名空间
 		fallback := []byte(`<Error xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Code>InternalError</Code><Message>Failed to generate error response</Message><RequestId>` + requestID + `</RequestId></Error>`)
 		w.Write(fallback)
@@ -123,7 +123,7 @@ func WriteAWSSuc(w http.ResponseWriter, r *http.Request, data interface{}) {
 	// 添加XML声明
 	xmlHeader := []byte(xml.Header)
 	if _, err := w.Write(xmlHeader); err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to write XML header: %v", err)
+		logger.GetLogger("dedups3").Errorf("Failed to write XML header: %v", err)
 		return
 	}
 
@@ -131,7 +131,7 @@ func WriteAWSSuc(w http.ResponseWriter, r *http.Request, data interface{}) {
 	encoder := xml.NewEncoder(w)
 	encoder.Indent("", "  ") // 添加缩进提高可读性
 	if err := encoder.Encode(data); err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to marshal success response: %v", err)
+		logger.GetLogger("dedups3").Errorf("Failed to marshal success response: %v", err)
 		// 序列化失败时回退到错误响应
 		WriteAWSError(w, r, "InternalError", "Failed to generate response", http.StatusInternalServerError)
 		return
@@ -159,7 +159,7 @@ func WriteAWSJSONError(w http.ResponseWriter, r *http.Request, code, message str
 	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "  ") // 添加缩进提高可读性
 	if err := encoder.Encode(errorResponse); err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to marshal JSON error response: %v", err)
+		logger.GetLogger("dedups3").Errorf("Failed to marshal JSON error response: %v", err)
 		// 尝试回退到简单错误响应
 		fallback := []byte(`{"Code":"InternalError","Message":"Failed to generate error response","RequestId":"` + requestID + `"}`)
 		w.Write(fallback)
@@ -186,7 +186,7 @@ func WriteAWSJSONSuc(w http.ResponseWriter, r *http.Request, data interface{}) {
 	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "  ") // 添加缩进提高可读性
 	if err := encoder.Encode(data); err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to marshal JSON response: %v", err)
+		logger.GetLogger("dedups3").Errorf("Failed to marshal JSON response: %v", err)
 		// 序列化失败时回退到错误响应
 		WriteAWSError(w, r, "InternalError", "Failed to generate JSON response", http.StatusInternalServerError)
 		return

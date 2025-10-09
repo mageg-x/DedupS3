@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mageg-x/boulder/internal/utils"
+	"github.com/mageg-x/dedups3/internal/utils"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -59,7 +59,7 @@ func NewRedisTarget(ctx context.Context, args RedisArgs) (*RedisTarget, error) {
 	}
 
 	if args.Key == "" {
-		args.Key = "boulder:events"
+		args.Key = "dedups3:events"
 	}
 
 	_ctx, cancel := context.WithCancel(ctx)

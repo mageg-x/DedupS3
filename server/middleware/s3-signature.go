@@ -31,10 +31,10 @@ import (
 	"strings"
 	"time"
 
-	xhttp "github.com/mageg-x/boulder/internal/http"
-	"github.com/mageg-x/boulder/internal/logger"
-	"github.com/mageg-x/boulder/internal/utils"
-	"github.com/mageg-x/boulder/service/iam"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
+	"github.com/mageg-x/dedups3/internal/logger"
+	"github.com/mageg-x/dedups3/internal/utils"
+	"github.com/mageg-x/dedups3/service/iam"
 )
 
 // 错误定义
@@ -45,16 +45,16 @@ var (
 // AWS4SigningMiddleware 提供AWS4签名验证的中间件
 func AWS4SigningMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		logger.GetLogger("boulder").Tracef("get req %s %s %#v", r.Method, r.URL.Path, r.Header)
+		logger.GetLogger("dedups3").Tracef("get req %s %s %#v", r.Method, r.URL.Path, r.Header)
 		// 确保Host头存在
 		if r.Header.Get("Host") == "" {
 			r.Header.Set("Host", r.Host)
 		}
 
 		// 跳过节点间通信的认证验证
-		// 当请求路径以/boulder/node/开头且包含x-amz-boulder-node-api头部时，跳过认证
-		if strings.HasPrefix(r.URL.Path, "/boulder/node/") && r.Header.Get("x-amz-boulder-node-api") != "" {
-			logger.GetLogger("boulder").Debugf("Skipping authentication for node communication: %s", r.URL.Path)
+		// 当请求路径以/dedups3/node/开头且包含x-amz-dedups3-node-api头部时，跳过认证
+		if strings.HasPrefix(r.URL.Path, "/dedups3/node/") && r.Header.Get("x-amz-dedups3-node-api") != "" {
+			logger.GetLogger("dedups3").Debugf("Skipping authentication for node communication: %s", r.URL.Path)
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -70,7 +70,7 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || parts[0] != "AWS4-HMAC-SHA256" {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrAuthentication)
-			logger.GetLogger("boulder").Errorf("Invalid AWS Authorization header")
+			logger.GetLogger("dedups3").Errorf("Invalid AWS Authorization header")
 			return
 		}
 
@@ -89,7 +89,7 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 
 		if credential == "" || signedHeadersStr == "" || signature == "" {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
-			logger.GetLogger("boulder").Errorf("Invalid AWS Authorization header credential : %s, signedHeadersStr : %s, signature :%s", credential, signedHeadersStr, signature)
+			logger.GetLogger("dedups3").Errorf("Invalid AWS Authorization header credential : %s, signedHeadersStr : %s, signature :%s", credential, signedHeadersStr, signature)
 			return
 		}
 
@@ -97,7 +97,7 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 		credentialParts := strings.Split(credential, "/")
 		if len(credentialParts) < 5 {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
-			logger.GetLogger("boulder").Errorf("Invalid AWS Authorization header")
+			logger.GetLogger("dedups3").Errorf("Invalid AWS Authorization header")
 			return
 		}
 
@@ -110,21 +110,21 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 		amzDate := r.Header.Get(xhttp.AmzDate)
 		if amzDate == "" {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrMissingDateHeader)
-			logger.GetLogger("boulder").Errorf("No Amz Date header found")
+			logger.GetLogger("dedups3").Errorf("No Amz Date header found")
 			return
 		}
 
 		// 验证时间格式
 		if len(amzDate) != 16 {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedDate)
-			logger.GetLogger("boulder").Errorf("Invalid Amz Date header")
+			logger.GetLogger("dedups3").Errorf("Invalid Amz Date header")
 			return
 		}
 
 		parsedTime, err := time.Parse("20060102T150405Z", amzDate)
 		if err != nil {
 			xhttp.WriteAWSError(w, r, "MalformedDate", "Invalid X-Amz-Date format", http.StatusBadRequest)
-			logger.GetLogger("boulder").Errorf("Invalid X-Amz-Date format")
+			logger.GetLogger("dedups3").Errorf("Invalid X-Amz-Date format")
 			return
 		}
 
@@ -133,14 +133,14 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 		now := time.Now().UTC()
 		if diff := now.Sub(parsedTime); diff < -timeWindow || diff > timeWindow {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrRequestExpired)
-			logger.GetLogger("boulder").Errorf("Invalid X-Amz-Date header")
+			logger.GetLogger("dedups3").Errorf("Invalid X-Amz-Date header")
 			return
 		}
 
 		// 4. 构建规范请求
 		canonicalRequest, payloadHash, err := buildCanonicalRequest(r, signedHeadersStr)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("Failed to build canonical request: %v", err)
+			logger.GetLogger("dedups3").Errorf("Failed to build canonical request: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 			return
 		}
@@ -152,20 +152,20 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 		// 获取秘密访问密钥
 		iamService := iam.GetIamService()
 		if iamService == nil {
-			logger.GetLogger("boulder").Errorf("Failed to get IAM service")
+			logger.GetLogger("dedups3").Errorf("Failed to get IAM service")
 			xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 			return
 		}
 
 		ak, err := iamService.GetAccessKey(accessKeyID)
 		if ak == nil || err != nil {
-			logger.GetLogger("boulder").Errorf("get access key failed: %v", err)
+			logger.GetLogger("dedups3").Errorf("get access key failed: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidAccessKeyID)
 			return
 		}
 
 		if ak.Status != "Active" || ak.ExpiredAt.Before(time.Now().UTC()) {
-			logger.GetLogger("boulder").Errorf("access key is inactive: %v", err)
+			logger.GetLogger("dedups3").Errorf("access key is inactive: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessKeyDisabled)
 			return
 		}
@@ -174,7 +174,7 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 		computedSignature := calculateSignature(ak.SecretAccessKey, date, region, service, stringToSign)
 
 		if !hmac.Equal([]byte(computedSignature), []byte(signature)) {
-			logger.GetLogger("boulder").Warnf("signature mismatch %s : %s with ak %v ", computedSignature, signature, ak)
+			logger.GetLogger("dedups3").Warnf("signature mismatch %s : %s with ak %v ", computedSignature, signature, ak)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrSignatureDoesNotMatch)
 			return
 		}
@@ -188,7 +188,7 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 		// 4. 保持原始请求体不变，让后续处理程序自行读取和处理
 		if payloadHash != "UNSIGNED-PAYLOAD" {
 			// 仅记录日志，不执行任何验证操作
-			logger.GetLogger("boulder").Debugf("Using client-provided content hash: %s", payloadHash)
+			logger.GetLogger("dedups3").Debugf("Using client-provided content hash: %s", payloadHash)
 		}
 		// 签名验证成功，将解析的变量添加到请求上下文
 		ctx := r.Context()
@@ -196,7 +196,7 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 		ctx = context.WithValue(ctx, "region", region)
 
 		// 签名验证成功，继续处理请求
-		logger.GetLogger("boulder").Debugf("Success auth header %s %#v", r.URL.Path, r.Header)
+		logger.GetLogger("dedups3").Debugf("Success auth header %s %#v", r.URL.Path, r.Header)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -306,10 +306,10 @@ func buildStringToSign(amzDate, date, region, service, canonicalRequest string) 
 	stringToSign := "AWS4-HMAC-SHA256\n" +
 		amzDate + "\n" +
 		date + "/" + region + "/" + service + "/aws4_request\n"
-	//logger.GetLogger("boulder").Infof("CANONICAL REQUEST:\n%s", canonicalRequest)
+	//logger.GetLogger("dedups3").Infof("CANONICAL REQUEST:\n%s", canonicalRequest)
 	hash := sha256.Sum256([]byte(canonicalRequest))
 	stringToSign += hex.EncodeToString(hash[:])
-	//logger.GetLogger("boulder").Infof("STRING TO SIGN:\n%s", stringToSign)
+	//logger.GetLogger("dedups3").Infof("STRING TO SIGN:\n%s", stringToSign)
 	return stringToSign
 }
 

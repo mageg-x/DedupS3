@@ -21,9 +21,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
-	xconf "github.com/mageg-x/boulder/internal/config"
-	xhttp "github.com/mageg-x/boulder/internal/http"
-	"github.com/mageg-x/boulder/internal/logger"
+	xconf "github.com/mageg-x/dedups3/internal/config"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
+	"github.com/mageg-x/dedups3/internal/logger"
 )
 
 var (
@@ -42,7 +42,7 @@ type S3Store struct {
 
 // NewS3Store NewS3Storage 创建新的S3存储后端
 func NewS3Store(id, class string, c *xconf.S3Config) (*S3Store, error) {
-	logger.GetLogger("boulder").Infof("Creating new S3 store with bucket: %#v", c)
+	logger.GetLogger("dedups3").Infof("Creating new S3 store with bucket: %#v", c)
 	s3Locker.Lock()
 	defer s3Locker.Unlock()
 	if s := s3Stores[id]; s != nil {
@@ -52,7 +52,7 @@ func NewS3Store(id, class string, c *xconf.S3Config) (*S3Store, error) {
 	ctx := context.Background()
 
 	if c.AccessKey == "" || c.SecretKey == "" || c.Endpoint == "" {
-		logger.GetLogger("boulder").Errorf("Missing AWS credentials")
+		logger.GetLogger("dedups3").Errorf("Missing AWS credentials")
 		return nil, fmt.Errorf("missing AWS credentials")
 	}
 
@@ -74,7 +74,7 @@ func NewS3Store(id, class string, c *xconf.S3Config) (*S3Store, error) {
 		config.WithLogger(logger.AWSNullLogger{}),
 	)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to load SDK configuration: %v", err)
+		logger.GetLogger("dedups3").Errorf("Failed to load SDK configuration: %v", err)
 		return nil, fmt.Errorf("failed to load SDK configuration: %w", err)
 	}
 
@@ -83,7 +83,7 @@ func NewS3Store(id, class string, c *xconf.S3Config) (*S3Store, error) {
 		o.BaseEndpoint = aws.String(c.Endpoint)
 		o.UsePathStyle = c.UsePathStyle
 		o.RetryMaxAttempts = 1 // 禁用重试
-		logger.GetLogger("boulder").Debugf("Use path style: %v", c.UsePathStyle)
+		logger.GetLogger("dedups3").Debugf("Use path style: %v", c.UsePathStyle)
 	})
 
 	// 创建 Uploader
@@ -107,7 +107,7 @@ func NewS3Store(id, class string, c *xconf.S3Config) (*S3Store, error) {
 	}
 
 	s3Stores[id] = s
-	logger.GetLogger("boulder").Infof("S3 store initialized successfully")
+	logger.GetLogger("dedups3").Infof("S3 store initialized successfully")
 	return s, nil
 }
 
@@ -118,11 +118,11 @@ func (s *S3Store) Type() string {
 
 // WriteBlock 写入块到S3
 func (s *S3Store) WriteBlock(ctx context.Context, blockID string, data []byte, ver int32) error {
-	logger.GetLogger("boulder").Debugf("[S3Store WriteBlock] blockID=%s, ver=%d, size=%d KB", blockID, ver, len(data)/1024)
+	logger.GetLogger("dedups3").Debugf("[S3Store WriteBlock] blockID=%s, ver=%d, size=%d KB", blockID, ver, len(data)/1024)
 
 	vfile, err := GetTieredFs()
 	if err != nil || vfile == nil {
-		logger.GetLogger("boulder").Errorf("failed to get tiered fs: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to get tiered fs: %v", err)
 		return fmt.Errorf("failed to get tiered fs: %v", err)
 	}
 
@@ -130,7 +130,7 @@ func (s *S3Store) WriteBlock(ctx context.Context, blockID string, data []byte, v
 	if vfile.Exists(s.ID, blockID) {
 		if v, err := vfile.ReadFile(s.ID, blockID, 0, 4); err == nil && v != nil {
 			oldVer = int32(binary.BigEndian.Uint32(v[:]))
-			logger.GetLogger("boulder").Debugf("get block %s old ver %d", blockID, oldVer)
+			logger.GetLogger("dedups3").Debugf("get block %s old ver %d", blockID, oldVer)
 		}
 	}
 
@@ -143,11 +143,11 @@ func (s *S3Store) WriteBlock(ctx context.Context, blockID string, data []byte, v
 	binary.BigEndian.PutUint32(versionBuf, uint32(ver))
 
 	if err := vfile.WriteFile(s.ID, blockID, [][]byte{versionBuf, data}, ver); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to write block %s: %v", blockID, err)
+		logger.GetLogger("dedups3").Errorf("failed to write block %s: %v", blockID, err)
 		return fmt.Errorf("failed to write block %s: %w", blockID, err)
 	}
 
-	logger.GetLogger("boulder").Debugf("Successfully wrote block: %s", blockID)
+	logger.GetLogger("dedups3").Debugf("Successfully wrote block: %s", blockID)
 	return nil
 }
 
@@ -181,11 +181,11 @@ func (s *S3Store) WriteBlockDirect(ctx context.Context, blockID string, data []b
 	})
 
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to write block %s  %s  %s len :%d to S3 failed error is %v, config is %#v", s.conf.Bucket, key, blockID, len(data), err, s.conf)
+		logger.GetLogger("dedups3").Errorf("Failed to write block %s  %s  %s len :%d to S3 failed error is %v, config is %#v", s.conf.Bucket, key, blockID, len(data), err, s.conf)
 		return fmt.Errorf("failed to write block %s to S3: %w", blockID, err)
 	}
 
-	logger.GetLogger("boulder").Debugf("Successfully wrote block to S3: %s", blockID)
+	logger.GetLogger("dedups3").Debugf("Successfully wrote block to S3: %s", blockID)
 	return nil
 }
 
@@ -200,7 +200,7 @@ func (s *S3Store) ReadBlock(location, blockID string, offset, length int64) ([]b
 				// 再从S3 试一次
 				data, err = s.ReadS3Block(blockID, offset, length)
 				if err != nil {
-					logger.GetLogger("boulder").Errorf("read block %s failed: %v", blockID, err)
+					logger.GetLogger("dedups3").Errorf("read block %s failed: %v", blockID, err)
 				}
 			}
 		}
@@ -220,7 +220,7 @@ func (s *S3Store) ReadS3Block(blockID string, offset, length int64) ([]byte, err
 	rangeHeader := ""
 	if length > 0 {
 		rangeHeader = fmt.Sprintf("bytes=%d-%d", offset, offset+length-1)
-		logger.GetLogger("boulder").Debugf("Using range header: %s", rangeHeader)
+		logger.GetLogger("dedups3").Debugf("Using range header: %s", rangeHeader)
 	}
 
 	input := &s3.GetObjectInput{
@@ -238,22 +238,22 @@ func (s *S3Store) ReadS3Block(blockID string, offset, length int64) ([]byte, err
 		if errors.As(err, &apiErr) {
 			if apiErr.ErrorCode() == "NoSuchKey" || apiErr.ErrorCode() == "NotFound" {
 				// 确定是对象不存在的错误
-				logger.GetLogger("boulder").Debugf("Block %s does not exist in S3", blockID)
+				logger.GetLogger("dedups3").Debugf("Block %s does not exist in S3", blockID)
 				return nil, ErrBlockNotFound
 			}
 		}
-		logger.GetLogger("boulder").Infof("Failed to read block %s from S3: %v", blockID, err)
+		logger.GetLogger("dedups3").Infof("Failed to read block %s from S3: %v", blockID, err)
 		return nil, fmt.Errorf("failed to read block %s from S3: %w", blockID, err)
 	}
 	defer resp.Body.Close()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to read response body for block %s: %v", blockID, err)
+		logger.GetLogger("dedups3").Errorf("Failed to read response body for block %s: %v", blockID, err)
 		return nil, fmt.Errorf("failed to read response body for block %s: %w", blockID, err)
 	}
 
-	logger.GetLogger("boulder").Debugf("Successfully read block from S3: %s, read %d bytes", blockID, len(data))
+	logger.GetLogger("dedups3").Debugf("Successfully read block from S3: %s, read %d bytes", blockID, len(data))
 	return data, nil
 }
 
@@ -279,7 +279,7 @@ func (s *S3Store) DeleteBlock(blockID string) error {
 		return fmt.Errorf("failed to delete block %s from S3: %w", blockID, err)
 	}
 
-	logger.GetLogger("boulder").Debugf("Successfully deleted block from S3: %s", blockID)
+	logger.GetLogger("dedups3").Debugf("Successfully deleted block from S3: %s", blockID)
 	return nil
 }
 
@@ -297,13 +297,13 @@ func (s *S3Store) BlockExists(blockID string) (bool, error) {
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {
-			logger.GetLogger("boulder").Debugf("Block %s does not exist in S3", blockID)
+			logger.GetLogger("dedups3").Debugf("Block %s does not exist in S3", blockID)
 			return false, nil
 		}
-		logger.GetLogger("boulder").Errorf("Failed to check if block %s exists: %v", blockID, err)
+		logger.GetLogger("dedups3").Errorf("Failed to check if block %s exists: %v", blockID, err)
 		return false, fmt.Errorf("failed to check if block %s exists: %w", blockID, err)
 	}
-	logger.GetLogger("boulder").Debugf("Block %s exists in S3", blockID)
+	logger.GetLogger("dedups3").Debugf("Block %s exists in S3", blockID)
 	return true, nil
 }
 
@@ -316,11 +316,11 @@ func (s *S3Store) HealthCheck() error {
 		Bucket: aws.String(s.conf.Bucket),
 	})
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("s3 health check failed: %v", err)
+		logger.GetLogger("dedups3").Errorf("s3 health check failed: %v", err)
 		return fmt.Errorf("s3 health check failed: %w", err)
 	}
 
-	logger.GetLogger("boulder").Debugf("S3 health check passed")
+	logger.GetLogger("dedups3").Debugf("S3 health check passed")
 	return nil
 }
 
@@ -343,14 +343,14 @@ func (s *S3Store) List() (<-chan string, <-chan error) {
 		isTruncated := true
 		blockPrefix := "blocks/"
 
-		logger.GetLogger("boulder").Infof("Starting to list blocks in S3 store: bucket=%s, prefix=%s", s.conf.Bucket, blockPrefix)
+		logger.GetLogger("dedups3").Infof("Starting to list blocks in S3 store: bucket=%s, prefix=%s", s.conf.Bucket, blockPrefix)
 
 		totalBlocks := 0
 		pageCount := 0
 
 		for isTruncated {
 			pageCount++
-			logger.GetLogger("boulder").Debugf("Listing S3 page %d with continuation token: %v", pageCount, continuationToken)
+			logger.GetLogger("dedups3").Debugf("Listing S3 page %d with continuation token: %v", pageCount, continuationToken)
 
 			resp, err := s.client.ListObjectsV2(s.ctx, &s3.ListObjectsV2Input{
 				Bucket:            aws.String(s.conf.Bucket),
@@ -360,7 +360,7 @@ func (s *S3Store) List() (<-chan string, <-chan error) {
 			})
 
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("Error listing S3 objects: %v", err)
+				logger.GetLogger("dedups3").Errorf("Error listing S3 objects: %v", err)
 				errChan <- fmt.Errorf("error listing S3 objects: %w", err)
 				return
 			}
@@ -379,7 +379,7 @@ func (s *S3Store) List() (<-chan string, <-chan error) {
 
 				// 只检查长度，不依赖目录层级
 				if len(blockID) < 20 {
-					logger.GetLogger("boulder").Debugf("Skipping invalid block ID (too short): %s", blockID)
+					logger.GetLogger("dedups3").Debugf("Skipping invalid block ID (too short): %s", blockID)
 					continue
 				}
 
@@ -389,12 +389,12 @@ func (s *S3Store) List() (<-chan string, <-chan error) {
 				select {
 				case blockChan <- blockID:
 				case <-s.ctx.Done():
-					logger.GetLogger("boulder").Debugf("Context canceled while listing, total sent: %d", totalBlocks)
+					logger.GetLogger("dedups3").Debugf("Context canceled while listing, total sent: %d", totalBlocks)
 					return
 				}
 			}
 
-			logger.GetLogger("boulder").Debugf("Processed page %d, found %d blocks, total: %d", pageCount, pageBlocks, totalBlocks)
+			logger.GetLogger("dedups3").Debugf("Processed page %d, found %d blocks, total: %d", pageCount, pageBlocks, totalBlocks)
 
 			// 更新分页状态
 			continuationToken = resp.ContinuationToken
@@ -406,7 +406,7 @@ func (s *S3Store) List() (<-chan string, <-chan error) {
 			}
 		}
 
-		logger.GetLogger("boulder").Infof("Finished listing blocks, total: %d", totalBlocks)
+		logger.GetLogger("dedups3").Infof("Finished listing blocks, total: %d", totalBlocks)
 	}()
 
 	return blockChan, errChan

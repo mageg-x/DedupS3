@@ -9,9 +9,9 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
-	xconf "github.com/mageg-x/boulder/internal/config"
-	"github.com/mageg-x/boulder/internal/logger"
-	"github.com/mageg-x/boulder/internal/utils"
+	xconf "github.com/mageg-x/dedups3/internal/config"
+	"github.com/mageg-x/dedups3/internal/logger"
+	"github.com/mageg-x/dedups3/internal/utils"
 )
 
 // 同步器
@@ -69,7 +69,7 @@ func NewSyncManager(flushFunc func(*FileRegion) error) *SyncManager {
 
 // Submit 提交同步请求
 func (sm *SyncManager) Submit(region *FileRegion, priority int, callback func(error)) error {
-	logger.GetLogger("boulder").Debugf("Submitting sync request for region %v", region)
+	logger.GetLogger("dedups3").Debugf("Submitting sync request for region %v", region)
 	sm.mu.RLock()
 	if sm.closed {
 		sm.mu.RUnlock()
@@ -121,7 +121,7 @@ func (sm *SyncManager) worker() {
 		batch = make([]*SyncRequest, 0, sm.batchSize)
 		batchMutex.Unlock()
 
-		logger.GetLogger("boulder").Debugf("%d + %d reqs waiting to excute and syncNum %d",
+		logger.GetLogger("dedups3").Debugf("%d + %d reqs waiting to excute and syncNum %d",
 			len(thisBatch), len(sm.queues[0])+len(sm.queues[1])+len(sm.queues[2]), cfg.Block.SyncNum)
 
 		versionMap := make(map[string]int32) // 记录每个文件的最高版本
@@ -147,7 +147,7 @@ func (sm *SyncManager) worker() {
 
 		for _, req := range thisBatch {
 			if maxVer, ok := versionMap[req.Region.BlockID]; ok && req.Region.Ver < maxVer {
-				logger.GetLogger("boulder").Debugf("Skipping %s version %d (max is %d)", req.Region.BlockID, req.Region.Ver, maxVer)
+				logger.GetLogger("dedups3").Debugf("Skipping %s version %d (max is %d)", req.Region.BlockID, req.Region.Ver, maxVer)
 				continue
 			}
 
@@ -171,7 +171,7 @@ func (sm *SyncManager) worker() {
 					r.Callback(err)
 				}
 				if err != nil {
-					logger.GetLogger("boulder").Debugf("flush failed for %s: %v", r.Region.BlockID, err)
+					logger.GetLogger("dedups3").Debugf("flush failed for %s: %v", r.Region.BlockID, err)
 					mu.Lock()
 					//降级
 					if r.Priority > 0 {
@@ -180,7 +180,7 @@ func (sm *SyncManager) worker() {
 					keepReqs = append(keepReqs, r)
 					mu.Unlock()
 				} else {
-					logger.GetLogger("boulder").Debugf("flush success for %s: %v", r.Region.BlockID, err)
+					logger.GetLogger("dedups3").Debugf("flush success for %s: %v", r.Region.BlockID, err)
 				}
 				return
 			}(req)

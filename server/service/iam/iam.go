@@ -20,16 +20,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	xhttp "github.com/mageg-x/boulder/internal/http"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
 
 	"sync"
 	"time"
 
-	"github.com/mageg-x/boulder/internal/logger"
-	xcache "github.com/mageg-x/boulder/internal/storage/cache"
-	"github.com/mageg-x/boulder/internal/storage/kv"
-	"github.com/mageg-x/boulder/internal/utils"
-	"github.com/mageg-x/boulder/meta"
+	"github.com/mageg-x/dedups3/internal/logger"
+	xcache "github.com/mageg-x/dedups3/internal/storage/cache"
+	"github.com/mageg-x/dedups3/internal/storage/kv"
+	"github.com/mageg-x/dedups3/internal/utils"
+	"github.com/mageg-x/dedups3/meta"
 )
 
 var (
@@ -53,7 +53,7 @@ func GetIamService() *IamService {
 	if instance == nil || instance.iam == nil {
 		kvStore, err := kv.GetKvStore()
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to get kv store: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to get kv store: %v", err)
 			return nil
 		}
 		instance = &IamService{
@@ -71,11 +71,11 @@ func GetIamService() *IamService {
 // 根据AWS标准，账户ID由系统自动生成，用户提供用户名和密码
 func (s *IamService) CreateAccount(username, password string) (*meta.IamAccount, error) {
 	if err := meta.ValidateUsername(username); err != nil {
-		logger.GetLogger("boulder").Errorf("username %s is invalid format", username)
+		logger.GetLogger("dedups3").Errorf("username %s is invalid format", username)
 		return nil, errors.New("invalid username format")
 	}
 	if err := meta.ValidatePassword(password, username); err != nil {
-		logger.GetLogger("boulder").Errorf("password for user %s is invalid: %v", username, err)
+		logger.GetLogger("dedups3").Errorf("password for user %s is invalid: %v", username, err)
 		return nil, fmt.Errorf("invalid password: %w", err)
 	}
 
@@ -84,7 +84,7 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IamAccount,
 
 	txn, err := s.iam.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
 		return nil, fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 
@@ -98,7 +98,7 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IamAccount,
 	var ac meta.IamAccount
 	exists, err := txn.Get(key, &ac)
 	if exists {
-		logger.GetLogger("boulder").Infof("username %s already exists", username)
+		logger.GetLogger("dedups3").Infof("username %s already exists", username)
 		return &ac, ERR_ACCOUNT_EXISTS
 	}
 
@@ -108,27 +108,27 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IamAccount,
 	// 创建根用户
 	rootUser, err := account.CreateRootUser(username, password)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to create root user for account %s: %v", account.AccountID, err)
+		logger.GetLogger("dedups3").Errorf("failed to create root user for account %s: %v", account.AccountID, err)
 		return nil, err
 	}
 
 	if err = txn.Set(key, account); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to store account %s data in transaction: %v", account.AccountID, err)
+		logger.GetLogger("dedups3").Errorf("failed to store account %s data in transaction: %v", account.AccountID, err)
 		return nil, err
 	}
 
 	// 更新 access key 索引
 	key = "aws:iam:account:ak:" + rootUser.AccessKeys[0].AccessKeyID
 	if err = txn.Set(key, &rootUser.AccessKeys[0]); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to store account %s access key in transaction: %v", account.AccountID, err)
+		logger.GetLogger("dedups3").Errorf("failed to store account %s access key in transaction: %v", account.AccountID, err)
 		return nil, err
 	}
 	if err = txn.Commit(); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
 		return nil, err
 	}
 	txn = nil
-	logger.GetLogger("boulder").Infof("account %s created with user %s", account.AccountID, username)
+	logger.GetLogger("dedups3").Infof("account %s created with user %s", account.AccountID, username)
 	return account, nil
 }
 
@@ -146,11 +146,11 @@ func (s *IamService) GetAccount(accountID string) (*meta.IamAccount, error) {
 	var account meta.IamAccount
 	exist, err := s.iam.Get(key, &account)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to get account %s: %v", accountID, err)
+		logger.GetLogger("dedups3").Errorf("failed to get account %s: %v", accountID, err)
 		return nil, fmt.Errorf("failed to get account %s: %w", accountID, err)
 	}
 	if !exist {
-		logger.GetLogger("boulder").Errorf("account %s does not exist", accountID)
+		logger.GetLogger("dedups3").Errorf("account %s does not exist", accountID)
 		return nil, ERR_ACCOUNT_NOTEXISTS
 	}
 
@@ -164,13 +164,13 @@ func (s *IamService) GetAccount(accountID string) (*meta.IamAccount, error) {
 // UpdateAccount 更新IAM账户
 func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IamAccount) error) (bool, error) {
 	if meta.ValidateAccountID(accountID) != nil {
-		logger.GetLogger("boulder").Errorf("invalid account id: %s", accountID)
+		logger.GetLogger("dedups3").Errorf("invalid account id: %s", accountID)
 		return false, errors.New("invalid account id")
 	}
 
 	txn, err := s.iam.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
 		return false, fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
@@ -183,7 +183,7 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IamAc
 	var account meta.IamAccount
 	exists, err := txn.Get(key, &account)
 	if err != nil || !exists {
-		logger.GetLogger("boulder").Errorf("failed to get account %s: %v", accountID, err)
+		logger.GetLogger("dedups3").Errorf("failed to get account %s: %v", accountID, err)
 		return false, err
 	}
 
@@ -192,14 +192,14 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IamAc
 
 	// 应用更新
 	if err = updateFunc(&account); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to update account %s: %v", accountID, err)
+		logger.GetLogger("dedups3").Errorf("failed to update account %s: %v", accountID, err)
 		return false, err
 	}
 
 	// 更新账户数据
 	err = txn.Set(key, account)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to delete account %s: %v", accountID, err)
+		logger.GetLogger("dedups3").Errorf("failed to delete account %s: %v", accountID, err)
 		return false, err
 	}
 
@@ -216,7 +216,7 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IamAc
 		// 删除 access key
 		e := txn.Delete(k)
 		if e != nil {
-			logger.GetLogger("boulder").Errorf("failed to delete access key %s: %v", accessKey.AccessKeyID, e)
+			logger.GetLogger("dedups3").Errorf("failed to delete access key %s: %v", accessKey.AccessKeyID, e)
 			return false, e
 		}
 	}
@@ -227,12 +227,12 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IamAc
 		// 添加 access key
 		e := txn.Set(k, accessKey)
 		if e != nil {
-			logger.GetLogger("boulder").Errorf("failed to add access key %s: %v", accessKey.AccessKeyID, e)
+			logger.GetLogger("dedups3").Errorf("failed to add access key %s: %v", accessKey.AccessKeyID, e)
 			return false, e
 		}
 	}
 	if err = txn.Commit(); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
 		return false, err
 	}
 	txn = nil
@@ -255,7 +255,7 @@ func (s *IamService) DeleteAccount(accountID string) error {
 
 	txn, err := s.iam.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to initialize kvstore txn: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
 		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
@@ -268,7 +268,7 @@ func (s *IamService) DeleteAccount(accountID string) error {
 	var account meta.IamAccount
 	exists, err := txn.Get(key, &account)
 	if err != nil || !exists {
-		logger.GetLogger("boulder").Errorf("failed to get account %s: %v", accountID, err)
+		logger.GetLogger("dedups3").Errorf("failed to get account %s: %v", accountID, err)
 		return err
 	}
 
@@ -279,7 +279,7 @@ func (s *IamService) DeleteAccount(accountID string) error {
 			k := "aws:iam:account:ak:" + accessKey.AccessKeyID
 			err = txn.Delete(k)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("failed to delete account %s access key: %v", accountID, err)
+				logger.GetLogger("dedups3").Errorf("failed to delete account %s access key: %v", accountID, err)
 				return fmt.Errorf("failed to delete account %s access key: %w", accountID, err)
 			}
 			allDel = append(allDel, k)
@@ -292,11 +292,11 @@ func (s *IamService) DeleteAccount(accountID string) error {
 
 	err = txn.Delete(key)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to delete account %s: %v", accountID, err)
+		logger.GetLogger("dedups3").Errorf("failed to delete account %s: %v", accountID, err)
 		return err
 	}
 	if err = txn.Commit(); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
 		return err
 	}
 	txn = nil
@@ -309,7 +309,7 @@ func (s *IamService) DeleteAccount(accountID string) error {
 func (s *IamService) CreateUser(accountID, username, password string, groups, roles, policies []string, enable bool) (*meta.IamUser, error) {
 	// 验证用户名和密码
 	if err := meta.ValidateUsername(username); err != nil {
-		logger.GetLogger("boulder").Errorf("username %s is invalid format", username)
+		logger.GetLogger("dedups3").Errorf("username %s is invalid format", username)
 		return nil, xhttp.ToError(xhttp.ErrInvalidName)
 	}
 
@@ -323,7 +323,7 @@ func (s *IamService) CreateUser(accountID, username, password string, groups, ro
 		var err error
 		user, err = a.CreateUser(username, password, groups, roles, policies, enable)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to create user %s in account %s: %v", username, accountID, err)
+			logger.GetLogger("dedups3").Errorf("failed to create user %s in account %s: %v", username, accountID, err)
 			return err
 		}
 
@@ -341,7 +341,7 @@ func (s *IamService) CreateUser(accountID, username, password string, groups, ro
 func (s *IamService) UpdateUser(accountID, username, password string, groups, roles, policies []string, enable bool) (*meta.IamUser, error) {
 	// 验证用户名和密码
 	if err := meta.ValidateUsername(username); err != nil {
-		logger.GetLogger("boulder").Errorf("username %s is invalid format", username)
+		logger.GetLogger("dedups3").Errorf("username %s is invalid format", username)
 		return nil, xhttp.ToError(xhttp.ErrInvalidName)
 	}
 
@@ -355,7 +355,7 @@ func (s *IamService) UpdateUser(accountID, username, password string, groups, ro
 		var err error
 		user, err = a.UpdateUser(username, password, groups, roles, policies, enable)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to update user %s in account %s: %v", username, accountID, err)
+			logger.GetLogger("dedups3").Errorf("failed to update user %s in account %s: %v", username, accountID, err)
 			return err
 		}
 
@@ -387,13 +387,13 @@ func (s *IamService) CreateAccessKey(accountID, username string, expiredAt time.
 	var key *meta.AccessKey
 	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
 		if a == nil {
-			logger.GetLogger("boulder").Errorf("account %s not found", accountID)
+			logger.GetLogger("dedups3").Errorf("account %s not found", accountID)
 			return fmt.Errorf("account %s not found", accountID)
 		}
 		var err error
 		key, err = a.CreateAccessKey(username, expiredAt, ak, sk)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to create access key %s in account %s: %v", username, accountID, err)
+			logger.GetLogger("dedups3").Errorf("failed to create access key %s in account %s: %v", username, accountID, err)
 		}
 		return err
 	})
@@ -444,7 +444,7 @@ func (s *IamService) GetAccessKey(accessKeyID string) (*meta.AccessKey, error) {
 
 	ak := meta.AccessKey{}
 	if ok, err := s.iam.Get(key, &ak); err != nil || !ok {
-		logger.GetLogger("boulder").Errorf("get accesskey id %s failed", accessKeyID)
+		logger.GetLogger("dedups3").Errorf("get accesskey id %s failed", accessKeyID)
 		return nil, fmt.Errorf("access key %s not found", accessKeyID)
 	}
 

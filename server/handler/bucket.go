@@ -30,11 +30,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/gorilla/mux"
 
-	xhttp "github.com/mageg-x/boulder/internal/http"
-	"github.com/mageg-x/boulder/internal/logger"
-	"github.com/mageg-x/boulder/internal/utils"
-	"github.com/mageg-x/boulder/meta"
-	sb "github.com/mageg-x/boulder/service/bucket"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
+	"github.com/mageg-x/dedups3/internal/logger"
+	"github.com/mageg-x/dedups3/internal/utils"
+	"github.com/mageg-x/dedups3/meta"
+	sb "github.com/mageg-x/dedups3/service/bucket"
 )
 
 type ListAllMyBucketsResult struct {
@@ -62,16 +62,16 @@ func GetReqVar(r *http.Request) (string, string, string, string) {
 	// 获取accessKeyID
 	accessKeyID, ok := ctx.Value("accesskey").(string)
 	if !ok {
-		logger.GetLogger("boulder").Errorf("Failed to get accessKeyID from context")
+		logger.GetLogger("dedups3").Errorf("Failed to get accessKeyID from context")
 	} else {
-		logger.GetLogger("boulder").Tracef("accessKeyID from context: %s", accessKeyID)
+		logger.GetLogger("dedups3").Tracef("accessKeyID from context: %s", accessKeyID)
 	}
 	// 获取region
 	region, ok := ctx.Value("region").(string)
 	if !ok {
-		logger.GetLogger("boulder").Errorf("Failed to get region from context")
+		logger.GetLogger("dedups3").Errorf("Failed to get region from context")
 	} else {
-		logger.GetLogger("boulder").Tracef("region from context: %s", region)
+		logger.GetLogger("dedups3").Tracef("region from context: %s", region)
 	}
 
 	return bucket, object, region, accessKeyID
@@ -80,11 +80,11 @@ func GetReqVar(r *http.Request) (string, string, string, string) {
 // ListBucketsHandler 列出所有存储桶
 func ListBucketsHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: ListBucketsHandler")
+	logger.GetLogger("dedups3").Infof("API called: ListBucketsHandler")
 	_, _, _, accessKeyID := GetReqVar(r)
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("bucket service is nil")
+		logger.GetLogger("dedups3").Errorf("bucket service is nil")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -93,7 +93,7 @@ func ListBucketsHandler(w http.ResponseWriter, r *http.Request) {
 		AccessKeyID: accessKeyID,
 	})
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to list buckets: %v", err)
+		logger.GetLogger("dedups3").Errorf("Failed to list buckets: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 	}
 
@@ -121,12 +121,12 @@ func ListBucketsHandler(w http.ResponseWriter, r *http.Request) {
 // GetBucketLocationHandler 处理 GET Bucket Location 请求
 func GetBucketLocationHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetBucketLocationHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetBucketLocationHandler")
 	bucket, _, region, accessKeyID := GetReqVar(r)
 
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		logger.GetLogger("dedups3").Errorf("bucket service is nil: %v", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -137,7 +137,7 @@ func GetBucketLocationHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil || _bucket == nil {
-		logger.GetLogger("boulder").Errorf("bucket %s does not exist: %v", bucket, err)
+		logger.GetLogger("dedups3").Errorf("bucket %s does not exist: %v", bucket, err)
 		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
 			return
@@ -163,7 +163,7 @@ func GetBucketLocationHandler(w http.ResponseWriter, r *http.Request) {
 // GetBucketPolicyHandler 处理 GET Bucket Policy 请求
 func GetBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetBucketPolicyHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetBucketPolicyHandler")
 
 	// 获取请求变量
 	bucket, _, region, accessKeyID := GetReqVar(r)
@@ -175,7 +175,7 @@ func GetBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取bucket服务
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		logger.GetLogger("dedups3").Errorf("bucket service is nil: %v", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -192,7 +192,7 @@ func GetBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 		} else if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
 		} else {
-			logger.GetLogger("boulder").Errorf("failed to get bucket info: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to get bucket info: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		}
 		return
@@ -200,21 +200,21 @@ func GetBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 检查expectedOwnerID是否匹配
 	if expectedOwnerID != "" && bucketInfo.Owner.ID != expectedOwnerID {
-		logger.GetLogger("boulder").Errorf("bucket owner mismatch: expected %s, got %s", expectedOwnerID, bucketInfo.Owner.ID)
+		logger.GetLogger("dedups3").Errorf("bucket owner mismatch: expected %s, got %s", expectedOwnerID, bucketInfo.Owner.ID)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
 		return
 	}
 
 	// 检查桶是否有策略
 	if bucketInfo.Policy == nil {
-		logger.GetLogger("boulder").Errorf("bucket %s has no policy", bucket)
+		logger.GetLogger("dedups3").Errorf("bucket %s has no policy", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucketPolicy)
 		return
 	}
 
 	// 验证策略格式
 	if err := bucketInfo.Policy.Validate(); err != nil {
-		logger.GetLogger("boulder").Errorf("invalid bucket policy: %v", err)
+		logger.GetLogger("dedups3").Errorf("invalid bucket policy: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		return
 	}
@@ -229,13 +229,13 @@ func GetBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 使用JSON响应函数返回策略
 	xhttp.WriteAWSJSONSuc(w, r, responsePolicy)
-	logger.GetLogger("boulder").Infof("successfully retrieved bucket policy for bucket: %s", bucket)
+	logger.GetLogger("dedups3").Infof("successfully retrieved bucket policy for bucket: %s", bucket)
 }
 
 // GetBucketLifecycleHandler 处理 GET Bucket Lifecycle 请求
 func GetBucketLifecycleHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetBucketLifecycleHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetBucketLifecycleHandler")
 
 	// 获取请求变量
 	bucket, _, region, accessKeyID := GetReqVar(r)
@@ -247,7 +247,7 @@ func GetBucketLifecycleHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取bucket服务
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		logger.GetLogger("dedups3").Errorf("bucket service is nil: %v", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -264,14 +264,14 @@ func GetBucketLifecycleHandler(w http.ResponseWriter, r *http.Request) {
 		} else if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
 		} else {
-			logger.GetLogger("boulder").Errorf("failed to get bucket info: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to get bucket info: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		}
 		return
 	}
 
 	if expectedOwnerID != "" && expectedOwnerID != bucketInfo.Owner.ID {
-		logger.GetLogger("boulder").Errorf("bucket owner mismatch: expected %s, got %s", expectedOwnerID, bucketInfo.Owner.ID)
+		logger.GetLogger("dedups3").Errorf("bucket owner mismatch: expected %s, got %s", expectedOwnerID, bucketInfo.Owner.ID)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
 	}
 
@@ -285,13 +285,13 @@ func GetBucketLifecycleHandler(w http.ResponseWriter, r *http.Request) {
 	bucketInfo.Lifecycle.XMLNS = "http://s3.amazonaws.com/doc/2006-03-01/"
 	// 返回生命周期配置
 	xhttp.WriteAWSSuc(w, r, bucketInfo.Lifecycle)
-	logger.GetLogger("boulder").Tracef("successfully retrieved lifecycle configuration for bucket: %s", bucket)
+	logger.GetLogger("dedups3").Tracef("successfully retrieved lifecycle configuration for bucket: %s", bucket)
 }
 
 // GetBucketEncryptionHandler 处理 GET Bucket Encryption 请求
 func GetBucketEncryptionHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetBucketEncryptionHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetBucketEncryptionHandler")
 	// TODO: 实现 GET Bucket Encryption 逻辑
 	w.WriteHeader(http.StatusOK)
 }
@@ -299,7 +299,7 @@ func GetBucketEncryptionHandler(w http.ResponseWriter, r *http.Request) {
 // GetBucketObjectLockConfigHandler 处理 GET Bucket Object Lock Configuration 请求
 func GetBucketObjectLockConfigHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetBucketObjectLockConfigHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetBucketObjectLockConfigHandler")
 
 	// 获取请求中的bucket名称、accessKeyID和region信息
 	bucket, _, region, accessKeyID := GetReqVar(r)
@@ -307,7 +307,7 @@ func GetBucketObjectLockConfigHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取bucket服务
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("failed to get bucket service")
+		logger.GetLogger("dedups3").Errorf("failed to get bucket service")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		return
 	}
@@ -322,10 +322,10 @@ func GetBucketObjectLockConfigHandler(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
 		} else if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
-			logger.GetLogger("boulder").Errorf("access denied for %s", accessKeyID)
+			logger.GetLogger("dedups3").Errorf("access denied for %s", accessKeyID)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
 		} else {
-			logger.GetLogger("boulder").Errorf("failed to get bucket info: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to get bucket info: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		}
 		return
@@ -333,7 +333,7 @@ func GetBucketObjectLockConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 检查对象锁定配置是否存在
 	if _bucket.ObjectLock == nil || !_bucket.ObjectLock.IsEnabled() {
-		logger.GetLogger("boulder").Errorf("object lock configuration not found for bucket: %s", bucket)
+		logger.GetLogger("dedups3").Errorf("object lock configuration not found for bucket: %s", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrObjectLockConfigurationNotFoundError)
 		return
 	}
@@ -349,7 +349,7 @@ func GetBucketObjectLockConfigHandler(w http.ResponseWriter, r *http.Request) {
 // GetBucketReplicationConfigHandler 处理 GET Bucket Replication Configuration 请求
 func GetBucketReplicationConfigHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetBucketReplicationConfigHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetBucketReplicationConfigHandler")
 	// TODO: 实现 GET Bucket Replication Configuration 逻辑
 	w.WriteHeader(http.StatusOK)
 }
@@ -357,7 +357,7 @@ func GetBucketReplicationConfigHandler(w http.ResponseWriter, r *http.Request) {
 // GetBucketVersioningHandler 处理 GET Bucket Versioning 请求
 func GetBucketVersioningHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetBucketVersioningHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetBucketVersioningHandler")
 	// TODO: 实现 GET Bucket Versioning 逻辑
 	w.WriteHeader(http.StatusOK)
 }
@@ -365,7 +365,7 @@ func GetBucketVersioningHandler(w http.ResponseWriter, r *http.Request) {
 // GetBucketNotificationHandler 处理 GET Bucket Notification 请求
 func GetBucketNotificationHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetBucketNotificationHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetBucketNotificationHandler")
 	bucket, _, region, accessKeyID := GetReqVar(r)
 
 	// 获取x-amz-expected-bucket-owner头部
@@ -375,7 +375,7 @@ func GetBucketNotificationHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取bucket服务
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("bucket service is nil")
+		logger.GetLogger("dedups3").Errorf("bucket service is nil")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -391,14 +391,14 @@ func GetBucketNotificationHandler(w http.ResponseWriter, r *http.Request) {
 		} else if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
 		} else {
-			logger.GetLogger("boulder").Errorf("failed to get bucket info: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to get bucket info: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		}
 		return
 	}
 
 	if expectedOwnerID != "" && expectedOwnerID != _bucket.Owner.ID {
-		logger.GetLogger("boulder").Errorf("bucket owner mismatch: expected %s, got %s", expectedOwnerID, _bucket.Owner.ID)
+		logger.GetLogger("dedups3").Errorf("bucket owner mismatch: expected %s, got %s", expectedOwnerID, _bucket.Owner.ID)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
 	}
 
@@ -418,7 +418,7 @@ func GetBucketNotificationHandler(w http.ResponseWriter, r *http.Request) {
 // GetBucketACLHandler 处理 GET Bucket ACL 请求
 func GetBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetBucketACLHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetBucketACLHandler")
 
 	// 获取请求变量
 	bucket, _, _, accessKeyID := GetReqVar(r)
@@ -430,7 +430,7 @@ func GetBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取bucket服务
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("bucket service is nil")
+		logger.GetLogger("dedups3").Errorf("bucket service is nil")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -447,7 +447,7 @@ func GetBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 		} else if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
 		} else {
-			logger.GetLogger("boulder").Errorf("failed to get bucket info: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to get bucket info: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		}
 		return
@@ -475,7 +475,7 @@ func GetBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 // PutBucketACLHandler 处理 PUT Bucket ACL 请求
 func PutBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: PutBucketACLHandler")
+	logger.GetLogger("dedups3").Infof("API called: PutBucketACLHandler")
 
 	// 获取请求变量
 	bucket, _, region, accessKeyID := GetReqVar(r)
@@ -502,7 +502,7 @@ func PutBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	defer r.Body.Close()
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to read request body: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to read request body: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrBadRequest)
 		return
 	}
@@ -512,7 +512,7 @@ func PutBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取bucket服务
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		logger.GetLogger("dedups3").Errorf("bucket service is nil: %v", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -527,10 +527,10 @@ func PutBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
 		} else if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
-			logger.GetLogger("boulder").Errorf("access denied for %s", accessKeyID)
+			logger.GetLogger("dedups3").Errorf("access denied for %s", accessKeyID)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
 		} else {
-			logger.GetLogger("boulder").Errorf("failed to get bucket info: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to get bucket info: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		}
 		return
@@ -546,25 +546,25 @@ func PutBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 	hasHeaderACL := false
 	if predefinedACL != "" {
 		hasHeaderACL = true
-		logger.GetLogger("boulder").Debugf("Processing x-amz-acl: %s", predefinedACL)
+		logger.GetLogger("dedups3").Debugf("Processing x-amz-acl: %s", predefinedACL)
 		switch predefinedACL {
 		case "private":
 			// 默认权限，仅保留所有者权限
 		case "public-read":
 			if err := aclConfig.GrantPublicRead(); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to set public-read ACL: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to set public-read ACL: %v", err)
 				xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 				return
 			}
 		case "public-read-write":
 			if err := aclConfig.GrantPublicReadWrite(); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to set public-read-write ACL: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to set public-read-write ACL: %v", err)
 				xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 				return
 			}
 		case "authenticated-read":
 			if err := aclConfig.AddGrant("Group", "", "", "", meta.AuthUsersGroup, meta.PermissionRead); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to set authenticated-read ACL: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to set authenticated-read ACL: %v", err)
 				xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 				return
 			}
@@ -573,7 +573,7 @@ func PutBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 		case "bucket-owner-full-control":
 			// 此处应该获取存储桶所有者信息并授予完全控制权限
 		default:
-			logger.GetLogger("boulder").Errorf("invalid x-amz-acl value: %s", predefinedACL)
+			logger.GetLogger("dedups3").Errorf("invalid x-amz-acl value: %s", predefinedACL)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
 			return
 		}
@@ -583,7 +583,7 @@ func PutBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 	processGrantHeader := func(headerName, permission string) {
 		if headerValue := r.Header.Get(headerName); headerValue != "" {
 			hasHeaderACL = true
-			logger.GetLogger("boulder").Debugf("Processing %s: %s", headerName, headerValue)
+			logger.GetLogger("dedups3").Debugf("Processing %s: %s", headerName, headerValue)
 			// 完整解析授权信息
 			// 支持格式：
 			// 1. 单一CanonicalUser ID: "1234567890123456789012345678901234567890123456789012345678901234"
@@ -639,7 +639,7 @@ func PutBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 
 				// 调用AddGrant添加授权
 				if err := aclConfig.AddGrant(granteeType, id, displayName, email, uri, permission); err != nil {
-					logger.GetLogger("boulder").Errorf("failed to process grant header %s: %v", headerName, err)
+					logger.GetLogger("dedups3").Errorf("failed to process grant header %s: %v", headerName, err)
 					xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
 					return
 				}
@@ -655,11 +655,11 @@ func PutBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 处理Content-MD5验证
 	if contentMD5 != "" && len(body) > 0 {
-		logger.GetLogger("boulder").Debugf("Processing Content-MD5 validation")
+		logger.GetLogger("dedups3").Debugf("Processing Content-MD5 validation")
 		hash := md5.Sum(body)
 		computedMD5 := hex.EncodeToString(hash[:])
 		if computedMD5 != contentMD5 {
-			logger.GetLogger("boulder").Errorf("Content-MD5 mismatch: computed=%s, header=%s", computedMD5, contentMD5)
+			logger.GetLogger("dedups3").Errorf("Content-MD5 mismatch: computed=%s, header=%s", computedMD5, contentMD5)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidDigest)
 			return
 		}
@@ -668,17 +668,17 @@ func PutBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 	// 根据S3标准，头部定义的ACL优先级高于body中的ACL
 	// 只有在头部没有定义ACL的情况下才处理请求体中的ACL
 	if !hasHeaderACL && len(body) > 0 {
-		logger.GetLogger("boulder").Debugf("Parsing ACL from XML request body")
+		logger.GetLogger("dedups3").Debugf("Parsing ACL from XML request body")
 		// 解析XML请求体
 		if err := xml.Unmarshal(body, &aclConfig); err != nil {
-			logger.GetLogger("boulder").Errorf("failed to unmarshal ACL configuration: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to unmarshal ACL configuration: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedXML)
 			return
 		}
 	}
 
 	if err := aclConfig.Validate(); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to validate ACL configuration: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to validate ACL configuration: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedPolicy)
 		return
 	}
@@ -698,7 +698,7 @@ func PutBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 		} else if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
 		} else {
-			logger.GetLogger("boulder").Errorf("failed to put bucket ACL: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to put bucket ACL: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		}
 		return
@@ -706,13 +706,13 @@ func PutBucketACLHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 返回成功响应
 	w.WriteHeader(http.StatusOK)
-	logger.GetLogger("boulder").Tracef("successfully set ACL for bucket: %s", bucket)
+	logger.GetLogger("dedups3").Tracef("successfully set ACL for bucket: %s", bucket)
 }
 
 // GetBucketCorsHandler 处理 GET Bucket CORS 请求 (Dummy)
 func GetBucketCorsHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetBucketCorsHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetBucketCorsHandler")
 	// TODO: 实现 GET Bucket CORS 逻辑 (Dummy)
 	w.WriteHeader(http.StatusOK)
 }
@@ -720,7 +720,7 @@ func GetBucketCorsHandler(w http.ResponseWriter, r *http.Request) {
 // PutBucketCorsHandler 处理 PUT Bucket CORS 请求 (Dummy)
 func PutBucketCorsHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: PutBucketCorsHandler")
+	logger.GetLogger("dedups3").Infof("API called: PutBucketCorsHandler")
 	// TODO: 实现 PUT Bucket CORS 逻辑 (Dummy)
 	w.WriteHeader(http.StatusOK)
 }
@@ -728,7 +728,7 @@ func PutBucketCorsHandler(w http.ResponseWriter, r *http.Request) {
 // DeleteBucketCorsHandler 处理 DELETE Bucket CORS 请求 (Dummy)
 func DeleteBucketCorsHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: DeleteBucketCorsHandler")
+	logger.GetLogger("dedups3").Infof("API called: DeleteBucketCorsHandler")
 	// TODO: 实现 DELETE Bucket CORS 逻辑 (Dummy)
 	w.WriteHeader(http.StatusOK)
 }
@@ -736,7 +736,7 @@ func DeleteBucketCorsHandler(w http.ResponseWriter, r *http.Request) {
 // GetBucketWebsiteHandler 处理 GET Bucket Website 请求 (Dummy)
 func GetBucketWebsiteHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetBucketWebsiteHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetBucketWebsiteHandler")
 	// TODO: 实现 GET Bucket Website 逻辑 (Dummy)
 	w.WriteHeader(http.StatusOK)
 }
@@ -744,7 +744,7 @@ func GetBucketWebsiteHandler(w http.ResponseWriter, r *http.Request) {
 // GetBucketAccelerateHandler 处理 GET Bucket Accelerate 请求 (Dummy)
 func GetBucketAccelerateHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetBucketAccelerateHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetBucketAccelerateHandler")
 	// TODO: 实现 GET Bucket Accelerate 逻辑 (Dummy)
 	w.WriteHeader(http.StatusOK)
 }
@@ -752,7 +752,7 @@ func GetBucketAccelerateHandler(w http.ResponseWriter, r *http.Request) {
 // GetBucketRequestPaymentHandler 处理 GET Bucket Request Payment 请求 (Dummy)
 func GetBucketRequestPaymentHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetBucketRequestPaymentHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetBucketRequestPaymentHandler")
 	// TODO: 实现 GET Bucket Request Payment 逻辑 (Dummy)
 	w.WriteHeader(http.StatusOK)
 }
@@ -760,7 +760,7 @@ func GetBucketRequestPaymentHandler(w http.ResponseWriter, r *http.Request) {
 // GetBucketLoggingHandler 处理 GET Bucket Logging 请求 (Dummy)
 func GetBucketLoggingHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetBucketLoggingHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetBucketLoggingHandler")
 	// TODO: 实现 GET Bucket Logging 逻辑 (Dummy)
 	w.WriteHeader(http.StatusOK)
 }
@@ -768,12 +768,12 @@ func GetBucketLoggingHandler(w http.ResponseWriter, r *http.Request) {
 // GetBucketTaggingHandler 处理 GET Bucket Tagging 请求
 func GetBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetBucketTaggingHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetBucketTaggingHandler")
 	bucket, _, region, accessKeyID := GetReqVar(r)
 
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		logger.GetLogger("dedups3").Errorf("bucket service is nil: %v", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -786,7 +786,7 @@ func GetBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil || _bucket == nil {
-		logger.GetLogger("boulder").Errorf("bucket %s does not exist: %v", bucket, err)
+		logger.GetLogger("dedups3").Errorf("bucket %s does not exist: %v", bucket, err)
 		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
 			return
@@ -801,7 +801,7 @@ func GetBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	if expectedOwner != "" {
 		// 检查存储桶的实际所有者是否与请求的所有者匹配
 		if _bucket.Owner.ID != expectedOwner {
-			logger.GetLogger("boulder").Errorf("bucket owner mismatch: expected %s, got %s", expectedOwner, _bucket.Owner.ID)
+			logger.GetLogger("dedups3").Errorf("bucket owner mismatch: expected %s, got %s", expectedOwner, _bucket.Owner.ID)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketOwnerAWSAccountID)
 			return
 		}
@@ -824,13 +824,13 @@ func GetBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 写入成功响应
 	xhttp.WriteAWSSuc(w, r, result)
-	logger.GetLogger("boulder").Tracef("successfully retrieved tagging for bucket: %s", bucket)
+	logger.GetLogger("dedups3").Tracef("successfully retrieved tagging for bucket: %s", bucket)
 }
 
 // DeleteBucketWebsiteHandler 处理 DELETE Bucket Website 请求
 func DeleteBucketWebsiteHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: DeleteBucketWebsiteHandler")
+	logger.GetLogger("dedups3").Infof("API called: DeleteBucketWebsiteHandler")
 	// TODO: 实现 DELETE Bucket Website 逻辑
 	w.WriteHeader(http.StatusOK)
 }
@@ -838,13 +838,13 @@ func DeleteBucketWebsiteHandler(w http.ResponseWriter, r *http.Request) {
 // DeleteBucketTaggingHandler 处理 DELETE Bucket Tagging 请求
 func DeleteBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: DeleteBucketTaggingHandler")
+	logger.GetLogger("dedups3").Infof("API called: DeleteBucketTaggingHandler")
 	bucket, _, region, accessKeyID := GetReqVar(r)
 
 	// 获取bucket服务
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		logger.GetLogger("dedups3").Errorf("bucket service is nil: %v", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -874,20 +874,20 @@ func DeleteBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		logger.GetLogger("boulder").Errorf("failed to delete bucket %s tagging: %v", bucket, err)
+		logger.GetLogger("dedups3").Errorf("failed to delete bucket %s tagging: %v", bucket, err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		return
 	}
 
 	// 返回成功响应（HTTP 204 No Content）
 	w.WriteHeader(http.StatusNoContent)
-	logger.GetLogger("boulder").Tracef("successfully deleted tagging for bucket: %s", bucket)
+	logger.GetLogger("dedups3").Tracef("successfully deleted tagging for bucket: %s", bucket)
 }
 
 // GetBucketPolicyStatusHandler 处理 GET Bucket Policy Status 请求
 func GetBucketPolicyStatusHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: GetBucketPolicyStatusHandler")
+	logger.GetLogger("dedups3").Infof("API called: GetBucketPolicyStatusHandler")
 
 	// 获取请求变量
 	bucket, _, region, accessKeyID := GetReqVar(r)
@@ -895,7 +895,7 @@ func GetBucketPolicyStatusHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取bucket服务
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		logger.GetLogger("dedups3").Errorf("bucket service is nil: %v", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -920,7 +920,7 @@ func GetBucketPolicyStatusHandler(w http.ResponseWriter, r *http.Request) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
 			return
 		}
-		logger.GetLogger("boulder").Errorf("failed to get bucket info: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to get bucket info: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		return
 	}
@@ -940,13 +940,13 @@ func GetBucketPolicyStatusHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 使用XML响应函数返回结果
 	xhttp.WriteAWSSuc(w, r, policyStatus)
-	logger.GetLogger("boulder").Tracef("successfully got policy status for bucket: %s", bucket)
+	logger.GetLogger("dedups3").Tracef("successfully got policy status for bucket: %s", bucket)
 }
 
 // PutBucketLifecycleHandler 处理 PUT Bucket Lifecycle 请求
 func PutBucketLifecycleHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: PutBucketLifecycleHandler")
+	logger.GetLogger("dedups3").Infof("API called: PutBucketLifecycleHandler")
 
 	// 获取请求变量
 	bucket, _, region, accessKeyID := GetReqVar(r)
@@ -954,7 +954,7 @@ func PutBucketLifecycleHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取bucket服务
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		logger.GetLogger("dedups3").Errorf("bucket service is nil: %v", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -962,7 +962,7 @@ func PutBucketLifecycleHandler(w http.ResponseWriter, r *http.Request) {
 	// 读取请求体
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to read request body: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to read request body: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidRequest)
 		return
 	}
@@ -971,14 +971,14 @@ func PutBucketLifecycleHandler(w http.ResponseWriter, r *http.Request) {
 	// 解析XML请求体
 	var lifecycleConfig meta.LifecycleConfiguration
 	if err := xml.Unmarshal(body, &lifecycleConfig); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to unmarshal lifecycle configuration: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to unmarshal lifecycle configuration: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedXML)
 		return
 	}
 
 	if len(lifecycleConfig.Rules) > 0 && len(body) > 0 {
 		if err := lifecycleConfig.Validate(); err != nil {
-			logger.GetLogger("boulder").Errorf("invalid bucket lifecycle: %v", err)
+			logger.GetLogger("dedups3").Errorf("invalid bucket lifecycle: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidRequest)
 			return
 		}
@@ -1003,7 +1003,7 @@ func PutBucketLifecycleHandler(w http.ResponseWriter, r *http.Request) {
 		} else if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
 		} else {
-			logger.GetLogger("boulder").Errorf("failed to put bucket lifecycle: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to put bucket lifecycle: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		}
 		return
@@ -1011,13 +1011,13 @@ func PutBucketLifecycleHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 返回成功响应
 	w.WriteHeader(http.StatusOK)
-	logger.GetLogger("boulder").Tracef("successfully set lifecycle configuration for bucket: %s", bucket)
+	logger.GetLogger("dedups3").Tracef("successfully set lifecycle configuration for bucket: %s", bucket)
 }
 
 // PutBucketReplicationConfigHandler 处理 PUT Bucket Replication Configuration 请求
 func PutBucketReplicationConfigHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: PutBucketReplicationConfigHandler")
+	logger.GetLogger("dedups3").Infof("API called: PutBucketReplicationConfigHandler")
 	// TODO: 实现 PUT Bucket Replication Configuration 逻辑
 	w.WriteHeader(http.StatusOK)
 }
@@ -1025,7 +1025,7 @@ func PutBucketReplicationConfigHandler(w http.ResponseWriter, r *http.Request) {
 // PutBucketEncryptionHandler 处理 PUT Bucket Encryption 请求
 func PutBucketEncryptionHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: PutBucketEncryptionHandler")
+	logger.GetLogger("dedups3").Infof("API called: PutBucketEncryptionHandler")
 	// TODO: 实现 PUT Bucket Encryption 逻辑
 	w.WriteHeader(http.StatusOK)
 }
@@ -1033,7 +1033,7 @@ func PutBucketEncryptionHandler(w http.ResponseWriter, r *http.Request) {
 // PutBucketPolicyHandler 处理 PUT Bucket Policy 请求
 func PutBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: PutBucketPolicyHandler")
+	logger.GetLogger("dedups3").Infof("API called: PutBucketPolicyHandler")
 	// 获取请求变量
 	bucket, _, region, accessKeyID := GetReqVar(r)
 
@@ -1044,7 +1044,7 @@ func PutBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 	// 读取请求体
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to read request body: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to read request body: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrBadRequest)
 		return
 	}
@@ -1055,13 +1055,13 @@ func PutBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 	if len(body) > 0 {
 		// 策略内容是JSON格式的字符串
 		if err := json.Unmarshal(body, &policy); err != nil {
-			logger.GetLogger("boulder").Errorf("failed to parse bucket policy: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to parse bucket policy: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedPolicy)
 			return
 		}
 		// 验证策略格式
 		if err := policy.Validate(); err != nil {
-			logger.GetLogger("boulder").Errorf("invalid bucket policy: %v", err)
+			logger.GetLogger("dedups3").Errorf("invalid bucket policy: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedPolicy)
 			return
 		}
@@ -1070,7 +1070,7 @@ func PutBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取bucket服务
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("bucket service is nil")
+		logger.GetLogger("dedups3").Errorf("bucket service is nil")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -1089,7 +1089,7 @@ func PutBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 		} else if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
 		} else {
-			logger.GetLogger("boulder").Errorf("failed to put bucket policy: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to put bucket policy: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		}
 		return
@@ -1097,13 +1097,13 @@ func PutBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 返回成功响应
 	w.WriteHeader(http.StatusOK)
-	logger.GetLogger("boulder").Infof("successfully set bucket policy for bucket: %s", bucket)
+	logger.GetLogger("dedups3").Infof("successfully set bucket policy for bucket: %s", bucket)
 }
 
 // PutBucketObjectLockConfigHandler 处理 PUT Bucket Object Lock Configuration 请求
 func PutBucketObjectLockConfigHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: PutBucketObjectLockConfigHandler")
+	logger.GetLogger("dedups3").Infof("API called: PutBucketObjectLockConfigHandler")
 
 	// 获取请求变量
 	bucket, _, region, accessKeyID := GetReqVar(r)
@@ -1111,7 +1111,7 @@ func PutBucketObjectLockConfigHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取bucket服务
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		logger.GetLogger("dedups3").Errorf("bucket service is nil: %v", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -1122,7 +1122,7 @@ func PutBucketObjectLockConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 检查请求者付费模式
 	if requestPayer != "" && requestPayer != "requester" {
-		logger.GetLogger("boulder").Errorf("invalid x-amz-request-payer value: %s", requestPayer)
+		logger.GetLogger("dedups3").Errorf("invalid x-amz-request-payer value: %s", requestPayer)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidArgument)
 		return
 	}
@@ -1138,7 +1138,7 @@ func PutBucketObjectLockConfigHandler(w http.ResponseWriter, r *http.Request) {
 	// 读取请求体
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to read request body: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to read request body: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedRequestBody)
 		return
 	}
@@ -1146,11 +1146,11 @@ func PutBucketObjectLockConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 校验 MD5
 	if contentMD5 != "" && len(body) > 0 {
-		logger.GetLogger("boulder").Debugf("Processing Content-MD5 validation")
+		logger.GetLogger("dedups3").Debugf("Processing Content-MD5 validation")
 		hash := md5.Sum(body)
 		computedMD5 := hex.EncodeToString(hash[:])
 		if computedMD5 != contentMD5 {
-			logger.GetLogger("boulder").Errorf("Content-MD5 mismatch: computed=%s, header=%s", computedMD5, contentMD5)
+			logger.GetLogger("dedups3").Errorf("Content-MD5 mismatch: computed=%s, header=%s", computedMD5, contentMD5)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidDigest)
 			return
 		}
@@ -1159,13 +1159,13 @@ func PutBucketObjectLockConfigHandler(w http.ResponseWriter, r *http.Request) {
 	// 解析XML请求体
 	var objectLockConfig meta.ObjectLockConfiguration
 	if err := xml.Unmarshal(body, &objectLockConfig); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to unmarshal object lock config: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to unmarshal object lock config: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedXML)
 		return
 	}
 	if len(body) > 0 {
 		if err := objectLockConfig.Validate(); err != nil {
-			logger.GetLogger("boulder").Errorf("invalid object lock config: %v", err)
+			logger.GetLogger("dedups3").Errorf("invalid object lock config: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketObjectLockConfiguration)
 			return
 		}
@@ -1194,7 +1194,7 @@ func PutBucketObjectLockConfigHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		logger.GetLogger("boulder").Errorf("failed to set object lock configuration: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to set object lock configuration: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		return
 	}
@@ -1207,19 +1207,19 @@ func PutBucketObjectLockConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 返回成功响应
 	w.WriteHeader(http.StatusOK)
-	logger.GetLogger("boulder").Tracef("successfully set object lock configuration for bucket: %s", bucket)
+	logger.GetLogger("dedups3").Tracef("successfully set object lock configuration for bucket: %s", bucket)
 }
 
 // PutBucketTaggingHandler 处理 PUT Bucket Tagging 请求
 func PutBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: PutBucketTaggingHandler")
+	logger.GetLogger("dedups3").Infof("API called: PutBucketTaggingHandler")
 	bucket, _, region, accessKeyID := GetReqVar(r)
 
 	// 读取请求体
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to read request body: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to read request body: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedRequestBody)
 		return
 	}
@@ -1228,14 +1228,14 @@ func PutBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	// 解析请求体中的标签信息
 	tagging := meta.Tagging{}
 	if err := xml.Unmarshal(body, &tagging); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to unmarshal tagging XML: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to unmarshal tagging XML: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedXML)
 		return
 	}
 
 	// 验证标签数量限制（AWS S3 限制每个存储桶最多10个标签）
 	if len(tagging.TagSet.Tags) > 10 {
-		logger.GetLogger("boulder").Errorf("too many tags: %d", len(tagging.TagSet.Tags))
+		logger.GetLogger("dedups3").Errorf("too many tags: %d", len(tagging.TagSet.Tags))
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidTag)
 		return
 	}
@@ -1243,7 +1243,7 @@ func PutBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
 	if len(body) > 0 && len(tagging.TagSet.Tags) > 0 {
 		err = tagging.Validate()
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("invalid tagging XML: %v", err)
+			logger.GetLogger("dedups3").Errorf("invalid tagging XML: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidTag)
 			return
 		}
@@ -1254,7 +1254,7 @@ func PutBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
 
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		logger.GetLogger("dedups3").Errorf("bucket service is nil: %v", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -1277,20 +1277,20 @@ func PutBucketTaggingHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		logger.GetLogger("boulder").Errorf("failed to put bucket %s tagging: %v", bucket, err)
+		logger.GetLogger("dedups3").Errorf("failed to put bucket %s tagging: %v", bucket, err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		return
 	}
 
 	// 返回成功响应
 	w.WriteHeader(http.StatusOK)
-	logger.GetLogger("boulder").Tracef("successfully set tagging for bucket: %s", bucket)
+	logger.GetLogger("dedups3").Tracef("successfully set tagging for bucket: %s", bucket)
 }
 
 // PutBucketVersioningHandler 处理 PUT Bucket Versioning 请求
 func PutBucketVersioningHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: PutBucketVersioningHandler")
+	logger.GetLogger("dedups3").Infof("API called: PutBucketVersioningHandler")
 	// TODO: 实现 PUT Bucket Versioning 逻辑
 	w.WriteHeader(http.StatusOK)
 }
@@ -1298,13 +1298,13 @@ func PutBucketVersioningHandler(w http.ResponseWriter, r *http.Request) {
 // PutBucketNotificationConfigurationHandler 设置存储桶的通知配置
 func PutBucketNotificationConfigurationHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: PutBucketNotificationConfigurationHandler")
+	logger.GetLogger("dedups3").Infof("API called: PutBucketNotificationConfigurationHandler")
 	bucket, _, region, accessKeyID := GetReqVar(r)
 
 	// 获取bucket服务
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("bucket service is nil")
+		logger.GetLogger("dedups3").Errorf("bucket service is nil")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -1312,7 +1312,7 @@ func PutBucketNotificationConfigurationHandler(w http.ResponseWriter, r *http.Re
 	// 获取请求体
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to read request body: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to read request body: %v", err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidRequest)
 		return
 	}
@@ -1322,12 +1322,12 @@ func PutBucketNotificationConfigurationHandler(w http.ResponseWriter, r *http.Re
 	notification := meta.EventNotificationConfiguration{}
 	if len(data) > 0 {
 		if err := xml.Unmarshal(data, &notification); err != nil {
-			logger.GetLogger("boulder").Errorf("failed to unmarshal notification configuration: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to unmarshal notification configuration: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrMalformedXML)
 			return
 		}
 		if err := notification.Validate(); err != nil {
-			logger.GetLogger("boulder").Errorf("invalid notification configuration: %v", err)
+			logger.GetLogger("dedups3").Errorf("invalid notification configuration: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrEventNotification)
 			return
 		}
@@ -1352,7 +1352,7 @@ func PutBucketNotificationConfigurationHandler(w http.ResponseWriter, r *http.Re
 		} else if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
 		} else {
-			logger.GetLogger("boulder").Errorf("failed to set bucket notification configuration: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to set bucket notification configuration: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		}
 		return
@@ -1364,7 +1364,7 @@ func PutBucketNotificationConfigurationHandler(w http.ResponseWriter, r *http.Re
 
 // PutBucketHandler 处理 PUT Bucket (CreateBucket) 请求
 func PutBucketHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("boulder").Tracef("API called: PutBucketHandler")
+	logger.GetLogger("dedups3").Tracef("API called: PutBucketHandler")
 	bucket, _, _, accessKeyID := GetReqVar(r)
 
 	objectLockEnabled := false
@@ -1378,16 +1378,16 @@ func PutBucketHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	logger.GetLogger("boulder").Tracef("create bucket %s get object lock option %v", bucket, objectLockEnabled)
+	logger.GetLogger("dedups3").Tracef("create bucket %s get object lock option %v", bucket, objectLockEnabled)
 
 	var locationConstraint sb.CreateBucketLocationConfiguration
 	err := utils.XmlDecoder(r.Body, &locationConstraint, r.ContentLength)
 	if err == nil {
-		logger.GetLogger("boulder").Tracef("creating bucket location configuration %+v", locationConstraint)
+		logger.GetLogger("dedups3").Tracef("creating bucket location configuration %+v", locationConstraint)
 	}
 
 	if err := utils.CheckValidBucketName(bucket); err != nil {
-		logger.GetLogger("boulder").Errorf("check bucket name %s invalid %v", bucket, err)
+		logger.GetLogger("dedups3").Errorf("check bucket name %s invalid %v", bucket, err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketName)
 		return
 	}
@@ -1397,7 +1397,7 @@ func PutBucketHandler(w http.ResponseWriter, r *http.Request) {
 
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		logger.GetLogger("dedups3").Errorf("bucket service is nil: %v", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -1408,7 +1408,7 @@ func PutBucketHandler(w http.ResponseWriter, r *http.Request) {
 		AccessKeyID:       accessKeyID,
 	})
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed create bucket err: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed create bucket err: %v", err)
 
 		if errors.Is(err, xhttp.ToError(xhttp.ErrBucketAlreadyOwnedByYou)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrBucketAlreadyOwnedByYou)
@@ -1419,7 +1419,7 @@ func PutBucketHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	logger.GetLogger("boulder").Tracef("success bucket created: %v", bucket)
+	logger.GetLogger("dedups3").Tracef("success bucket created: %v", bucket)
 	// Make sure to add Location information here only for bucket
 	w.Header().Set(xhttp.Location, "/"+bucket)
 	w.WriteHeader(http.StatusOK)
@@ -1428,12 +1428,12 @@ func PutBucketHandler(w http.ResponseWriter, r *http.Request) {
 // HeadBucketHandler 检查存储桶是否存在
 func HeadBucketHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Tracef("API called: HeadBucketHandler")
+	logger.GetLogger("dedups3").Tracef("API called: HeadBucketHandler")
 	bucket, _, region, accessKeyID := GetReqVar(r)
 
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		logger.GetLogger("dedups3").Errorf("bucket service is nil: %v", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -1442,7 +1442,7 @@ func HeadBucketHandler(w http.ResponseWriter, r *http.Request) {
 		AccessKeyID: accessKeyID,
 	})
 	if err != nil || _bucket == nil {
-		logger.GetLogger("boulder").Errorf("bucket %s does not exist: %v", bucket, err)
+		logger.GetLogger("dedups3").Errorf("bucket %s does not exist: %v", bucket, err)
 		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
 			return
@@ -1457,7 +1457,7 @@ func HeadBucketHandler(w http.ResponseWriter, r *http.Request) {
 // DeleteBucketPolicyHandler 处理 DELETE Bucket Policy 请求
 func DeleteBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: DeleteBucketPolicyHandler")
+	logger.GetLogger("dedups3").Infof("API called: DeleteBucketPolicyHandler")
 
 	// 获取请求变量
 	bucket, _, region, accessKeyID := GetReqVar(r)
@@ -1469,7 +1469,7 @@ func DeleteBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取bucket服务
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		logger.GetLogger("dedups3").Errorf("bucket service is nil: %v", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -1489,21 +1489,21 @@ func DeleteBucketPolicyHandler(w http.ResponseWriter, r *http.Request) {
 		} else if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
 		} else {
-			logger.GetLogger("boulder").Errorf("failed to delete bucket policy: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to delete bucket policy: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		}
 		return
 	}
 
 	// 返回成功响应
-	logger.GetLogger("boulder").Infof("successfully deleted bucket policy for bucket: %s", bucket)
+	logger.GetLogger("dedups3").Infof("successfully deleted bucket policy for bucket: %s", bucket)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // DeleteBucketReplicationConfigHandler 处理 DELETE Bucket Replication Configuration Request
 func DeleteBucketReplicationConfigHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: DeleteBucketReplicationConfigHandler")
+	logger.GetLogger("dedups3").Infof("API called: DeleteBucketReplicationConfigHandler")
 	// TODO: 实现 DELETE Bucket Replication Configuration 逻辑
 	w.WriteHeader(http.StatusOK)
 }
@@ -1511,7 +1511,7 @@ func DeleteBucketReplicationConfigHandler(w http.ResponseWriter, r *http.Request
 // DeleteBucketLifecycleHandler 处理 DELETE Bucket Lifecycle Request
 func DeleteBucketLifecycleHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: DeleteBucketLifecycleHandler")
+	logger.GetLogger("dedups3").Infof("API called: DeleteBucketLifecycleHandler")
 
 	// 获取请求变量
 	bucket, _, region, accessKeyID := GetReqVar(r)
@@ -1523,7 +1523,7 @@ func DeleteBucketLifecycleHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取bucket服务
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		logger.GetLogger("dedups3").Errorf("bucket service is nil: %v", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -1543,7 +1543,7 @@ func DeleteBucketLifecycleHandler(w http.ResponseWriter, r *http.Request) {
 		} else if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchBucket)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrNoSuchBucket)
 		} else {
-			logger.GetLogger("boulder").Errorf("failed to put bucket lifecycle: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to put bucket lifecycle: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrInternalError)
 		}
 		return
@@ -1556,7 +1556,7 @@ func DeleteBucketLifecycleHandler(w http.ResponseWriter, r *http.Request) {
 // DeleteBucketEncryptionHandler 处理 DELETE Bucket Encryption Request
 func DeleteBucketEncryptionHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: DeleteBucketEncryptionHandler")
+	logger.GetLogger("dedups3").Infof("API called: DeleteBucketEncryptionHandler")
 	// TODO: 实现 DELETE Bucket Encryption 逻辑
 	w.WriteHeader(http.StatusOK)
 }
@@ -1564,11 +1564,11 @@ func DeleteBucketEncryptionHandler(w http.ResponseWriter, r *http.Request) {
 // DeleteBucketHandler 删除存储桶
 func DeleteBucketHandler(w http.ResponseWriter, r *http.Request) {
 	// 打印接口名称
-	logger.GetLogger("boulder").Infof("API called: DeleteBucketHandler")
+	logger.GetLogger("dedups3").Infof("API called: DeleteBucketHandler")
 	bucket, _, _, accessKeyID := GetReqVar(r)
 
 	if err := utils.CheckValidBucketName(bucket); err != nil {
-		logger.GetLogger("boulder").Errorf("DeleteBucketHandler: bucket name is empty")
+		logger.GetLogger("dedups3").Errorf("DeleteBucketHandler: bucket name is empty")
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidBucketName)
 		return
 	}
@@ -1576,7 +1576,7 @@ func DeleteBucketHandler(w http.ResponseWriter, r *http.Request) {
 	// 获取bucket服务
 	bs := sb.GetBucketService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("bucket service is nil: %v", bucket)
+		logger.GetLogger("dedups3").Errorf("bucket service is nil: %v", bucket)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
 	}
@@ -1600,12 +1600,12 @@ func DeleteBucketHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to delete bucket %s: %v", bucket, err)
+		logger.GetLogger("dedups3").Errorf("failed to delete bucket %s: %v", bucket, err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrBucketMetadataNotInitialized)
 		return
 	}
 
-	logger.GetLogger("boulder").Tracef("successfully deleted bucket: %v", bucket)
+	logger.GetLogger("dedups3").Tracef("successfully deleted bucket: %v", bucket)
 	// 返回204 No Content表示成功删除
 	w.WriteHeader(http.StatusNoContent)
 }

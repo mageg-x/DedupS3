@@ -21,7 +21,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	stats2 "github.com/mageg-x/boulder/service/stats"
+	stats2 "github.com/mageg-x/dedups3/service/stats"
 	"math/rand"
 	"net/http"
 	"os"
@@ -34,17 +34,17 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 
-	"github.com/mageg-x/boulder/internal/config"
-	"github.com/mageg-x/boulder/internal/fs"
-	xhttp "github.com/mageg-x/boulder/internal/http"
-	"github.com/mageg-x/boulder/internal/logger"
-	"github.com/mageg-x/boulder/internal/storage/block"
-	"github.com/mageg-x/boulder/internal/storage/cache"
-	"github.com/mageg-x/boulder/internal/storage/kv"
-	"github.com/mageg-x/boulder/router"
-	gc2 "github.com/mageg-x/boulder/service/gc"
-	"github.com/mageg-x/boulder/service/iam"
-	"github.com/mageg-x/boulder/service/storage"
+	"github.com/mageg-x/dedups3/internal/config"
+	"github.com/mageg-x/dedups3/internal/fs"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
+	"github.com/mageg-x/dedups3/internal/logger"
+	"github.com/mageg-x/dedups3/internal/storage/block"
+	"github.com/mageg-x/dedups3/internal/storage/cache"
+	"github.com/mageg-x/dedups3/internal/storage/kv"
+	"github.com/mageg-x/dedups3/router"
+	gc2 "github.com/mageg-x/dedups3/service/gc"
+	"github.com/mageg-x/dedups3/service/iam"
+	"github.com/mageg-x/dedups3/service/storage"
 )
 
 var (
@@ -80,9 +80,9 @@ func startAdminSvr() error {
 			Addr:    cfg.Server.ConsoleAddress,
 			Handler: mr,
 		}
-		logger.GetLogger("boulder").Infof("admin server started at %s", adminServer.Addr)
+		logger.GetLogger("dedups3").Infof("admin server started at %s", adminServer.Addr)
 		if err := adminServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.GetLogger("boulder").Errorf("admin server running failed: %v", err)
+			logger.GetLogger("dedups3").Errorf("admin server running failed: %v", err)
 		}
 
 		defer func(svr *http.Server) {
@@ -90,9 +90,9 @@ func startAdminSvr() error {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 				if err := svr.Shutdown(ctx); err != nil {
-					logger.GetLogger("boulder").Errorf("stop admin server %s failed: %v", svr.Addr, err)
+					logger.GetLogger("dedups3").Errorf("stop admin server %s failed: %v", svr.Addr, err)
 				} else {
-					logger.GetLogger("boulder").Infof("admin server %s stopped", svr.Addr)
+					logger.GetLogger("dedups3").Infof("admin server %s stopped", svr.Addr)
 				}
 			}
 		}(adminServer)
@@ -109,7 +109,7 @@ func startAdminSvr() error {
 		return fmt.Errorf("admin server  started failed")
 	case <-time.After(1 * time.Second):
 		// 1 秒内没有错误，也没有 close → 说明服务正在正常运行
-		logger.GetLogger("boulder").Infof("admin server started successfully")
+		logger.GetLogger("dedups3").Infof("admin server started successfully")
 		return nil //认为启动成功
 	}
 }
@@ -126,14 +126,14 @@ func startS3Server() ([]*xhttp.Server, error) {
 		RecvBufSize: cfg.Server.RecvBufSize,
 		SendBufSize: cfg.Server.SendBufSize,
 		Trace: func(msg string) {
-			logger.GetLogger("boulder").Tracef(msg)
+			logger.GetLogger("dedups3").Tracef(msg)
 		},
 		UserTimeout: int(cfg.Server.ConnUserTimeout.Milliseconds()),
 	}
 	listenCtx := context.Background()
 	listenErrCallback := func(addr string, err error) {
 		if err != nil {
-			logger.GetLogger("boulder").Fatalf("listen %s failed: %v", addr, err)
+			logger.GetLogger("dedups3").Fatalf("listen %s failed: %v", addr, err)
 		}
 	}
 	// 创建多个服务器实例
@@ -148,16 +148,16 @@ func startS3Server() ([]*xhttp.Server, error) {
 		// 初始化服务器
 		serveFunc, err := servers[i].Init(listenCtx, listenErrCallback)
 		if err != nil {
-			logger.GetLogger("boulder").Fatalf("init server failed: %v", err)
+			logger.GetLogger("dedups3").Fatalf("init server failed: %v", err)
 		}
 		serveFuncs[i] = serveFunc
 	}
-	logger.GetLogger("boulder").Infof("server starting")
+	logger.GetLogger("dedups3").Infof("server starting")
 	// 启动所有服务器（在不同协程中）
 	for i := 0; i < cfg.Server.Listeners; i++ {
 		go func(idx int) {
 			if err := serveFuncs[idx](); err != nil {
-				logger.GetLogger("boulder").Errorf("server %d running failed: %v", idx, err)
+				logger.GetLogger("dedups3").Errorf("server %d running failed: %v", idx, err)
 			}
 		}(i)
 	}
@@ -170,14 +170,14 @@ func initStorage() error {
 	// 初始kv， 初始meta数据地方
 	_, err := kv.GetKvStore()
 	if err != nil {
-		logger.GetLogger("boulder").Error("failed to init kv store", zap.Error(err))
+		logger.GetLogger("dedups3").Error("failed to init kv store", zap.Error(err))
 		panic(err)
 	}
 
 	// 初始化cache， 缓存元数据的地方
 	_, err = cache.GetCache()
 	if err != nil {
-		logger.GetLogger("boulder").Error("failed to init cache store", zap.Error(err))
+		logger.GetLogger("dedups3").Error("failed to init cache store", zap.Error(err))
 		panic(err)
 	}
 
@@ -194,27 +194,27 @@ func initStorage() error {
 	// 拉取所有云配置
 	storages := bs.ListStorages()
 	if storages == nil {
-		logger.GetLogger("boulder").Error("no storages configure valid")
+		logger.GetLogger("dedups3").Error("no storages configure valid")
 		os.Exit(1)
 	}
 	for i, s := range storages {
-		logger.GetLogger("boulder").Warnf("storage %d %#v", i, s)
+		logger.GetLogger("dedups3").Warnf("storage %d %#v", i, s)
 		_storage, err := bs.GetStorage(s.ID)
 		if err != nil {
-			logger.GetLogger("boulder").Error("failed to init storage", zap.Error(err))
+			logger.GetLogger("dedups3").Error("failed to init storage", zap.Error(err))
 			os.Exit(1)
 		}
 		// 关键：检查 inst 是否也实现了 fs.SyncTarget
 		syncTargetor, ok := _storage.Instance.(fs.SyncTargetor) // 类型断言
 		if !ok {
-			logger.GetLogger("boulder").Errorf("storage instance for id %#v does not implement SyncTarget", _storage)
+			logger.GetLogger("dedups3").Errorf("storage instance for id %#v does not implement SyncTarget", _storage)
 			os.Exit(1)
 		}
 		vfile, err := block.GetTieredFs()
 		if err == nil && vfile != nil {
 			_ = vfile.AddSyncTargetor(s.ID, syncTargetor)
 		} else {
-			logger.GetLogger("boulder").Errorf("failed to get tiered fs for storage %#v", _storage)
+			logger.GetLogger("dedups3").Errorf("failed to get tiered fs for storage %#v", _storage)
 			os.Exit(1)
 		}
 	}
@@ -252,13 +252,13 @@ func main() {
 		Compress:   cfg.Log.Compress,
 	})
 
-	logger.GetLogger("boulder").SetLevel(logrus.Level(int(logrus.WarnLevel) + cli.Verbose))
-	logger.GetLogger("boulder").Tracef("get config %v", cfg)
+	logger.GetLogger("dedups3").SetLevel(logrus.Level(int(logrus.WarnLevel) + cli.Verbose))
+	logger.GetLogger("dedups3").Tracef("get config %v", cfg)
 
 	// 2、初始化存储部分
 	err := initStorage()
 	if err != nil {
-		logger.GetLogger("boulder").Error("failed to init storage", zap.Error(err))
+		logger.GetLogger("dedups3").Error("failed to init storage", zap.Error(err))
 		panic(err)
 	}
 
@@ -267,46 +267,46 @@ func main() {
 	account, err := iamService.CreateAccount(cfg.Iam.Username, cfg.Iam.Password)
 	if err != nil {
 		if !errors.Is(err, iam.ERR_ACCOUNT_EXISTS) {
-			logger.GetLogger("boulder").Fatal("failed to create account", zap.Error(err))
+			logger.GetLogger("dedups3").Fatal("failed to create account", zap.Error(err))
 		}
 	}
 	ak, err := iamService.CreateAccessKey(account.AccountID, account.Name, time.Now().Add(time.Hour*24*365), cfg.Iam.AK, cfg.Iam.SK)
-	logger.GetLogger("boulder").Warnf("create account %v ak %v ", account, ak)
+	logger.GetLogger("dedups3").Warnf("create account %v ak %v ", account, ak)
 
 	iamService.CreateUser(account.AccountID, "admin", "Abcd@1234", nil, nil, nil, true)
 	iamService.CreateAccessKey(account.AccountID, "admin", time.Now().Add(time.Hour*24*365), "D"+cfg.Iam.AK, "D"+cfg.Iam.SK)
 	// 启动 admin server
 	if err := startAdminSvr(); err != nil {
-		logger.GetLogger("boulder").Error("failed to start admin server", zap.Error(err))
+		logger.GetLogger("dedups3").Error("failed to start admin server", zap.Error(err))
 		panic(err)
 	}
 
 	// 启动S3 Server（监听 3000 端口）
 	servers, err := startS3Server()
 	if err != nil {
-		logger.GetLogger("boulder").Error("failed to start s3 server", zap.Error(err))
+		logger.GetLogger("dedups3").Error("failed to start s3 server", zap.Error(err))
 		panic(err)
 	}
 
 	// 初始化 垃圾回收后台服务
 	gc := gc2.GetGCService()
 	if gc == nil {
-		logger.GetLogger("boulder").Error("failed to init gc service")
+		logger.GetLogger("dedups3").Error("failed to init gc service")
 		panic(err)
 	}
 	if err = gc.Start(); err != nil {
-		logger.GetLogger("boulder").Error("failed to start gc service", zap.Error(err))
+		logger.GetLogger("dedups3").Error("failed to start gc service", zap.Error(err))
 		panic(err)
 	}
 
 	// 初始化数据统计后台服务
 	stats := stats2.GetStatsService()
 	if stats == nil {
-		logger.GetLogger("boulder").Error("failed to init stats service")
+		logger.GetLogger("dedups3").Error("failed to init stats service")
 		panic(err)
 	}
 	if err = stats.Start(); err != nil {
-		logger.GetLogger("boulder").Error("failed to start stats service", zap.Error(err))
+		logger.GetLogger("dedups3").Error("failed to start stats service", zap.Error(err))
 		panic(err)
 	}
 
@@ -318,14 +318,14 @@ func main() {
 	<-quit
 
 	// 执行优雅关机
-	logger.GetLogger("boulder").Infof("stop servers ...")
+	logger.GetLogger("dedups3").Infof("stop servers ...")
 
 	// 关闭主服务器
 	for _, srv := range servers {
 		if err := srv.Shutdown(); err != nil {
-			logger.GetLogger("boulder").Errorf("stop server failed: %v", err)
+			logger.GetLogger("dedups3").Errorf("stop server failed: %v", err)
 		}
 	}
 
-	logger.GetLogger("boulder").Infof("server ended")
+	logger.GetLogger("dedups3").Infof("server ended")
 }

@@ -26,25 +26,25 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"github.com/mageg-x/boulder/service/stats"
+	"github.com/mageg-x/dedups3/service/stats"
 	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/mageg-x/boulder/internal/utils"
-	"github.com/mageg-x/boulder/service/block"
-	"github.com/mageg-x/boulder/service/chunk"
-	"github.com/mageg-x/boulder/service/gc"
+	"github.com/mageg-x/dedups3/internal/utils"
+	"github.com/mageg-x/dedups3/service/block"
+	"github.com/mageg-x/dedups3/service/chunk"
+	"github.com/mageg-x/dedups3/service/gc"
 
-	xhttp "github.com/mageg-x/boulder/internal/http"
-	"github.com/mageg-x/boulder/internal/logger"
-	xcache "github.com/mageg-x/boulder/internal/storage/cache"
-	"github.com/mageg-x/boulder/internal/storage/kv"
-	"github.com/mageg-x/boulder/meta"
-	"github.com/mageg-x/boulder/service/iam"
-	"github.com/mageg-x/boulder/service/storage"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
+	"github.com/mageg-x/dedups3/internal/logger"
+	xcache "github.com/mageg-x/dedups3/internal/storage/cache"
+	"github.com/mageg-x/dedups3/internal/storage/kv"
+	"github.com/mageg-x/dedups3/meta"
+	"github.com/mageg-x/dedups3/service/iam"
+	"github.com/mageg-x/dedups3/service/storage"
 )
 
 var (
@@ -226,7 +226,7 @@ func GetObjectService() *ObjectService {
 
 	store, err := kv.GetKvStore()
 	if err != nil || store == nil {
-		logger.GetLogger("boulder").Errorf("failed to get kv store: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to get kv store: %v", err)
 		return nil
 	}
 	instance = &ObjectService{
@@ -238,13 +238,13 @@ func GetObjectService() *ObjectService {
 func (o *ObjectService) HeadObject(params *BaseObjectParams) (*meta.Object, error) {
 	iamService := iam.GetIamService()
 	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
 		return nil, errors.New("failed to get iam service")
 	}
 
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
-		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		logger.GetLogger("dedups3").Errorf("failed to get access key %s", params.AccessKeyID)
 		return nil, xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
@@ -263,11 +263,11 @@ func (o *ObjectService) HeadObject(params *BaseObjectParams) (*meta.Object, erro
 		var _object meta.Object
 		exist, err := o.kvstore.Get(objkey, &_object)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to fetch object %s: %v", objkey, err)
+			logger.GetLogger("dedups3").Errorf("failed to fetch object %s: %v", objkey, err)
 			return nil, err
 		}
 		if !exist {
-			logger.GetLogger("boulder").Infof("object %s does not exist", objkey)
+			logger.GetLogger("dedups3").Infof("object %s does not exist", objkey)
 			return nil, xhttp.ToError(xhttp.ErrNoSuchKey)
 		}
 		object = &_object
@@ -282,13 +282,13 @@ func (o *ObjectService) HeadObject(params *BaseObjectParams) (*meta.Object, erro
 func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *BaseObjectParams) (*meta.Object, error) {
 	iamService := iam.GetIamService()
 	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
 		return nil, errors.New("failed to get iam service")
 	}
 
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
-		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		logger.GetLogger("dedups3").Errorf("failed to get access key %s", params.AccessKeyID)
 		return nil, xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
@@ -307,7 +307,7 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 		var _bucket meta.BucketMetadata
 		exist, err := o.kvstore.Get(key, &_bucket)
 		if !exist || err != nil {
-			logger.GetLogger("boulder").Errorf("bucket %s does not exist", params.BucketName)
+			logger.GetLogger("dedups3").Errorf("bucket %s does not exist", params.BucketName)
 			return nil, xhttp.ToError(xhttp.ErrNoSuchBucket)
 		}
 		bucket = &_bucket
@@ -324,7 +324,7 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 	// 	If-Match 只有当目标对象存在且 ETag 匹配时才允许上传
 	if params.IfMatch != "" {
 		if !dstobiOk || string(_dstobj.ETag) != params.IfMatch {
-			logger.GetLogger("boulder").Errorf("object %s/%s if match not match %s:%s", params.BucketName, params.ObjKey, params.IfMatch, _dstobj.ETag)
+			logger.GetLogger("dedups3").Errorf("object %s/%s if match not match %s:%s", params.BucketName, params.ObjKey, params.IfMatch, _dstobj.ETag)
 			return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 		}
 	}
@@ -333,13 +333,13 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 		if params.IfNoneMatch == "*" {
 			// * 表示：目标必须不存在
 			if dstobiOk {
-				logger.GetLogger("boulder").Errorf("object %s/%s already exists (If-None-Match: *)", params.BucketName, params.ObjKey)
+				logger.GetLogger("dedups3").Errorf("object %s/%s already exists (If-None-Match: *)", params.BucketName, params.ObjKey)
 				return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 			}
 		} else {
 			// 指定了 ETag：当目标存在且 ETag 匹配时，拒绝写入
 			if dstobiOk && string(_dstobj.ETag) == params.IfNoneMatch {
-				logger.GetLogger("boulder").Errorf("object %s/%s ETag matches If-None-Match: %s", params.BucketName, params.ObjKey, params.IfNoneMatch)
+				logger.GetLogger("dedups3").Errorf("object %s/%s ETag matches If-None-Match: %s", params.BucketName, params.ObjKey, params.IfNoneMatch)
 				return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 			}
 		}
@@ -348,7 +348,7 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 	//If-Modified-Since	只有当目标对象存在且已修改（Last-Modified > 指定时间）才允许上传
 	if t, err := http.ParseTime(params.IfModifiedSince); err == nil {
 		if !dstobiOk || !_dstobj.LastModified.After(t) {
-			logger.GetLogger("boulder").Errorf("object %s/%s modified since %s", params.BucketName, params.ObjKey, t)
+			logger.GetLogger("dedups3").Errorf("object %s/%s modified since %s", params.BucketName, params.ObjKey, t)
 			return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 		}
 	}
@@ -360,13 +360,13 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 
 	bs := storage.GetStorageService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("failed to get storage service")
+		logger.GetLogger("dedups3").Errorf("failed to get storage service")
 		return nil, errors.New("failed to get storage service")
 	}
 
 	scs := bs.GetStoragesByClass(storageClass)
 	if len(scs) == 0 {
-		logger.GetLogger("boulder").Errorf("no storage class %s", storageClass)
+		logger.GetLogger("dedups3").Errorf("no storage class %s", storageClass)
 		return nil, fmt.Errorf("no storage class %s", storageClass)
 	}
 	sc := scs[0]
@@ -383,12 +383,12 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 		DisplayName: ak.Username,
 	}
 	objectInfo.LastModified = time.Now().UTC()
-	logger.GetLogger("boulder").Debugf("put object %#v", objectInfo)
+	logger.GetLogger("dedups3").Debugf("put object %#v", objectInfo)
 
 	// 进行chunk切分
 	chunker := chunk.GetChunkService()
 	if chunker == nil {
-		logger.GetLogger("boulder").Errorf("failed to get chunk service")
+		logger.GetLogger("dedups3").Errorf("failed to get chunk service")
 		return nil, errors.New("failed to get chunk service")
 	}
 
@@ -404,7 +404,7 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 		// 先压缩，如果压缩后小于 1024，就放到元数据里面，否则就跳过
 		bodyBytes, err := io.ReadAll(r)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to read request body %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to read request body %v", err)
 			return nil, fmt.Errorf("failed to read request body %w", err)
 		}
 		if len(bodyBytes) <= 1024 {
@@ -415,10 +415,10 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 		} else {
 			compress, err := utils.Compress(bodyBytes)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("failed to compress request body %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to compress request body %v", err)
 				return nil, fmt.Errorf("failed to compress request body %w", err)
 			}
-			logger.GetLogger("boulder").Infof("object %s/%s data compress size %d/%d", objectInfo.Bucket, objectInfo.Key, len(compress), len(bodyBytes))
+			logger.GetLogger("dedups3").Infof("object %s/%s data compress size %d/%d", objectInfo.Bucket, objectInfo.Key, len(compress), len(bodyBytes))
 			if len(compress) <= 1024 {
 				objectInfo.ChunksInline = &meta.InlineChunk{
 					Compress: true,
@@ -436,7 +436,7 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 			objPrefix := "aws:object:"
 			err = chunker.WriteMeta(context.Background(), ak.AccountID, nil, nil, objectInfo, objPrefix)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("failed to write %s/%s object inline chunk %v", objectInfo.Bucket, objectInfo.Key, err)
+				logger.GetLogger("dedups3").Errorf("failed to write %s/%s object inline chunk %v", objectInfo.Bucket, objectInfo.Key, err)
 				return nil, fmt.Errorf("failed to write %s/%s object inline chunk %w", objectInfo.Bucket, objectInfo.Key, err)
 			}
 			return objectInfo, nil
@@ -448,7 +448,7 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 
 	err = chunker.DoChunk(r, meta.ObjectToBaseObject(objectInfo), o.WriteObjectMeta)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to chunk object: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to chunk object: %v", err)
 	}
 
 	_stats := stats.GetStatsService()
@@ -478,13 +478,13 @@ func (o *ObjectService) WriteObjectMeta(cs *chunk.ChunkService, chunks []*meta.C
 		objPrefix := "aws:object:"
 		err := cs.WriteMeta(context.Background(), obj.Owner.ID, bakAllChunks, bakBlocks, bakObj, objPrefix)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("transmission write object %s/%s  meta info failed: %v，retry times %d", obj.Bucket, obj.Key, err)
+			logger.GetLogger("dedups3").Errorf("transmission write object %s/%s  meta info failed: %v，retry times %d", obj.Bucket, obj.Key, err)
 			return fmt.Errorf("transmission write object %s/%s  meta info failed: %w", obj.Bucket, obj.Key, err)
 		}
 		return nil
 	})
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to write object %s/%s  meta info: %v", obj.Bucket, obj.Key, err)
+		logger.GetLogger("dedups3").Errorf("failed to write object %s/%s  meta info: %v", obj.Bucket, obj.Key, err)
 		return fmt.Errorf("failed to write object %s/%s  meta info: %w", obj.Bucket, obj.Key, err)
 	}
 	return nil
@@ -493,13 +493,13 @@ func (o *ObjectService) WriteObjectMeta(cs *chunk.ChunkService, chunks []*meta.C
 func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *BaseObjectParams) (*meta.Object, io.ReadCloser, error) {
 	iamService := iam.GetIamService()
 	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
 		return nil, nil, errors.New("failed to get iam service")
 	}
 
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
-		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		logger.GetLogger("dedups3").Errorf("failed to get access key %s", params.AccessKeyID)
 		return nil, nil, xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
@@ -519,7 +519,7 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 		var _object meta.Object
 		exist, err := o.kvstore.Get(objkey, &_object)
 		if !exist || err != nil {
-			logger.GetLogger("boulder").Errorf("object %s does not exist", objkey)
+			logger.GetLogger("dedups3").Errorf("object %s does not exist", objkey)
 			return nil, nil, xhttp.ToError(xhttp.ErrNoSuchKey)
 		}
 		object = &_object
@@ -527,7 +527,7 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 			_ = cache.Set(context.Background(), objkey, object, time.Second*600)
 		}
 	}
-	logger.GetLogger("boulder").Debugf("get object %s  %#v", objkey, object)
+	logger.GetLogger("dedups3").Debugf("get object %s  %#v", objkey, object)
 
 	// 计算数据范围
 	start := int64(0)
@@ -535,26 +535,26 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 	if params.Range != nil {
 		s, l, err := params.Range.GetOffsetLength(object.Size)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to get the range of object %s , err %v", objkey, err)
+			logger.GetLogger("dedups3").Errorf("failed to get the range of object %s , err %v", objkey, err)
 			return nil, nil, err
 		}
 		start = s
 		end = s + l - 1
 	}
-	logger.GetLogger("boulder").Debugf("read object %s meta %#v", objkey, object.ETag)
+	logger.GetLogger("dedups3").Debugf("read object %s meta %#v", objkey, object.ETag)
 	// 数据内联
 	if object.ChunksInline != nil && object.ChunksInline.Data != nil {
-		logger.GetLogger("boulder").Infof("read object %s data from inline", objkey)
+		logger.GetLogger("dedups3").Infof("read object %s data from inline", objkey)
 		data := object.ChunksInline.Data
 		if object.ChunksInline.Compress {
 			data, err = utils.Decompress(data)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("failed to decompress object %s", objkey)
+				logger.GetLogger("dedups3").Errorf("failed to decompress object %s", objkey)
 				return nil, nil, fmt.Errorf("failed to decompress object %s", objkey)
 			}
 		}
 		if int64(len(data)) != object.Size {
-			logger.GetLogger("boulder").Errorf("get be damaged object data %s", objkey)
+			logger.GetLogger("dedups3").Errorf("get be damaged object data %s", objkey)
 			return nil, nil, fmt.Errorf("get be damaged object data %s", objkey)
 		}
 		// 截取 range 部分
@@ -566,18 +566,18 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 			readCloser := io.NopCloser(reader) // 包装成 ReadCloser
 			return object, readCloser, nil
 		}
-		logger.GetLogger("boulder").Errorf("failed to get the range of object %s , err %v", objkey, err)
+		logger.GetLogger("dedups3").Errorf("failed to get the range of object %s , err %v", objkey, err)
 		return nil, nil, fmt.Errorf("failed to get the range of object %s , err %w", objkey, err)
 	}
 
 	cs := chunk.GetChunkService()
 	if cs == nil {
-		logger.GetLogger("boulder").Errorf("failed to get the chunk service")
+		logger.GetLogger("dedups3").Errorf("failed to get the chunk service")
 		return nil, nil, errors.New("failed to get the chunk service")
 	}
 	chunks, err := cs.BatchGet(object.DataLocation, object.Chunks)
 	if err != nil || chunks == nil || len(chunks) != len(object.Chunks) {
-		logger.GetLogger("boulder").Errorf("failed to get the object %d chunks", len(object.Chunks))
+		logger.GetLogger("dedups3").Errorf("failed to get the object %d chunks", len(object.Chunks))
 		return nil, nil, fmt.Errorf("failed to get the object %d chunks", len(object.Chunks))
 	}
 	offset := int64(0)
@@ -597,15 +597,15 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 		bids = append(bids, bid)
 	}
 
-	logger.GetLogger("boulder").Debugf("to get the object %s blocks %#v", params.ObjKey, bids)
+	logger.GetLogger("dedups3").Debugf("to get the object %s blocks %#v", params.ObjKey, bids)
 	bs := block.GetBlockService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("failed to get the block service")
+		logger.GetLogger("dedups3").Errorf("failed to get the block service")
 		return nil, nil, errors.New("failed to get the block service")
 	}
 	blocks, err := bs.BatchGet(object.DataLocation, bids)
 	if err != nil || blocks == nil || len(blocks) != len(bids) {
-		logger.GetLogger("boulder").Errorf("failed to get the block meta %d:%d", len(bids), len(blocks))
+		logger.GetLogger("dedups3").Errorf("failed to get the block meta %d:%d", len(bids), len(blocks))
 		return nil, nil, errors.New("failed to get the block meta")
 	}
 	for _, _block := range blocks {
@@ -620,13 +620,13 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 
 	ss := storage.GetStorageService()
 	if ss == nil {
-		logger.GetLogger("boulder").Errorf("failed to get storage service")
+		logger.GetLogger("dedups3").Errorf("failed to get storage service")
 		return nil, nil, errors.New("failed to get storage service")
 	}
 
 	scs := ss.GetStoragesByClass(storageClass)
 	if len(scs) == 0 {
-		logger.GetLogger("boulder").Errorf("no storage class %s", storageClass)
+		logger.GetLogger("dedups3").Errorf("no storage class %s", storageClass)
 		return nil, nil, fmt.Errorf("no storage class %s", storageClass)
 	}
 	sc := scs[0]
@@ -662,11 +662,11 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 
 			_blockdata := blockDatas[_chunk.BlockID]
 			if _blockdata == nil {
-				logger.GetLogger("boulder").Debugf("read obj %s block %s", object.Key, _chunk.BlockID)
+				logger.GetLogger("dedups3").Debugf("read obj %s block %s", object.Key, _chunk.BlockID)
 				_bd, err := bs.ReadBlock(sc.ID, _chunk.BlockID)
 
 				if err != nil || _bd == nil || len(_bd.Data) == 0 {
-					logger.GetLogger("boulder").Errorf("failed to get the block %s data", _chunk.BlockID)
+					logger.GetLogger("dedups3").Errorf("failed to get the block %s data", _chunk.BlockID)
 					return
 				}
 				_blockdata = _bd
@@ -682,7 +682,7 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 					block_offset += int64(item.Size)
 					continue
 				}
-				logger.GetLogger("boulder").Debugf("object size %d chunk %#v, block size %d:%d, block offset %d item size %d",
+				logger.GetLogger("dedups3").Debugf("object size %d chunk %#v, block size %d:%d, block offset %d item size %d",
 					object.Size, _chunk, _blockdata.TotalSize, len(_blockdata.Data), block_offset, item.Size)
 				chunkData = _blockdata.Data[block_offset : block_offset+int64(item.Size)]
 				break
@@ -696,7 +696,7 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 				chunkData = chunkData[_begin:]
 			}
 			if len(chunkData) == 0 {
-				logger.GetLogger("boulder").Errorf("failed to get the chunk data from block %s start %d end %d offset %d block_offset %d chunk size %d  block header",
+				logger.GetLogger("dedups3").Errorf("failed to get the chunk data from block %s start %d end %d offset %d block_offset %d chunk size %d  block header",
 					_chunk.BlockID, start, end, offset, block_offset, _chunk.Size)
 				return
 			}
@@ -712,7 +712,7 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 
 			if offset > end {
 				// 已读够，提前结束
-				logger.GetLogger("boulder").Debugf("finish to write the object data from reader %s offset %d end %d object size %d, num %d ", _chunk.BlockID, offset, end, object.Size, num)
+				logger.GetLogger("dedups3").Debugf("finish to write the object data from reader %s offset %d end %d object size %d, num %d ", _chunk.BlockID, offset, end, object.Size, num)
 				break
 			}
 		}
@@ -722,11 +722,11 @@ func (o *ObjectService) GetObject(r io.Reader, headers http.Header, params *Base
 		finalMD5Hex := hex.EncodeToString(finalMD5)
 		// 检查计算的MD5是否与对象的ETag一致
 		if string(object.ETag) != finalMD5Hex {
-			logger.GetLogger("boulder").Debugf("get object %s/%s MD5 mismatch: stored=%s calculated=%s range[%d-%d]", object.Bucket, object.Key, object.ETag, finalMD5Hex, start, end)
+			logger.GetLogger("dedups3").Debugf("get object %s/%s MD5 mismatch: stored=%s calculated=%s range[%d-%d]", object.Bucket, object.Key, object.ETag, finalMD5Hex, start, end)
 		}
 	}()
 
-	logger.GetLogger("boulder").Debugf("put object %#v", object)
+	logger.GetLogger("dedups3").Debugf("put object %#v", object)
 	return object, pr, nil
 }
 
@@ -737,7 +737,7 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 		maxKeys = 1000
 	}
 
-	logger.GetLogger("boulder").Debugf(
+	logger.GetLogger("dedups3").Debugf(
 		"ListObjects request: bucket=%s, prefix=%s, marker=%s, delimiter=%s, maxKeys=%d",
 		bucket, prefix, marker, delimiter, maxKeys,
 	)
@@ -745,13 +745,13 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 	// 验证访问密钥
 	iamService := iam.GetIamService()
 	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
 		return nil, nil, false, "", errors.New("failed to get iam service")
 	}
 
 	ak, err := iamService.GetAccessKey(accessKeyID)
 	if err != nil || ak == nil {
-		logger.GetLogger("boulder").Errorf("failed to get access key %s", accessKeyID)
+		logger.GetLogger("dedups3").Errorf("failed to get access key %s", accessKeyID)
 		return nil, nil, false, "", xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
@@ -759,7 +759,7 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 	bucketKey := "aws:bucket:" + ak.AccountID + ":" + bucket
 	var bucketMeta meta.BucketMetadata
 	if exists, err := o.kvstore.Get(bucketKey, &bucketMeta); !exists || err != nil {
-		logger.GetLogger("boulder").Errorf("bucket %s does not exist", bucket)
+		logger.GetLogger("dedups3").Errorf("bucket %s does not exist", bucket)
 		return nil, nil, false, "", xhttp.ToError(xhttp.ErrNoSuchBucket)
 	}
 
@@ -779,7 +779,7 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 	// 开启事务
 	txn, err := o.kvstore.BeginTxn(context.Background(), &kv.TxnOpt{IsReadOnly: true})
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to begin transaction: %v", err)
 		return nil, nil, false, "", fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
@@ -801,13 +801,13 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 			batchSize = maxKeys
 		}
 		for collected < maxKeys {
-			logger.GetLogger("boulder").Debugf("Scan from  %s", nextKey)
+			logger.GetLogger("dedups3").Debugf("Scan from  %s", nextKey)
 			scanKeys, n, err := txn.Scan(storePrefix, nextKey, batchSize)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("scan failed: %v", err)
+				logger.GetLogger("dedups3").Errorf("scan failed: %v", err)
 				return nil, nil, false, "", err
 			} else {
-				logger.GetLogger("boulder").Debugf("get scanKeys %#v , nextkey %s", scanKeys, n)
+				logger.GetLogger("dedups3").Debugf("get scanKeys %#v , nextkey %s", scanKeys, n)
 			}
 
 			next = n
@@ -817,7 +817,7 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 			// 批量获取对象源数据，减少IO操作
 			objMaps, err := txn.BatchGet(scanKeys)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("failed to batch ge objects: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to batch ge objects: %v", err)
 				return nil, nil, false, "", fmt.Errorf("failed to batch get objects: %w", err)
 			}
 			for _, storeKey := range scanKeys {
@@ -843,7 +843,7 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 				var _obj meta.Object
 				err := json.Unmarshal(data, &_obj)
 				if err != nil {
-					logger.GetLogger("boulder").Errorf("failed to  arshal objects: %v", err)
+					logger.GetLogger("dedups3").Errorf("failed to  arshal objects: %v", err)
 					return nil, nil, false, "", fmt.Errorf("failed to  arshal objects: %w", err)
 				}
 
@@ -867,7 +867,7 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 
 					// 使用 IncrementKey 确保跳过，兼容 UTF-8
 					next = utils.NextKey(accountPrefix + commonPrefix)
-					logger.GetLogger("boulder").Debugf("%s get next %s", accountPrefix+commonPrefix, next)
+					logger.GetLogger("dedups3").Debugf("%s get next %s", accountPrefix+commonPrefix, next)
 					break
 				} else {
 					// 无 delimiter 在剩余部分 → 是叶子文件
@@ -913,7 +913,7 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 
 			scanKeys, n, err := txn.Scan(storePrefix, nextKey, batchSize)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("scan failed: %v", err)
+				logger.GetLogger("dedups3").Errorf("scan failed: %v", err)
 				return nil, nil, false, "", err
 			}
 
@@ -925,7 +925,7 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 			// 批量获取对象源数据，减少IO操作
 			objMaps, err := txn.BatchGet(scanKeys)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("failed to batch ge objects: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to batch ge objects: %v", err)
 				return nil, nil, false, "", fmt.Errorf("failed to batch get objects: %w", err)
 			}
 			for _, storeKey := range scanKeys {
@@ -947,7 +947,7 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 				var _obj meta.Object
 				err := json.Unmarshal(data, &_obj)
 				if err != nil {
-					logger.GetLogger("boulder").Errorf("failed to  arshal objects: %v", err)
+					logger.GetLogger("dedups3").Errorf("failed to  arshal objects: %v", err)
 					return nil, nil, false, "", fmt.Errorf("failed to  arshal objects: %w", err)
 				}
 				objects = append(objects, &_obj)
@@ -978,7 +978,7 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 	// 提前关闭事务
 	txn.Rollback()
 	txn = nil
-	logger.GetLogger("boulder").Errorf("get commonPrefixs %#v object %d", commonPrefixes, len(objects))
+	logger.GetLogger("dedups3").Errorf("get commonPrefixs %#v object %d", commonPrefixes, len(objects))
 	return objects, commonPrefixes, isTruncated, nextMarker, nil
 }
 
@@ -992,7 +992,7 @@ func (o *ObjectService) ListObjectsV2(bucket, accessKeyID, prefix, continuationT
 	} else if continuationToken != "" {
 		decoded, err := base64.StdEncoding.DecodeString(continuationToken)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to decode continuation token: %s", continuationToken)
+			logger.GetLogger("dedups3").Errorf("failed to decode continuation token: %s", continuationToken)
 			return nil, nil, false, "", xhttp.ToError(xhttp.ErrInvalidQueryParams)
 		}
 		marker = string(decoded)
@@ -1007,20 +1007,20 @@ func (o *ObjectService) ListObjectsV2(bucket, accessKeyID, prefix, continuationT
 func (o *ObjectService) DeleteObject(params *BaseObjectParams) error {
 	iamService := iam.GetIamService()
 	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
 		return errors.New("failed to get iam service")
 	}
 
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
-		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		logger.GetLogger("dedups3").Errorf("failed to get access key %s", params.AccessKeyID)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
 	// 检查object 是否存在
 	txn, err := o.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to begin transaction: %v", err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
@@ -1032,7 +1032,7 @@ func (o *ObjectService) DeleteObject(params *BaseObjectParams) error {
 	var _object meta.Object
 	exists, err := txn.Get(objkey, &_object)
 	if !exists || err != nil {
-		logger.GetLogger("boulder").Errorf("object %s does not exist", objkey)
+		logger.GetLogger("dedups3").Errorf("object %s does not exist", objkey)
 		return xhttp.ToError(xhttp.ErrNoSuchKey)
 	}
 	// 删除obj 关联的chunk
@@ -1050,23 +1050,23 @@ func (o *ObjectService) DeleteObject(params *BaseObjectParams) error {
 
 		err = txn.Set(gckey, &gcData)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("%s/%s set gc chunk failed: %v", _object.Bucket, _object.Key, err)
+			logger.GetLogger("dedups3").Errorf("%s/%s set gc chunk failed: %v", _object.Bucket, _object.Key, err)
 			return fmt.Errorf("%s/%s set gc chunk failed: %w", _object.Bucket, _object.Key, err)
 		} else {
-			logger.GetLogger("boulder").Infof("%s/%s set gc chunk %s delay to proccess", _object.Bucket, _object.Key, gckey)
+			logger.GetLogger("dedups3").Infof("%s/%s set gc chunk %s delay to proccess", _object.Bucket, _object.Key, gckey)
 		}
 	}
 	err = txn.Delete(objkey)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("%s/%s delete object failed: %v", _object.Bucket, _object.Key, err)
+		logger.GetLogger("dedups3").Errorf("%s/%s delete object failed: %v", _object.Bucket, _object.Key, err)
 		return fmt.Errorf("%s/%s delete object failed: %w", _object.Bucket, _object.Key, err)
 	} else {
-		logger.GetLogger("boulder").Debug("delete object %s/%s  chunk %d", _object.Bucket, _object.Key, len(_object.Chunks))
+		logger.GetLogger("dedups3").Debug("delete object %s/%s  chunk %d", _object.Bucket, _object.Key, len(_object.Chunks))
 	}
 
 	err = txn.Commit()
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("%s/%s commit object failed: %v", _object.Bucket, _object.Key, err)
+		logger.GetLogger("dedups3").Errorf("%s/%s commit object failed: %v", _object.Bucket, _object.Key, err)
 		return fmt.Errorf("%s/%s commit object failed: %w", _object.Bucket, _object.Key, err)
 	}
 	txn = nil
@@ -1093,13 +1093,13 @@ func (o *ObjectService) DeleteObject(params *BaseObjectParams) error {
 func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObjectParams) (*meta.Object, error) {
 	iamService := iam.GetIamService()
 	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
 		return nil, errors.New("failed to get iam service")
 	}
 
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
-		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		logger.GetLogger("dedups3").Errorf("failed to get access key %s", params.AccessKeyID)
 		return nil, xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
@@ -1108,13 +1108,13 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 	var srcobj meta.Object
 	srcobjOK, err := o.kvstore.Get(srcobjkey, &srcobj)
 	if !srcobjOK || err != nil {
-		logger.GetLogger("boulder").Errorf("object %s does not exist", srcobjkey)
+		logger.GetLogger("dedups3").Errorf("object %s does not exist", srcobjkey)
 		return nil, xhttp.ToError(xhttp.ErrNoSuchKey)
 	}
 
 	// 检查目标桶名是否 合法
 	if err := utils.CheckValidObjectName(params.ObjKey); err != nil {
-		logger.GetLogger("boulder").Errorf("invalid object name: %s", params.ObjKey)
+		logger.GetLogger("dedups3").Errorf("invalid object name: %s", params.ObjKey)
 		return nil, xhttp.ToError(xhttp.ErrInvalidObjectName)
 	}
 	// 检查 目标桶是否存在
@@ -1122,11 +1122,11 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 	var dstbucket meta.BucketMetadata
 	exists, err := o.kvstore.Get(dstbucketkey, &dstbucket)
 	if !exists || err != nil {
-		logger.GetLogger("boulder").Errorf("bucket %s does not exist", dstbucketkey)
+		logger.GetLogger("dedups3").Errorf("bucket %s does not exist", dstbucketkey)
 		return nil, xhttp.ToError(xhttp.ErrNoSuchBucket)
 	}
 	if srcobjkey == dstbucketkey {
-		logger.GetLogger("boulder").Errorf("same object %s copy", dstbucketkey)
+		logger.GetLogger("dedups3").Errorf("same object %s copy", dstbucketkey)
 		return nil, fmt.Errorf("same object %s copy", dstbucketkey)
 	}
 
@@ -1147,7 +1147,7 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 	}
 	ok, code := o.CanCopyObject(_dst, _src, _cond)
 	if !ok {
-		logger.GetLogger("boulder").Errorf("%s/%s can not copy object %d", _dstobj.Bucket, _dstobj.Key, code)
+		logger.GetLogger("dedups3").Errorf("%s/%s can not copy object %d", _dstobj.Bucket, _dstobj.Key, code)
 		return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 	}
 
@@ -1159,13 +1159,13 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 
 	bs := storage.GetStorageService()
 	if bs == nil {
-		logger.GetLogger("boulder").Errorf("failed to get storage service")
+		logger.GetLogger("dedups3").Errorf("failed to get storage service")
 		return nil, errors.New("failed to get storage service")
 	}
 
 	scs := bs.GetStoragesByClass(storageClass)
 	if len(scs) == 0 {
-		logger.GetLogger("boulder").Errorf("no storage class %s", storageClass)
+		logger.GetLogger("dedups3").Errorf("no storage class %s", storageClass)
 		return nil, fmt.Errorf("no storage class %s", storageClass)
 	}
 	sc := scs[0]
@@ -1180,7 +1180,7 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 	if srcobj.DataLocation == dstobj.DataLocation {
 		txn, err := o.kvstore.BeginTxn(context.Background(), nil)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to begin transaction: %v", err)
 			return nil, fmt.Errorf("failed to begin transaction: %w", err)
 		}
 		defer func() {
@@ -1192,16 +1192,16 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 			chunkey := meta.GenChunkKey(srcobj.DataLocation, chunkID)
 			var _chunk meta.Chunk
 			if exists, e := txn.Get(chunkey, &_chunk); e != nil || !exists {
-				logger.GetLogger("boulder").Errorf("%s/%s get chunk failed: %v", srcobj.Bucket, srcobj.Key, err)
+				logger.GetLogger("dedups3").Errorf("%s/%s get chunk failed: %v", srcobj.Bucket, srcobj.Key, err)
 				return nil, fmt.Errorf("%s/%s get chunk %s failed: %w", srcobj.Bucket, srcobj.Key, chunkey, err)
 			}
 			// 引用计数加1
 			_chunk.RefCount += 1
 			if e := txn.Set(chunkey, &_chunk); e != nil {
-				logger.GetLogger("boulder").Errorf("%s/%s set chunk %s failed: %v", dstobj.Bucket, dstobj.Key, _chunk.Hash, err)
+				logger.GetLogger("dedups3").Errorf("%s/%s set chunk %s failed: %v", dstobj.Bucket, dstobj.Key, _chunk.Hash, err)
 				return nil, fmt.Errorf("%s/%s set chunk failed: %w", dstobj.Bucket, dstobj.Key, err)
 			} else {
-				logger.GetLogger("boulder").Debugf("%s/%s refresh set chunk: %s", dstobj.Bucket, dstobj.Key, _chunk.Hash)
+				logger.GetLogger("dedups3").Debugf("%s/%s refresh set chunk: %s", dstobj.Bucket, dstobj.Key, _chunk.Hash)
 			}
 		}
 		dstobjKey := "aws:object:" + ak.AccountID + ":" + dstobj.Bucket + "/" + dstobj.Key
@@ -1209,7 +1209,7 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 		var _dstobj meta.Object
 		exists, err = txn.Get(dstobjKey, &_dstobj)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("%s/%s get object failed: %v", _dstobj.Bucket, _dstobj.Key, err)
+			logger.GetLogger("dedups3").Errorf("%s/%s get object failed: %v", _dstobj.Bucket, _dstobj.Key, err)
 			return nil, fmt.Errorf("%s/%s get object failed: %w", _dstobj.Bucket, _dstobj.Key, err)
 		}
 		if exists && len(_dstobj.Chunks) > 0 {
@@ -1226,28 +1226,28 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 
 			err = txn.Set(gckey, &gcData)
 			if err != nil {
-				logger.GetLogger("boulder").Errorf("%s/%s set gc chunk failed: %v", _dstobj.Bucket, _dstobj.Key, err)
+				logger.GetLogger("dedups3").Errorf("%s/%s set gc chunk failed: %v", _dstobj.Bucket, _dstobj.Key, err)
 				return nil, fmt.Errorf("%s/%s set gc chunk failed: %w", _dstobj.Bucket, _dstobj.Key, err)
 			} else {
-				logger.GetLogger("boulder").Infof("%s/%s set gc chunk %s delay to proccess", _dstobj.Bucket, _dstobj.Key, gckey)
+				logger.GetLogger("dedups3").Infof("%s/%s set gc chunk %s delay to proccess", _dstobj.Bucket, _dstobj.Key, gckey)
 			}
 		}
 
 		err = txn.Set(dstobjKey, dstobj)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("set object %s/%s meta info failed: %v", dstobj.Bucket, dstobj.Key, err)
+			logger.GetLogger("dedups3").Errorf("set object %s/%s meta info failed: %v", dstobj.Bucket, dstobj.Key, err)
 			return nil, fmt.Errorf("set object %s/%s meta info failed: %w", dstobj.Bucket, dstobj.Key, err)
 		} else {
-			logger.GetLogger("boulder").Debugf("set object %s/%s meta  ok", dstobj.Bucket, dstobj.Key)
+			logger.GetLogger("dedups3").Debugf("set object %s/%s meta  ok", dstobj.Bucket, dstobj.Key)
 		}
 		err = txn.Commit()
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("%s/%s commit failed: %v", dstobj.Bucket, dstobj.Key, err)
+			logger.GetLogger("dedups3").Errorf("%s/%s commit failed: %v", dstobj.Bucket, dstobj.Key, err)
 			return nil, kv.ErrTxnCommit
 		}
 		txn = nil
 
-		logger.GetLogger("boulder").Infof("write object %s/%s  all meta data finish", dstobj.Bucket, dstobj.Key)
+		logger.GetLogger("dedups3").Infof("write object %s/%s  all meta data finish", dstobj.Bucket, dstobj.Key)
 
 		if cache, err := xcache.GetCache(); err == nil && cache != nil {
 			_ = cache.Del(context.Background(), dstobjKey)
@@ -1259,7 +1259,7 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 		return dstobj, nil
 	} else {
 		// 如果 存储点不一样，是要复制数据部分的 TODO
-		logger.GetLogger("boulder").Errorf("%s/%s copy object  storage class not same %s:%s", srcobj.Bucket, srcobj.Key, srcobj.StorageClass, dstobj.StorageClass)
+		logger.GetLogger("dedups3").Errorf("%s/%s copy object  storage class not same %s:%s", srcobj.Bucket, srcobj.Key, srcobj.StorageClass, dstobj.StorageClass)
 		return nil, fmt.Errorf("%s/%s copy object  storage class not same %s:%s", srcobj.Bucket, srcobj.Key, srcobj.StorageClass, dstobj.StorageClass)
 	}
 }
@@ -1347,13 +1347,13 @@ func (o *ObjectService) CanCopyObject(dest CopyObjectInfo, src CopyObjectInfo, c
 func (o *ObjectService) PutObjectTagging(params *BaseObjectParams, tags map[string]string) (*meta.Object, error) {
 	iamService := iam.GetIamService()
 	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
 		return nil, errors.New("failed to get iam service")
 	}
 
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
-		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		logger.GetLogger("dedups3").Errorf("failed to get access key %s", params.AccessKeyID)
 		return nil, xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
@@ -1372,7 +1372,7 @@ func (o *ObjectService) PutObjectTagging(params *BaseObjectParams, tags map[stri
 		var _bucket meta.BucketMetadata
 		exist, err := o.kvstore.Get(bucketKey, &_bucket)
 		if !exist || err != nil {
-			logger.GetLogger("boulder").Errorf("bucket %s does not exist", params.BucketName)
+			logger.GetLogger("dedups3").Errorf("bucket %s does not exist", params.BucketName)
 			return nil, xhttp.ToError(xhttp.ErrNoSuchBucket)
 		}
 		bucket = &_bucket
@@ -1383,14 +1383,14 @@ func (o *ObjectService) PutObjectTagging(params *BaseObjectParams, tags map[stri
 	var object meta.Object
 	exist, err := o.kvstore.Get(objKey, &object)
 	if !exist || err != nil {
-		logger.GetLogger("boulder").Errorf("object %s does not exist", objKey)
+		logger.GetLogger("dedups3").Errorf("object %s does not exist", objKey)
 		return nil, xhttp.ToError(xhttp.ErrNoSuchKey)
 	}
 
 	// 开始事务
 	txn, err := o.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to begin transaction: %v", err)
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
@@ -1407,13 +1407,13 @@ func (o *ObjectService) PutObjectTagging(params *BaseObjectParams, tags map[stri
 
 	// 保存更新后的对象
 	if err := txn.Set(objKey, &object); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to update object tags: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to update object tags: %v", err)
 		return nil, fmt.Errorf("failed to update object tags: %w", err)
 	}
 
 	// 提交事务
 	if err := txn.Commit(); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
 		return nil, kv.ErrTxnCommit
 	}
 	txn = nil
@@ -1423,20 +1423,20 @@ func (o *ObjectService) PutObjectTagging(params *BaseObjectParams, tags map[stri
 		_ = cache.Del(context.Background(), objKey)
 	}
 
-	logger.GetLogger("boulder").Infof("successfully updated tags for object %s/%s", params.BucketName, params.ObjKey)
+	logger.GetLogger("dedups3").Infof("successfully updated tags for object %s/%s", params.BucketName, params.ObjKey)
 	return &object, nil
 }
 
 func (o *ObjectService) PutObjectAcl(params *BaseObjectParams, acp *meta.AccessControlPolicy) (*meta.Object, error) {
 	iamService := iam.GetIamService()
 	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
 		return nil, errors.New("failed to get iam service")
 	}
 
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
-		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		logger.GetLogger("dedups3").Errorf("failed to get access key %s", params.AccessKeyID)
 		return nil, xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
@@ -1455,7 +1455,7 @@ func (o *ObjectService) PutObjectAcl(params *BaseObjectParams, acp *meta.AccessC
 		var _bucket meta.BucketMetadata
 		exist, err := o.kvstore.Get(bucketKey, &_bucket)
 		if !exist || err != nil {
-			logger.GetLogger("boulder").Errorf("bucket %s does not exist", params.BucketName)
+			logger.GetLogger("dedups3").Errorf("bucket %s does not exist", params.BucketName)
 			return nil, xhttp.ToError(xhttp.ErrNoSuchBucket)
 		}
 		bucket = &_bucket
@@ -1466,30 +1466,30 @@ func (o *ObjectService) PutObjectAcl(params *BaseObjectParams, acp *meta.AccessC
 	var object meta.Object
 	exist, err := o.kvstore.Get(objKey, &object)
 	if !exist || err != nil {
-		logger.GetLogger("boulder").Errorf("object %s does not exist", objKey)
+		logger.GetLogger("dedups3").Errorf("object %s does not exist", objKey)
 		return nil, xhttp.ToError(xhttp.ErrNoSuchKey)
 	}
 	// 检查acp是否为空或acp.Owner是否为空
 	if acp == nil {
-		logger.GetLogger("boulder").Errorf("access control policy is nil")
+		logger.GetLogger("dedups3").Errorf("access control policy is nil")
 		return nil, xhttp.ToError(xhttp.ErrInvalidArgument)
 	}
 
 	// 检查acp.Owner是否为空
 	if acp.Owner.ID == "" {
-		logger.GetLogger("boulder").Errorf("owner information in access control policy is missing")
+		logger.GetLogger("dedups3").Errorf("owner information in access control policy is missing")
 		return nil, xhttp.ToError(xhttp.ErrInvalidArgument)
 	}
 
 	// 检查acp的Owner是否与object的Owner一致
 	if acp.Owner.ID != object.Owner.ID {
-		logger.GetLogger("boulder").Errorf("ACL owner %s does not match object owner %s", acp.Owner.ID, object.Owner.ID)
+		logger.GetLogger("dedups3").Errorf("ACL owner %s does not match object owner %s", acp.Owner.ID, object.Owner.ID)
 		return nil, xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 	// 开始事务
 	txn, err := o.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to begin transaction: %v", err)
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
@@ -1505,13 +1505,13 @@ func (o *ObjectService) PutObjectAcl(params *BaseObjectParams, acp *meta.AccessC
 
 	// 保存更新后的对象
 	if err := txn.Set(objKey, &object); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to update object acl: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to update object acl: %v", err)
 		return nil, fmt.Errorf("failed to update object acl: %w", err)
 	}
 
 	// 提交事务
 	if err := txn.Commit(); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
 		return nil, kv.ErrTxnCommit
 	}
 	txn = nil
@@ -1521,7 +1521,7 @@ func (o *ObjectService) PutObjectAcl(params *BaseObjectParams, acp *meta.AccessC
 		_ = cache.Del(context.Background(), objKey)
 	}
 
-	logger.GetLogger("boulder").Infof("successfully updated acl for object %s/%s", params.BucketName, params.ObjKey)
+	logger.GetLogger("dedups3").Infof("successfully updated acl for object %s/%s", params.BucketName, params.ObjKey)
 	return &object, nil
 }
 
@@ -1530,13 +1530,13 @@ func (o *ObjectService) PutObjectAcl(params *BaseObjectParams, acp *meta.AccessC
 func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, error) {
 	iamService := iam.GetIamService()
 	if iamService == nil {
-		logger.GetLogger("boulder").Errorf("failed to get iam service")
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
 		return nil, errors.New("failed to get iam service")
 	}
 
 	ak, err := iamService.GetAccessKey(params.AccessKeyID)
 	if err != nil || ak == nil {
-		logger.GetLogger("boulder").Errorf("failed to get access key %s", params.AccessKeyID)
+		logger.GetLogger("dedups3").Errorf("failed to get access key %s", params.AccessKeyID)
 		return nil, xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
@@ -1545,7 +1545,7 @@ func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, er
 	var srcobj meta.Object
 	srcObjOK, err := o.kvstore.Get(srcobjkey, &srcobj)
 	if !srcObjOK || err != nil {
-		logger.GetLogger("boulder").Errorf("object %s does not exist", srcobjkey)
+		logger.GetLogger("dedups3").Errorf("object %s does not exist", srcobjkey)
 		return nil, xhttp.ToError(xhttp.ErrNoSuchKey)
 	}
 
@@ -1554,14 +1554,14 @@ func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, er
 	var dstObj meta.Object
 	dstObjOK, err := o.kvstore.Get(dstobjkey, &dstObj)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to check destination object: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to check destination object: %v", err)
 		return nil, fmt.Errorf("failed to check destination object: %w", err)
 	}
 
 	// 验证目标对象条件
 	if params.SourceIfMatch != "" {
 		if !srcObjOK || string(srcobj.ETag) != params.SourceIfMatch {
-			logger.GetLogger("boulder").Errorf("source object %s/%s SourceIfMatch not match", params.BucketName, params.ObjKey)
+			logger.GetLogger("dedups3").Errorf("source object %s/%s SourceIfMatch not match", params.BucketName, params.ObjKey)
 			return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 		}
 	}
@@ -1570,13 +1570,13 @@ func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, er
 		if params.SourceIfNoneMatch == "*" {
 			// * 表示：源必须不存在
 			if srcObjOK {
-				logger.GetLogger("boulder").Errorf("source object %s/%s already exists (SourceIfNoneMatch: *)", params.BucketName, params.ObjKey)
+				logger.GetLogger("dedups3").Errorf("source object %s/%s already exists (SourceIfNoneMatch: *)", params.BucketName, params.ObjKey)
 				return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 			}
 		} else {
 			// 指定了 ETag：当源存在且 ETag 匹配时，拒绝操作
 			if srcObjOK && string(srcobj.ETag) == params.SourceIfNoneMatch {
-				logger.GetLogger("boulder").Errorf("source object %s/%s ETag matches SourceIfNoneMatch: %s", params.BucketName, params.ObjKey, params.SourceIfNoneMatch)
+				logger.GetLogger("dedups3").Errorf("source object %s/%s ETag matches SourceIfNoneMatch: %s", params.BucketName, params.ObjKey, params.SourceIfNoneMatch)
 				return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 			}
 		}
@@ -1585,7 +1585,7 @@ func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, er
 	if params.SourceIfModifiedSince != "" {
 		if t, err := http.ParseTime(params.SourceIfModifiedSince); err == nil {
 			if !srcObjOK || !srcobj.LastModified.After(t) {
-				logger.GetLogger("boulder").Errorf("source object %s/%s not modified since %s", params.BucketName, params.ObjKey, t)
+				logger.GetLogger("dedups3").Errorf("source object %s/%s not modified since %s", params.BucketName, params.ObjKey, t)
 				return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 			}
 		}
@@ -1594,7 +1594,7 @@ func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, er
 	if params.SourceIfUnmodifiedSince != "" {
 		if t, err := http.ParseTime(params.SourceIfUnmodifiedSince); err == nil {
 			if !srcObjOK || srcobj.LastModified.After(t) {
-				logger.GetLogger("boulder").Errorf("source object %s/%s modified since %s", params.BucketName, params.ObjKey, t)
+				logger.GetLogger("dedups3").Errorf("source object %s/%s modified since %s", params.BucketName, params.ObjKey, t)
 				return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 			}
 		}
@@ -1603,7 +1603,7 @@ func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, er
 	// 目标对象条件验证
 	if params.IfMatch != "" {
 		if !dstObjOK || string(dstObj.ETag) != params.IfMatch {
-			logger.GetLogger("boulder").Errorf("target object %s/%s IfMatch not match", params.BucketName, params.DestObjKey)
+			logger.GetLogger("dedups3").Errorf("target object %s/%s IfMatch not match", params.BucketName, params.DestObjKey)
 			return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 		}
 	}
@@ -1612,13 +1612,13 @@ func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, er
 		if params.IfNoneMatch == "*" {
 			// * 表示：目标必须不存在
 			if dstObjOK {
-				logger.GetLogger("boulder").Errorf("target object %s/%s already exists (IfNoneMatch: *)", params.BucketName, params.DestObjKey)
+				logger.GetLogger("dedups3").Errorf("target object %s/%s already exists (IfNoneMatch: *)", params.BucketName, params.DestObjKey)
 				return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 			}
 		} else {
 			// 指定了 ETag：当目标存在且 ETag 匹配时，拒绝操作
 			if dstObjOK && string(dstObj.ETag) == params.IfNoneMatch {
-				logger.GetLogger("boulder").Errorf("target object %s/%s ETag matches IfNoneMatch: %s", params.BucketName, params.DestObjKey, params.IfNoneMatch)
+				logger.GetLogger("dedups3").Errorf("target object %s/%s ETag matches IfNoneMatch: %s", params.BucketName, params.DestObjKey, params.IfNoneMatch)
 				return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 			}
 		}
@@ -1627,7 +1627,7 @@ func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, er
 	if params.IfModifiedSince != "" {
 		if t, err := http.ParseTime(params.IfModifiedSince); err == nil {
 			if !dstObjOK || !dstObj.LastModified.After(t) {
-				logger.GetLogger("boulder").Errorf("target object %s/%s not modified since %s", params.BucketName, params.DestObjKey, t)
+				logger.GetLogger("dedups3").Errorf("target object %s/%s not modified since %s", params.BucketName, params.DestObjKey, t)
 				return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 			}
 		}
@@ -1636,7 +1636,7 @@ func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, er
 	if params.IfUnmodifiedSince != "" {
 		if t, err := http.ParseTime(params.IfUnmodifiedSince); err == nil {
 			if !dstObjOK || dstObj.LastModified.After(t) {
-				logger.GetLogger("boulder").Errorf("target object %s/%s modified since %s", params.BucketName, params.DestObjKey, t)
+				logger.GetLogger("dedups3").Errorf("target object %s/%s modified since %s", params.BucketName, params.DestObjKey, t)
 				return nil, xhttp.ToError(xhttp.ErrPreconditionFailed)
 			}
 		}
@@ -1645,7 +1645,7 @@ func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, er
 	// 开始事务处理
 	txn, err := o.kvstore.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to begin transaction: %v", err)
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
@@ -1669,17 +1669,17 @@ func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, er
 
 		err = txn.Set(gckey, &gcData)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("%s/%s set gc chunk failed: %v", dstObj.Bucket, dstObj.Key, err)
+			logger.GetLogger("dedups3").Errorf("%s/%s set gc chunk failed: %v", dstObj.Bucket, dstObj.Key, err)
 			return nil, fmt.Errorf("%s/%s set gc chunk failed: %w", dstObj.Bucket, dstObj.Key, err)
 		} else {
-			logger.GetLogger("boulder").Infof("%s/%s set gc chunk %s delay to proccess", dstObj.Bucket, dstObj.Key, gckey)
+			logger.GetLogger("dedups3").Infof("%s/%s set gc chunk %s delay to proccess", dstObj.Bucket, dstObj.Key, gckey)
 		}
 	}
 
 	// 删除 源object 的 key
 	err = txn.Delete(srcobjkey)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to delete object %s : %v", srcobjkey, err)
+		logger.GetLogger("dedups3").Errorf("failed to delete object %s : %v", srcobjkey, err)
 		return nil, fmt.Errorf("failed to delete object: %w", err)
 	}
 
@@ -1688,13 +1688,13 @@ func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, er
 	srcobj.LastModified = time.Now().UTC()
 	err = txn.Set(dstobjkey, &srcobj)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to update object %s : %v", dstobjkey, err)
+		logger.GetLogger("dedups3").Errorf("failed to update object %s : %v", dstobjkey, err)
 		return nil, fmt.Errorf("failed to update object: %w", err)
 	}
 
 	//  提交事务
 	if err := txn.Commit(); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
 		return nil, kv.ErrTxnCommit
 	}
 	txn = nil
@@ -1705,6 +1705,6 @@ func (o *ObjectService) RenameObject(params *BaseObjectParams) (*meta.Object, er
 		_ = cache.Del(context.Background(), dstobjkey)
 	}
 
-	logger.GetLogger("boulder").Infof("successfully renamed object %s to %s", params.ObjKey, params.DestObjKey)
+	logger.GetLogger("dedups3").Infof("successfully renamed object %s to %s", params.ObjKey, params.DestObjKey)
 	return &srcobj, nil
 }

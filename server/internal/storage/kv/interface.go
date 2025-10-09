@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mageg-x/boulder/internal/config"
+	"github.com/mageg-x/dedups3/internal/config"
 )
 
 var (

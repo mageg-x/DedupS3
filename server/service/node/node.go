@@ -2,13 +2,13 @@ package node
 
 import (
 	"fmt"
-	"github.com/mageg-x/boulder/service/storage"
+	"github.com/mageg-x/dedups3/service/storage"
 	"sync"
 
-	"github.com/mageg-x/boulder/internal/config"
-	"github.com/mageg-x/boulder/internal/logger"
-	"github.com/mageg-x/boulder/internal/storage/block"
-	"github.com/mageg-x/boulder/internal/storage/kv"
+	"github.com/mageg-x/dedups3/internal/config"
+	"github.com/mageg-x/dedups3/internal/logger"
+	"github.com/mageg-x/dedups3/internal/storage/block"
+	"github.com/mageg-x/dedups3/internal/storage/kv"
 )
 
 type NodeService struct {
@@ -29,7 +29,7 @@ func GetNodeService() *NodeService {
 
 	store, err := kv.GetKvStore()
 	if err != nil || store == nil {
-		logger.GetLogger("boulder").Errorf("failed to get kv store: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to get kv store: %v", err)
 		return nil
 	}
 	instance = &NodeService{
@@ -41,13 +41,13 @@ func GetNodeService() *NodeService {
 func (n *NodeService) ReadLocalBlock(storageID, blockID string, offset, length int64) ([]byte, error) {
 	ss := storage.GetStorageService()
 	if ss == nil {
-		logger.GetLogger("boulder").Errorf("get nil storage service")
+		logger.GetLogger("dedups3").Errorf("get nil storage service")
 		return nil, fmt.Errorf("get nil storage service")
 	}
 
 	st, err := ss.GetStorage(storageID)
 	if err != nil || st == nil || st.Instance == nil {
-		logger.GetLogger("boulder").Errorf("get nil storage instance id %s ", storageID)
+		logger.GetLogger("dedups3").Errorf("get nil storage instance id %s ", storageID)
 		return nil, fmt.Errorf("get nil storage instance: %w", err)
 	}
 
@@ -57,7 +57,7 @@ func (n *NodeService) ReadLocalBlock(storageID, blockID string, offset, length i
 	})
 
 	if ds == nil || err != nil {
-		logger.GetLogger("boulder").Errorf("get nil storage service")
+		logger.GetLogger("dedups3").Errorf("get nil storage service")
 		return nil, fmt.Errorf("get nil storage")
 	}
 	return ds.ReadLocalBlock(blockID, offset, length)

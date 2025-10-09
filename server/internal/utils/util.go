@@ -25,7 +25,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/klauspost/compress/zstd"
-	"github.com/mageg-x/boulder/internal/logger"
+	"github.com/mageg-x/dedups3/internal/logger"
 	"golang.org/x/crypto/pbkdf2"
 )
 
@@ -301,7 +301,7 @@ func IsCompressible(data []byte, sampleSize int, thresholdRatio float64) bool {
 	// 使用最快的压缩等级进行试探
 	encoder, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedFastest))
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("zstd encoder create failed: %v, assuming compressible", err)
+		logger.GetLogger("dedups3").Errorf("zstd encoder create failed: %v, assuming compressible", err)
 		return false // 出错时保守压缩
 	}
 
@@ -417,7 +417,7 @@ func ReadFilesRecursive(root string) ([]string, error) {
 			if os.IsNotExist(err) {
 				return nil // 跳过这个路径，继续遍历其他文件
 			}
-			logger.GetLogger("boulder").Errorf("failed to walk path %s: %v", path, err)
+			logger.GetLogger("dedups3").Errorf("failed to walk path %s: %v", path, err)
 			return err
 		}
 		if info.IsDir() {

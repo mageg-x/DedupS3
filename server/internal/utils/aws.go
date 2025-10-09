@@ -23,7 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	xhttp "github.com/mageg-x/boulder/internal/http"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
 	"net"
 	"net/http"
 	"net/url"

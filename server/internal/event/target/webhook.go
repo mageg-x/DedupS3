@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	xhttp "github.com/mageg-x/boulder/internal/http"
-	"github.com/mageg-x/boulder/internal/utils"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
+	"github.com/mageg-x/dedups3/internal/utils"
 )
 
 var (

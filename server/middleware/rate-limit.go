@@ -22,8 +22,8 @@ import (
 	"sync"
 
 	"github.com/gorilla/mux"
-	xhttp "github.com/mageg-x/boulder/internal/http"
-	"github.com/mageg-x/boulder/internal/logger"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
+	"github.com/mageg-x/dedups3/internal/logger"
 	"golang.org/x/time/rate"
 )
 
@@ -45,7 +45,7 @@ func RateLimitMiddleware(config RateLimitConfig) mux.MiddlewareFunc {
 		// 使用同步Map存储限流器
 		var limiters sync.Map
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			logger.GetLogger("boulder").Tracef("get req %s %s %#v", r.Method, r.URL.Path, r.Header)
+			logger.GetLogger("dedups3").Tracef("get req %s %s %#v", r.Method, r.URL.Path, r.Header)
 			// 获取限流键
 			key := "global"
 			if config.KeyFunc != nil {
@@ -60,7 +60,7 @@ func RateLimitMiddleware(config RateLimitConfig) mux.MiddlewareFunc {
 
 			// 检查是否允许请求
 			if !limiter.(*rate.Limiter).Allow() {
-				logger.GetLogger("boulder").Warnf("too many requests from %s", key)
+				logger.GetLogger("dedups3").Warnf("too many requests from %s", key)
 				xhttp.WriteAWSError(w, r, "TooManyRequests", "Request too frequent, please try again later.", http.StatusTooManyRequests)
 				return
 			}

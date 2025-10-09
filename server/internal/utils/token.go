@@ -2,7 +2,7 @@ package utils
 
 import (
 	"fmt"
-	"github.com/mageg-x/boulder/internal/logger"
+	"github.com/mageg-x/dedups3/internal/logger"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -58,7 +58,7 @@ func VerifyToken(tokenString string) (string, string, error) {
 	})
 
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("invalid token %v", err)
+		logger.GetLogger("dedups3").Errorf("invalid token %v", err)
 		// 常见错误：过期、签名错误等
 		return "", "", fmt.Errorf("invalid token %w", err)
 	}
@@ -66,7 +66,7 @@ func VerifyToken(tokenString string) (string, string, error) {
 	// 检查 token 是否有效
 	claims, ok := token.Claims.(*CustomClaims)
 	if !ok || !token.Valid {
-		logger.GetLogger("boulder").Errorf("invalid token %v", err)
+		logger.GetLogger("dedups3").Errorf("invalid token %v", err)
 		// 常见错误：过期、签名错误等
 		return "", "", fmt.Errorf("invalid token %w", err)
 	}

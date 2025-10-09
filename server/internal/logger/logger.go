@@ -19,7 +19,7 @@ package logger
 import (
 	"fmt"
 	"github.com/aws/smithy-go/logging"
-	"github.com/mageg-x/boulder/internal/color"
+	"github.com/mageg-x/dedups3/internal/color"
 	"io"
 	"os"
 	"path/filepath"

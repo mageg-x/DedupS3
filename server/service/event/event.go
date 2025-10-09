@@ -4,16 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/mageg-x/boulder/internal/event/target"
-	"github.com/mageg-x/boulder/internal/storage/kv"
+	"github.com/mageg-x/dedups3/internal/event/target"
+	"github.com/mageg-x/dedups3/internal/storage/kv"
 	"path/filepath"
 	"sync"
 	"time"
 
-	xconf "github.com/mageg-x/boulder/internal/config"
-	"github.com/mageg-x/boulder/internal/event"
-	"github.com/mageg-x/boulder/internal/logger"
-	"github.com/mageg-x/boulder/internal/queue"
+	xconf "github.com/mageg-x/dedups3/internal/config"
+	"github.com/mageg-x/dedups3/internal/event"
+	"github.com/mageg-x/dedups3/internal/logger"
+	"github.com/mageg-x/dedups3/internal/queue"
 )
 
 const (
@@ -45,13 +45,13 @@ func GetEventService() *EventService {
 	dir := filepath.Join(cfg.Node.LocalDir, "queue")
 	dq := queue.NewDiskQueue("event-queue", dir, maxBytesPerFile, minMsgSize, maxMsgSize, syncEvery, syncTimeout)
 	if dq == nil {
-		logger.GetLogger("boulder").Errorf("failed to create event queue")
+		logger.GetLogger("dedups3").Errorf("failed to create event queue")
 		return nil
 	}
 
 	store, err := kv.GetKvStore()
 	if err != nil || store == nil {
-		logger.GetLogger("boulder").Errorf("failed to get kv store: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to get kv store: %v", err)
 		return nil
 	}
 
@@ -73,13 +73,13 @@ func (e *EventService) doSyncEvent(ctx context.Context) {
 		for {
 			select {
 			case <-ctx.Done(): // 可以响应取消信号
-				logger.GetLogger("boulder").Info("sync block stopping due to context cancellation")
+				logger.GetLogger("dedups3").Info("sync block stopping due to context cancellation")
 				return
 			case msg := <-readChan:
 				record := target.Record{}
 				err := json.Unmarshal(msg, &record)
 				if err != nil {
-					logger.GetLogger("boulder").Errorf("failed to unmarshal event: %v", err)
+					logger.GetLogger("dedups3").Errorf("failed to unmarshal event: %v", err)
 					continue
 				}
 				//_event := target.Event{
@@ -100,7 +100,7 @@ func (e *EventService) AddTarget(targetType string, args interface{}) (target.Ev
 		_args := args.(target.MySQLArgs)
 		_target, err := target.NewMySQLTarget(context.Background(), _args)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to create MySQL target: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to create MySQL target: %v", err)
 			return nil, fmt.Errorf("failed to create MySQL target: %w", err)
 		}
 		ID = _args.ID
@@ -109,7 +109,7 @@ func (e *EventService) AddTarget(targetType string, args interface{}) (target.Ev
 		_args := args.(target.RabbitMQArgs)
 		_target, err := target.NewRabbitMQTarget(context.Background(), _args)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to create RabbitMQ target: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to create RabbitMQ target: %v", err)
 			return nil, fmt.Errorf("failed to create RabbitMQ target: %w", err)
 		}
 		ID = _args.ID
@@ -118,7 +118,7 @@ func (e *EventService) AddTarget(targetType string, args interface{}) (target.Ev
 		_args := args.(target.RedisArgs)
 		_target, err := target.NewRedisTarget(context.Background(), _args)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to create Redis target: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to create Redis target: %v", err)
 			return nil, fmt.Errorf("failed to create Redis target: %w", err)
 		}
 		ID = _args.ID
@@ -127,7 +127,7 @@ func (e *EventService) AddTarget(targetType string, args interface{}) (target.Ev
 		_args := args.(target.RocketMQArgs)
 		_target, err := target.NewRocketMQTarget(context.Background(), _args)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to create RocketMQ target: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to create RocketMQ target: %v", err)
 			return nil, fmt.Errorf("failed to create RocketMQ target: %w", err)
 		}
 		ID = _args.ID
@@ -136,13 +136,13 @@ func (e *EventService) AddTarget(targetType string, args interface{}) (target.Ev
 		_args := args.(target.WebhookArgs)
 		_target, err := target.NewWebhookTarget(context.Background(), _args)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to create Webhook target: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to create Webhook target: %v", err)
 			return nil, fmt.Errorf("failed to create Webhook target: %w", err)
 		}
 		ID = _args.ID
 		e.targetMap[_args.ID] = _target
 	default:
-		logger.GetLogger("boulder").Errorf("unknown target type: %v", targetType)
+		logger.GetLogger("dedups3").Errorf("unknown target type: %v", targetType)
 		return nil, fmt.Errorf("unknown target type: %v", targetType)
 	}
 
@@ -166,7 +166,7 @@ func (e *EventService) GetTargetByArn(arn string) (target.EventTarget, error) {
 	// 从kv store中查找
 	txn, err := e.kvstore.BeginTxn(context.Background(), &kv.TxnOpt{IsReadOnly: true})
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to begin transaction: %v", err)
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer txn.Rollback()
@@ -180,7 +180,7 @@ func (e *EventService) GetTargetByArn(arn string) (target.EventTarget, error) {
 		// 首先尝试获取目标头部信息来匹配ARN
 		data, exists, err := txn.GetRaw(key)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to get target head: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to get target head: %v", err)
 			continue
 		}
 		if !exists {
@@ -188,7 +188,7 @@ func (e *EventService) GetTargetByArn(arn string) (target.EventTarget, error) {
 		}
 		var header target.TargetArgHead
 		if err := json.Unmarshal(data, &header); err != nil {
-			logger.GetLogger("boulder").Errorf("failed to unmarshal target head: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to unmarshal target head: %v", err)
 			continue
 		}
 		if header.Arn != arn {
@@ -198,11 +198,11 @@ func (e *EventService) GetTargetByArn(arn string) (target.EventTarget, error) {
 		case target.EVENT_TARGET_TYPE_MYSQL:
 			var args target.MySQLArgs
 			if err := json.Unmarshal(data, &args); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to unmarshal target head: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to unmarshal target head: %v", err)
 				continue
 			}
 			if _target, err := e.AddTarget(args.Type, args); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to add target: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to add target: %v", err)
 				continue
 			} else {
 				return _target, nil
@@ -210,11 +210,11 @@ func (e *EventService) GetTargetByArn(arn string) (target.EventTarget, error) {
 		case target.EVENT_TARGET_TYPE_RABITMQ:
 			var args target.RabbitMQArgs
 			if err := json.Unmarshal(data, &args); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to unmarshal target head: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to unmarshal target head: %v", err)
 				continue
 			}
 			if _target, err := e.AddTarget(args.Type, args); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to add target: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to add target: %v", err)
 				continue
 			} else {
 				return _target, nil
@@ -222,11 +222,11 @@ func (e *EventService) GetTargetByArn(arn string) (target.EventTarget, error) {
 		case target.EVENT_TARGET_TYPE_REDIS:
 			var args target.RedisArgs
 			if err := json.Unmarshal(data, &args); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to unmarshal target head: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to unmarshal target head: %v", err)
 				continue
 			}
 			if _target, err := e.AddTarget(args.Type, args); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to add target: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to add target: %v", err)
 				continue
 			} else {
 				return _target, nil
@@ -234,11 +234,11 @@ func (e *EventService) GetTargetByArn(arn string) (target.EventTarget, error) {
 		case target.EVENT_TARGET_TYPE_ROCKETMQ:
 			var args target.RocketMQArgs
 			if err := json.Unmarshal(data, &args); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to unmarshal target head: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to unmarshal target head: %v", err)
 				continue
 			}
 			if _target, err := e.AddTarget(args.Type, args); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to add target: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to add target: %v", err)
 				continue
 			} else {
 				return _target, nil
@@ -246,11 +246,11 @@ func (e *EventService) GetTargetByArn(arn string) (target.EventTarget, error) {
 		case target.EVENT_TARGET_TYPE_WEBHOOK:
 			var args target.WebhookArgs
 			if err := json.Unmarshal(data, &args); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to unmarshal target head: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to unmarshal target head: %v", err)
 				continue
 			}
 			if _target, err := e.AddTarget(args.Type, args); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to add target: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to add target: %v", err)
 				continue
 			} else {
 				return _target, nil
@@ -271,7 +271,7 @@ func (e *EventService) GetTargetById(id string) (target.EventTarget, error) {
 	// 从kv store中查找
 	txn, err := e.kvstore.BeginTxn(context.Background(), &kv.TxnOpt{IsReadOnly: true})
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to begin transaction: %v", err)
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer txn.Rollback()
@@ -285,7 +285,7 @@ func (e *EventService) GetTargetById(id string) (target.EventTarget, error) {
 		// 首先尝试获取目标头部信息来匹配ID
 		data, exists, err := txn.GetRaw(key)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to get target head: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to get target head: %v", err)
 			continue
 		}
 		if !exists {
@@ -293,7 +293,7 @@ func (e *EventService) GetTargetById(id string) (target.EventTarget, error) {
 		}
 		var header target.TargetArgHead
 		if err := json.Unmarshal(data, &header); err != nil {
-			logger.GetLogger("boulder").Errorf("failed to unmarshal target head: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to unmarshal target head: %v", err)
 			continue
 		}
 		if header.ID != id {
@@ -305,11 +305,11 @@ func (e *EventService) GetTargetById(id string) (target.EventTarget, error) {
 		case target.EVENT_TARGET_TYPE_MYSQL:
 			var args target.MySQLArgs
 			if err := json.Unmarshal(data, &args); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to unmarshal target head: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to unmarshal target head: %v", err)
 				continue
 			}
 			if _target, err := e.AddTarget(args.Type, args); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to add target: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to add target: %v", err)
 				continue
 			} else {
 				return _target, nil
@@ -317,11 +317,11 @@ func (e *EventService) GetTargetById(id string) (target.EventTarget, error) {
 		case target.EVENT_TARGET_TYPE_RABITMQ:
 			var args target.RabbitMQArgs
 			if err := json.Unmarshal(data, &args); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to unmarshal target head: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to unmarshal target head: %v", err)
 				continue
 			}
 			if _target, err := e.AddTarget(args.Type, args); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to add target: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to add target: %v", err)
 				continue
 			} else {
 				return _target, nil
@@ -329,11 +329,11 @@ func (e *EventService) GetTargetById(id string) (target.EventTarget, error) {
 		case target.EVENT_TARGET_TYPE_REDIS:
 			var args target.RedisArgs
 			if err := json.Unmarshal(data, &args); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to unmarshal target head: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to unmarshal target head: %v", err)
 				continue
 			}
 			if _target, err := e.AddTarget(args.Type, args); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to add target: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to add target: %v", err)
 				continue
 			} else {
 				return _target, nil
@@ -341,11 +341,11 @@ func (e *EventService) GetTargetById(id string) (target.EventTarget, error) {
 		case target.EVENT_TARGET_TYPE_ROCKETMQ:
 			var args target.RocketMQArgs
 			if err := json.Unmarshal(data, &args); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to unmarshal target head: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to unmarshal target head: %v", err)
 				continue
 			}
 			if _target, err := e.AddTarget(args.Type, args); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to add target: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to add target: %v", err)
 				continue
 			} else {
 				return _target, nil
@@ -353,11 +353,11 @@ func (e *EventService) GetTargetById(id string) (target.EventTarget, error) {
 		case target.EVENT_TARGET_TYPE_WEBHOOK:
 			var args target.WebhookArgs
 			if err := json.Unmarshal(data, &args); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to unmarshal target head: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to unmarshal target head: %v", err)
 				continue
 			}
 			if _target, err := e.AddTarget(args.Type, args); err != nil {
-				logger.GetLogger("boulder").Errorf("failed to add target: %v", err)
+				logger.GetLogger("dedups3").Errorf("failed to add target: %v", err)
 				continue
 			} else {
 				return _target, nil
@@ -390,7 +390,7 @@ func (e *EventService) InitTargets() error {
 		var argsMap map[string]interface{}
 		exists, err := txn.Get(key, &argsMap)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to get target from kv store: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to get target from kv store: %v", err)
 			continue
 		}
 		if !exists {
@@ -400,7 +400,7 @@ func (e *EventService) InitTargets() error {
 		// 尝试将map转换为JSON，然后再尝试不同类型的结构体
 		jsonData, err := json.Marshal(argsMap)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to marshal argsMap to JSON: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to marshal argsMap to JSON: %v", err)
 			continue
 		}
 
@@ -414,7 +414,7 @@ func (e *EventService) InitTargets() error {
 			if err == nil {
 				e.targetMap[mysqlArgs.ID] = mysqlTarget
 				success = true
-				logger.GetLogger("boulder").Infof("initialized MySQL target: %s", mysqlArgs.ID)
+				logger.GetLogger("dedups3").Infof("initialized MySQL target: %s", mysqlArgs.ID)
 			}
 		}
 
@@ -426,7 +426,7 @@ func (e *EventService) InitTargets() error {
 				if err == nil {
 					e.targetMap[rabbitMQArgs.ID] = rabbitMQTarget
 					success = true
-					logger.GetLogger("boulder").Infof("initialized RabbitMQ target: %s", rabbitMQArgs.ID)
+					logger.GetLogger("dedups3").Infof("initialized RabbitMQ target: %s", rabbitMQArgs.ID)
 				}
 			}
 		}
@@ -439,7 +439,7 @@ func (e *EventService) InitTargets() error {
 				if err == nil {
 					e.targetMap[redisArgs.ID] = redisTarget
 					success = true
-					logger.GetLogger("boulder").Infof("initialized Redis target: %s", redisArgs.ID)
+					logger.GetLogger("dedups3").Infof("initialized Redis target: %s", redisArgs.ID)
 				}
 			}
 		}
@@ -452,7 +452,7 @@ func (e *EventService) InitTargets() error {
 				if err == nil {
 					e.targetMap[rocketMQArgs.ID] = rocketMQTarget
 					success = true
-					logger.GetLogger("boulder").Infof("initialized RocketMQ target: %s", rocketMQArgs.ID)
+					logger.GetLogger("dedups3").Infof("initialized RocketMQ target: %s", rocketMQArgs.ID)
 				}
 			}
 		}
@@ -465,23 +465,23 @@ func (e *EventService) InitTargets() error {
 				if err == nil {
 					e.targetMap[webhookArgs.ID] = webhookTarget
 					success = true
-					logger.GetLogger("boulder").Infof("initialized Webhook target: %s", webhookArgs.ID)
+					logger.GetLogger("dedups3").Infof("initialized Webhook target: %s", webhookArgs.ID)
 				}
 			}
 		}
 
 		if !success {
-			logger.GetLogger("boulder").Errorf("failed to initialize target from key: %s", key)
+			logger.GetLogger("dedups3").Errorf("failed to initialize target from key: %s", key)
 			failedKeys = append(failedKeys, key)
 		}
 	}
 
 	// 如果有未成功初始化的目标，记录日志
 	if len(failedKeys) > 0 {
-		logger.GetLogger("boulder").Warningf("failed to initialize %d targets", len(failedKeys))
+		logger.GetLogger("dedups3").Warningf("failed to initialize %d targets", len(failedKeys))
 	}
 
-	logger.GetLogger("boulder").Infof("initialized %d event targets", len(e.targetMap))
+	logger.GetLogger("dedups3").Infof("initialized %d event targets", len(e.targetMap))
 	return nil
 }
 
@@ -489,12 +489,12 @@ func (e *EventService) SendEvent(args event.EventArgs) error {
 	recorder := args.ToEvent()
 	data, err := json.Marshal(&recorder)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to marshal event to json: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to marshal event to json: %v", err)
 		return fmt.Errorf("failed to marshal event to json: %w", err)
 	}
 	err = e.queue.Put(data)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to put event to disk: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to put event to disk: %v", err)
 		return fmt.Errorf("failed to put event to disk: %w", err)
 	}
 	return nil

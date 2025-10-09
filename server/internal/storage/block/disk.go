@@ -10,9 +10,9 @@ import (
 	"strings"
 	"sync"
 
-	xconf "github.com/mageg-x/boulder/internal/config"
-	"github.com/mageg-x/boulder/internal/logger"
-	"github.com/mageg-x/boulder/internal/utils"
+	xconf "github.com/mageg-x/dedups3/internal/config"
+	"github.com/mageg-x/dedups3/internal/logger"
+	"github.com/mageg-x/dedups3/internal/utils"
 )
 
 var (
@@ -30,7 +30,7 @@ type DiskStore struct {
 // NewDiskStore  创建新的磁盘存储
 func NewDiskStore(id, class string, c *xconf.DiskConfig) (*DiskStore, error) {
 	if err := os.MkdirAll(c.Path, 0755); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to create disk store directory: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to create disk store directory: %v", err)
 		return nil, err
 	}
 
@@ -51,7 +51,7 @@ func NewDiskStore(id, class string, c *xconf.DiskConfig) (*DiskStore, error) {
 	}
 	diskStores[id] = ds
 
-	logger.GetLogger("boulder").Infof("Disk store initialized successfully")
+	logger.GetLogger("dedups3").Infof("Disk store initialized successfully")
 	return ds, nil
 }
 
@@ -63,11 +63,11 @@ func (d *DiskStore) Type() string {
 func (d *DiskStore) WriteBlock(ctx context.Context, blockID string, data []byte, ver int32) error {
 	//d.mu.Lock()
 	//defer d.mu.Unlock()
-	logger.GetLogger("boulder").Debugf("[DiskStore WriteBlock] blockID=%s, ver=%d, size=%d KB", blockID, ver, len(data)/1024)
+	logger.GetLogger("dedups3").Debugf("[DiskStore WriteBlock] blockID=%s, ver=%d, size=%d KB", blockID, ver, len(data)/1024)
 
 	vfile, err := GetTieredFs()
 	if err != nil || vfile == nil {
-		logger.GetLogger("boulder").Errorf("failed to get tiered fs: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to get tiered fs: %v", err)
 		return fmt.Errorf("failed to get tiered fs: %v", err)
 	}
 
@@ -75,7 +75,7 @@ func (d *DiskStore) WriteBlock(ctx context.Context, blockID string, data []byte,
 	if vfile.Exists(d.ID, blockID) {
 		if v, err := vfile.ReadFile(d.ID, blockID, 0, 4); err == nil && v != nil {
 			oldVer = int32(binary.BigEndian.Uint32(v[:]))
-			logger.GetLogger("boulder").Debugf("get block %s old ver %d", blockID, oldVer)
+			logger.GetLogger("dedups3").Debugf("get block %s old ver %d", blockID, oldVer)
 		}
 	}
 
@@ -88,16 +88,16 @@ func (d *DiskStore) WriteBlock(ctx context.Context, blockID string, data []byte,
 	binary.BigEndian.PutUint32(versionBuf, uint32(ver))
 
 	if err := vfile.WriteFile(d.ID, blockID, [][]byte{versionBuf, data}, ver); err != nil {
-		logger.GetLogger("boulder").Errorf("failed to write block %s: %v", blockID, err)
+		logger.GetLogger("dedups3").Errorf("failed to write block %s: %v", blockID, err)
 		return fmt.Errorf("failed to write block %s: %w", blockID, err)
 	}
 
-	logger.GetLogger("boulder").Debugf("Successfully wrote block: %s", blockID)
+	logger.GetLogger("dedups3").Debugf("Successfully wrote block: %s", blockID)
 	return nil
 }
 
 func (s *DiskStore) WriteBlockDirect(ctx context.Context, blockID string, data []byte) error {
-	logger.GetLogger("boulder").Debugf("[DiskStore WriteBlockDirect] blockID=%s", blockID)
+	logger.GetLogger("dedups3").Debugf("[DiskStore WriteBlockDirect] blockID=%s", blockID)
 	path := s.BlockPath(blockID)
 	// 确保目录存在
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -141,22 +141,22 @@ func (d *DiskStore) ReadLocalBlock(blockID string, offset, length int64) ([]byte
 
 	vfile, err := GetTieredFs()
 	if err != nil || vfile == nil {
-		logger.GetLogger("boulder").Errorf("failed to get tiered fs: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to get tiered fs: %v", err)
 		return nil, fmt.Errorf("failed to get tiered fs: %v", err)
 	}
 
 	if !vfile.Exists(d.ID, blockID) {
-		logger.GetLogger("boulder").Errorf("Block %s does not exist", blockID)
+		logger.GetLogger("dedups3").Errorf("Block %s does not exist", blockID)
 		return nil, ErrBlockNotFound
 	}
 
 	data, err := vfile.ReadFile(d.ID, blockID, offset+4, length)
 	if err != nil || data == nil {
-		logger.GetLogger("boulder").Errorf("failed to read block %s: %v", blockID, err)
+		logger.GetLogger("dedups3").Errorf("failed to read block %s: %v", blockID, err)
 		return nil, fmt.Errorf("failed to read block %s: %w", blockID, err)
 	}
 
-	logger.GetLogger("boulder").Debugf("Successfully read block: %s, read %d bytes", blockID, len(data))
+	logger.GetLogger("dedups3").Debugf("Successfully read block: %s, read %d bytes", blockID, len(data))
 	return data, nil
 }
 
@@ -167,20 +167,20 @@ func (d *DiskStore) DeleteBlock(blockID string) error {
 
 	vfile, err := GetTieredFs()
 	if err != nil || vfile == nil {
-		logger.GetLogger("boulder").Errorf("failed to get tiered fs: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to get tiered fs: %v", err)
 		return fmt.Errorf("failed to get tiered fs: %v", err)
 	}
 
 	if err := vfile.Remove(d.ID, blockID); err != nil {
 		if !vfile.Exists(d.ID, blockID) {
-			logger.GetLogger("boulder").Debugf("Block %s does not exist for deletion", blockID)
+			logger.GetLogger("dedups3").Debugf("Block %s does not exist for deletion", blockID)
 			return nil
 		}
-		logger.GetLogger("boulder").Errorf("failed to delete block %s: %v", blockID, err)
+		logger.GetLogger("dedups3").Errorf("failed to delete block %s: %v", blockID, err)
 		return fmt.Errorf("failed to delete block %s: %w", blockID, err)
 	}
 
-	logger.GetLogger("boulder").Debugf("Successfully deleted block: %s", blockID)
+	logger.GetLogger("dedups3").Debugf("Successfully deleted block: %s", blockID)
 	return nil
 }
 
@@ -191,12 +191,12 @@ func (d *DiskStore) BlockExists(blockID string) (bool, error) {
 
 	vfile, err := GetTieredFs()
 	if err != nil || vfile == nil {
-		logger.GetLogger("boulder").Errorf("failed to get tiered fs: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to get tiered fs: %v", err)
 		return false, fmt.Errorf("failed to get tiered fs: %v", err)
 	}
 
 	if !vfile.Exists(d.ID, blockID) {
-		logger.GetLogger("boulder").Debugf("Block %s does not exist", blockID)
+		logger.GetLogger("dedups3").Debugf("Block %s does not exist", blockID)
 		return false, nil
 	}
 
@@ -237,12 +237,12 @@ func (d *DiskStore) List() (<-chan string, <-chan error) {
 		}
 
 		// 开始递归遍历
-		logger.GetLogger("boulder").Infof("starting to list blocks in disk store: %s", rootPath)
+		logger.GetLogger("dedups3").Infof("starting to list blocks in disk store: %s", rootPath)
 		if err := filepath.Walk(rootPath, walker); err != nil {
-			logger.GetLogger("boulder").Errorf("error while listing blocks: %v", err)
+			logger.GetLogger("dedups3").Errorf("error while listing blocks: %v", err)
 			errChan <- fmt.Errorf("error while listing blocks: %w", err)
 		}
-		logger.GetLogger("boulder").Infof("finished listing blocks in disk store")
+		logger.GetLogger("dedups3").Infof("finished listing blocks in disk store")
 	}()
 
 	return blockChan, errChan

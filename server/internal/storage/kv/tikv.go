@@ -28,8 +28,8 @@ import (
 	pd "github.com/tikv/pd/client"
 	"time"
 
-	xconf "github.com/mageg-x/boulder/internal/config"
-	"github.com/mageg-x/boulder/internal/logger"
+	xconf "github.com/mageg-x/dedups3/internal/config"
+	"github.com/mageg-x/dedups3/internal/logger"
 )
 
 // TiKVStore 基于TiKV的KV存储实现
@@ -54,12 +54,12 @@ func InitTiKVStore(cfg *xconf.TiKVConfig) (*TiKVStore, error) {
 
 	pdCli, err := pd.NewClient(cfg.PDAddrs, security)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to initialize TiKV pd client: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to initialize TiKV pd client: %v", err)
 		return nil, err
 	}
 	client, err := tikv.NewKVStore("tikv", pdCli, nil, nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to initialize TiKV  client: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to initialize TiKV  client: %v", err)
 		return nil, err
 	}
 	return &TiKVStore{client: client}, nil
@@ -70,7 +70,7 @@ func (t *TiKVStore) Get(key string, value interface{}) (bool, error) {
 	// 直接使用 TiKV 快照 Get 方法进行快照读取
 	snapshot := t.client.GetSnapshot(0)
 	if snapshot == nil {
-		logger.GetLogger("boulder").Errorf("failed to get snapshot for key: %s", key)
+		logger.GetLogger("dedups3").Errorf("failed to get snapshot for key: %s", key)
 		return false, fmt.Errorf("failed to get snapshot for key: %s", key)
 	}
 
@@ -79,20 +79,20 @@ func (t *TiKVStore) Get(key string, value interface{}) (bool, error) {
 		if errors.Is(err, tikverr.ErrNotExist) {
 			return false, nil
 		}
-		logger.GetLogger("boulder").Errorf("Error getting key %s: %v", key, err)
+		logger.GetLogger("dedups3").Errorf("Error getting key %s: %v", key, err)
 		return false, err
 	}
 
 	if data == nil {
-		logger.GetLogger("boulder").Debugf("Key not found: %s", key)
+		logger.GetLogger("dedups3").Debugf("Key not found: %s", key)
 		return false, nil
 	}
 
 	if err := json.Unmarshal(data, value); err != nil {
-		logger.GetLogger("boulder").Errorf("JSON unmarshal error for key %s: %v", key, err)
+		logger.GetLogger("dedups3").Errorf("JSON unmarshal error for key %s: %v", key, err)
 		return true, fmt.Errorf("json unmarshal error: %w", err)
 	}
-	logger.GetLogger("boulder").Debugf("Successfully got value for key: %s", key)
+	logger.GetLogger("dedups3").Debugf("Successfully got value for key: %s", key)
 	return true, nil
 }
 
@@ -100,7 +100,7 @@ func (t *TiKVStore) GetRaw(key string) ([]byte, bool, error) {
 	// 直接使用 TiKV 快照 Get 方法进行快照读取
 	snapshot := t.client.GetSnapshot(0)
 	if snapshot == nil {
-		logger.GetLogger("boulder").Errorf("failed to get snapshot for key: %s", key)
+		logger.GetLogger("dedups3").Errorf("failed to get snapshot for key: %s", key)
 		return nil, false, fmt.Errorf("failed to get snapshot for key: %s", key)
 	}
 
@@ -109,7 +109,7 @@ func (t *TiKVStore) GetRaw(key string) ([]byte, bool, error) {
 		if errors.Is(err, tikverr.ErrNotExist) {
 			return nil, false, nil
 		}
-		logger.GetLogger("boulder").Errorf("Error getting key %s: %v", key, err)
+		logger.GetLogger("dedups3").Errorf("Error getting key %s: %v", key, err)
 		return nil, false, err
 	}
 
@@ -120,7 +120,7 @@ func (t *TiKVStore) BatchGet(keys []string) (map[string][]byte, error) {
 	// 直接使用 TiKV 快照 Get 方法进行快照读取
 	snapshot := t.client.GetSnapshot(0)
 	if snapshot == nil {
-		logger.GetLogger("boulder").Errorf("failed to get snapshot for  batch get key")
+		logger.GetLogger("dedups3").Errorf("failed to get snapshot for  batch get key")
 		return nil, fmt.Errorf("failed to get snapshot for batch get key")
 	}
 	ks := make([][]byte, 0, len(keys))
@@ -129,7 +129,7 @@ func (t *TiKVStore) BatchGet(keys []string) (map[string][]byte, error) {
 	}
 	values, err := snapshot.BatchGet(context.Background(), ks)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to BatchGet keys: %v", err)
+		logger.GetLogger("dedups3").Errorf("Failed to BatchGet keys: %v", err)
 		return nil, fmt.Errorf("failed to BatchGet keys: %w", err)
 	}
 
@@ -139,7 +139,7 @@ func (t *TiKVStore) BatchGet(keys []string) (map[string][]byte, error) {
 func (t *TiKVStore) Set(key string, value interface{}) error {
 	txn, err := t.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to begin transaction: %v", err)
 		return err
 	}
 	defer func() {
@@ -150,10 +150,10 @@ func (t *TiKVStore) Set(key string, value interface{}) error {
 
 	err = txn.Set(key, value)
 	if err == nil {
-		logger.GetLogger("boulder").Infof("Successfully set value for key: %s", key)
+		logger.GetLogger("dedups3").Infof("Successfully set value for key: %s", key)
 		err = txn.Commit()
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
 		}
 		txn = nil
 	}
@@ -164,11 +164,11 @@ func (t *TiKVStore) Set(key string, value interface{}) error {
 func (t *TiKVStore) Incr(k string) (uint64, error) {
 	var id uint64
 
-	logger.GetLogger("boulder").Debugf("generating next ID for key: %s", k)
+	logger.GetLogger("dedups3").Debugf("generating next ID for key: %s", k)
 
 	txn, err := t.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to begin transaction for key %s : %v", k, err)
+		logger.GetLogger("dedups3").Errorf("failed to begin transaction for key %s : %v", k, err)
 		return id, fmt.Errorf("failed to begin transaction for key %s: %w", k, err)
 	}
 	defer func() {
@@ -180,14 +180,14 @@ func (t *TiKVStore) Incr(k string) (uint64, error) {
 	// 尝试获取当前值
 	rawData, exists, err := txn.GetRaw(k)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to get key %s: %v", k, err)
+		logger.GetLogger("dedups3").Errorf("failed to get key %s: %v", k, err)
 		return id, fmt.Errorf("failed to get key %s: %w", k, err)
 	}
 
 	// 计算新ID
 	if !exists {
 		id = 1
-		logger.GetLogger("boulder").Debugf("key %s not found, initializing to 1", k)
+		logger.GetLogger("dedups3").Debugf("key %s not found, initializing to 1", k)
 	} else {
 		id = binary.LittleEndian.Uint64(rawData) + 1
 	}
@@ -197,27 +197,27 @@ func (t *TiKVStore) Incr(k string) (uint64, error) {
 	binary.LittleEndian.PutUint64(buf[:], id)
 	err = txn.Set(k, buf[:])
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to set key %s: %v", k, err)
+		logger.GetLogger("dedups3").Errorf("failed to set key %s: %v", k, err)
 		return id, fmt.Errorf("failed to set key %s: %w", k, err)
 	}
 
 	// 提交事务
 	err = txn.Commit()
 	if err != nil {
-		logger.GetLogger("boulder").Warnf("transaction conflict for key %s , %w", k, err)
+		logger.GetLogger("dedups3").Warnf("transaction conflict for key %s , %w", k, err)
 		return id, fmt.Errorf("transaction conflict for key %s , %w", k, err)
 	}
 	txn = nil
 
 	// 成功获取新ID
-	logger.GetLogger("boulder").Debugf("setting new ID %d for key: %s", id, k)
+	logger.GetLogger("dedups3").Debugf("setting new ID %d for key: %s", id, k)
 	return id, nil
 }
 
 func (t *TiKVStore) Delete(key string) error {
 	txn, err := t.BeginTxn(context.Background(), nil)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to begin transaction: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to begin transaction: %v", err)
 		return err
 	}
 	defer func() {
@@ -227,10 +227,10 @@ func (t *TiKVStore) Delete(key string) error {
 	}()
 	err = txn.Delete(key)
 	if err == nil {
-		logger.GetLogger("boulder").Infof("Successfully delete key: %s", key)
+		logger.GetLogger("dedups3").Infof("Successfully delete key: %s", key)
 		err = txn.Commit()
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("failed to commit transaction: %v", err)
+			logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
 		}
 		txn = nil
 	}
@@ -241,7 +241,7 @@ func (t *TiKVStore) Delete(key string) error {
 func (t *TiKVStore) BeginTxn(_ context.Context, opt *TxnOpt) (Txn, error) {
 	txn, err := t.client.Begin()
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to begin txn: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to begin txn: %v", err)
 		return nil, err
 	}
 
@@ -348,31 +348,31 @@ func (t *TiKVStore) UnLock(key, owner string) error {
 func (t *TiKVStore) Close() error {
 	err := t.client.Close()
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to close TiKV client: %v", err)
+		logger.GetLogger("dedups3").Errorf("Failed to close TiKV client: %v", err)
 		return fmt.Errorf("failed to close TiKV client: %w", err)
 	}
 
-	logger.GetLogger("boulder").Debugf("TiKV store closed successfully")
+	logger.GetLogger("dedups3").Debugf("TiKV store closed successfully")
 	return nil
 }
 
 func (t *TiKVTxn) Commit() error {
 	err := t.txn.Commit(context.Background())
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to commit txn: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to commit txn: %v", err)
 		return fmt.Errorf("failed to commit txn: %w", err)
 	}
-	logger.GetLogger("boulder").Debugf("Committed txn")
+	logger.GetLogger("dedups3").Debugf("Committed txn")
 	return nil
 }
 
 func (t *TiKVTxn) Rollback() error {
 	err := t.txn.Rollback()
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to rollback txn: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to rollback txn: %v", err)
 		return fmt.Errorf("failed to rollback txn: %w", err)
 	}
-	logger.GetLogger("boulder").Debugf("Rolled back txn")
+	logger.GetLogger("dedups3").Debugf("Rolled back txn")
 	return nil
 }
 
@@ -382,20 +382,20 @@ func (t *TiKVTxn) Get(key string, value interface{}) (bool, error) {
 		if errors.Is(err, tikverr.ErrNotExist) {
 			return false, nil
 		}
-		logger.GetLogger("boulder").Errorf("Error getting key %s: %v", key, err)
+		logger.GetLogger("dedups3").Errorf("Error getting key %s: %v", key, err)
 		return false, err
 	}
 
 	if data == nil {
-		logger.GetLogger("boulder").Debugf("Key not found: %s", key)
+		logger.GetLogger("dedups3").Debugf("Key not found: %s", key)
 		return false, nil
 	}
 
 	if err := json.Unmarshal(data, value); err != nil {
-		logger.GetLogger("boulder").Errorf("JSON unmarshal error for key %s: %v", key, err)
+		logger.GetLogger("dedups3").Errorf("JSON unmarshal error for key %s: %v", key, err)
 		return true, fmt.Errorf("json unmarshal error: %w", err)
 	}
-	logger.GetLogger("boulder").Debugf("Successfully got value for key: %s", key)
+	logger.GetLogger("dedups3").Debugf("Successfully got value for key: %s", key)
 	return true, nil
 }
 
@@ -405,15 +405,15 @@ func (t *TiKVTxn) GetRaw(key string) ([]byte, bool, error) {
 		if errors.Is(err, tikverr.ErrNotExist) {
 			return nil, false, nil
 		}
-		logger.GetLogger("boulder").Errorf("Error getting raw data for key %s: %v", key, err)
+		logger.GetLogger("dedups3").Errorf("Error getting raw data for key %s: %v", key, err)
 		return nil, false, err
 	}
 
 	if data == nil {
-		logger.GetLogger("boulder").Debugf("Key not found: %s", key)
+		logger.GetLogger("dedups3").Debugf("Key not found: %s", key)
 		return nil, false, nil
 	}
-	logger.GetLogger("boulder").Debugf("Successfully got raw data for key: %s", key)
+	logger.GetLogger("dedups3").Debugf("Successfully got raw data for key: %s", key)
 	return data, true, nil
 }
 
@@ -424,7 +424,7 @@ func (t *TiKVTxn) BatchGet(keys []string) (map[string][]byte, error) {
 	}
 	values, err := t.txn.BatchGet(context.Background(), ks)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to BatchGet keys: %v", err)
+		logger.GetLogger("dedups3").Errorf("Failed to BatchGet keys: %v", err)
 		return nil, fmt.Errorf("failed to BatchGet keys: %w", err)
 	}
 
@@ -434,13 +434,13 @@ func (t *TiKVTxn) BatchGet(keys []string) (map[string][]byte, error) {
 func (t *TiKVTxn) Set(key string, value interface{}) error {
 	data, err := json.Marshal(value)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("JSON marshal error for key %s: %v", key, err)
+		logger.GetLogger("dedups3").Errorf("JSON marshal error for key %s: %v", key, err)
 		return fmt.Errorf("json marshal error: %w", err)
 	}
 
 	err = t.txn.Set([]byte(key), data)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to put key %s: %v", key, err)
+		logger.GetLogger("dedups3").Errorf("Failed to put key %s: %v", key, err)
 	}
 	return err
 }
@@ -448,20 +448,20 @@ func (t *TiKVTxn) Set(key string, value interface{}) error {
 func (t *TiKVTxn) SetNX(key string, value interface{}) error {
 	data, err := json.Marshal(value)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("JSON marshal error for key %s: %v", key, err)
+		logger.GetLogger("dedups3").Errorf("JSON marshal error for key %s: %v", key, err)
 		return fmt.Errorf("json marshal error: %w", err)
 	}
 	// 检查key是否存在
 	_, err = t.txn.Get(context.Background(), []byte(key))
 	if err == nil {
-		logger.GetLogger("boulder").Errorf("Error getting key %s: %v", key, err)
+		logger.GetLogger("dedups3").Errorf("Error getting key %s: %v", key, err)
 		return ErrKeyExists
 	}
 
 	// key不存在，设置值
 	err = t.txn.Set([]byte(key), data)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to put key %s: %v", key, err)
+		logger.GetLogger("dedups3").Errorf("Failed to put key %s: %v", key, err)
 		return err
 	}
 	return nil
@@ -473,14 +473,14 @@ func (t *TiKVTxn) BatchSet(kvs map[string]interface{}) error {
 		// 序列化值
 		data, err := json.Marshal(value)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("JSON marshal error for key %s: %v", key, err)
+			logger.GetLogger("dedups3").Errorf("JSON marshal error for key %s: %v", key, err)
 			return fmt.Errorf("json marshal error for key %s: %w", key, err)
 		}
 
 		// 设置键值对
 		err = t.txn.Set([]byte(key), data)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("Failed to set key %s: %v", key, err)
+			logger.GetLogger("dedups3").Errorf("Failed to set key %s: %v", key, err)
 			return fmt.Errorf("failed to set key %s: %w", key, err)
 		}
 	}
@@ -491,9 +491,9 @@ func (t *TiKVTxn) BatchSet(kvs map[string]interface{}) error {
 func (t *TiKVTxn) Delete(key string) error {
 	err := t.txn.Delete([]byte(key))
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to delete key %s: %v", key, err)
+		logger.GetLogger("dedups3").Errorf("Failed to delete key %s: %v", key, err)
 	} else {
-		logger.GetLogger("boulder").Debugf("Successfully deleted key: %s", key)
+		logger.GetLogger("dedups3").Debugf("Successfully deleted key: %s", key)
 	}
 	return err
 }
@@ -518,7 +518,7 @@ func (t *TiKVTxn) DeletePrefix(prefix string, limit int32) error {
 	// 创建迭代器
 	iter, err := t.txn.Iter([]byte(prefix), endPrefix)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to create iterator for prefix %s: %v", prefix, err)
+		logger.GetLogger("dedups3").Errorf("Failed to create iterator for prefix %s: %v", prefix, err)
 		return fmt.Errorf("failed to create iterator: %w", err)
 	}
 	defer iter.Close()
@@ -531,13 +531,13 @@ func (t *TiKVTxn) DeletePrefix(prefix string, limit int32) error {
 		// 删除键
 		err := t.txn.Delete(key)
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("Failed to delete key %s: %v", string(key), err)
+			logger.GetLogger("dedups3").Errorf("Failed to delete key %s: %v", string(key), err)
 			return fmt.Errorf("failed to delete key %s: %w", string(key), err)
 		}
 
 		err = iter.Next()
 		if err != nil {
-			logger.GetLogger("boulder").Errorf("Failed to advance iterator: %v", err)
+			logger.GetLogger("dedups3").Errorf("Failed to advance iterator: %v", err)
 			return fmt.Errorf("failed to advance iterator: %w", err)
 		}
 	}
@@ -571,7 +571,7 @@ func (t *TiKVTxn) Scan(prefix string, startKey string, limit int) ([]string, str
 	// 创建迭代器
 	iter, err := t.txn.Iter(start, end)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to create iterator for prefix %s: %v", prefix, err)
+		logger.GetLogger("dedups3").Errorf("Failed to create iterator for prefix %s: %v", prefix, err)
 		return nil, "", fmt.Errorf("failed to create iterator: %w", err)
 	}
 	defer iter.Close()
@@ -602,7 +602,7 @@ func (t *TiKVReadOnlyTxn) Get(key string, value interface{}) (bool, error) {
 	}
 
 	if err := json.Unmarshal(data, value); err != nil {
-		logger.GetLogger("boulder").Errorf("JSON unmarshal error for key %s: %v", key, err)
+		logger.GetLogger("dedups3").Errorf("JSON unmarshal error for key %s: %v", key, err)
 		return true, fmt.Errorf("json unmarshal error: %w", err)
 	}
 	return true, nil
@@ -615,7 +615,7 @@ func (t *TiKVReadOnlyTxn) GetRaw(key string) ([]byte, bool, error) {
 		if errors.Is(err, tikverr.ErrNotExist) {
 			return nil, false, nil
 		}
-		logger.GetLogger("boulder").Errorf("Error getting raw data for key %s: %v", key, err)
+		logger.GetLogger("dedups3").Errorf("Error getting raw data for key %s: %v", key, err)
 		return nil, false, err
 	}
 
@@ -635,7 +635,7 @@ func (t *TiKVReadOnlyTxn) BatchGet(keys []string) (map[string][]byte, error) {
 	// 直接使用快照的批量获取方法
 	values, err := t.snapshot.BatchGet(context.Background(), ks)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to BatchGet keys: %v", err)
+		logger.GetLogger("dedups3").Errorf("Failed to BatchGet keys: %v", err)
 		return nil, fmt.Errorf("failed to BatchGet keys: %w", err)
 	}
 
@@ -668,7 +668,7 @@ func (t *TiKVReadOnlyTxn) Scan(prefix string, startKey string, limit int) ([]str
 	// 执行扫描
 	iter, err := t.snapshot.Iter(start, end)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to create iterator for prefix %s: %v", prefix, err)
+		logger.GetLogger("dedups3").Errorf("Failed to create iterator for prefix %s: %v", prefix, err)
 		return nil, "", fmt.Errorf("failed to create iterator: %w", err)
 	}
 	defer iter.Close()

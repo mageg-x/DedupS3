@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	xhttp "github.com/mageg-x/boulder/internal/http"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
 )
 
 type AwsChunkedReader struct {

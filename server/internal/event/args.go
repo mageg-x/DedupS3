@@ -3,14 +3,14 @@ package event
 import (
 	"fmt"
 	"github.com/gorilla/mux"
-	"github.com/mageg-x/boulder/internal/aws"
-	xhttp "github.com/mageg-x/boulder/internal/http"
-	"github.com/mageg-x/boulder/internal/utils"
+	"github.com/mageg-x/dedups3/internal/aws"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
+	"github.com/mageg-x/dedups3/internal/utils"
 	"net/http"
 	"net/url"
 	"time"
 
-	"github.com/mageg-x/boulder/internal/event/target"
+	"github.com/mageg-x/dedups3/internal/event/target"
 )
 
 type ObjectInfo struct {

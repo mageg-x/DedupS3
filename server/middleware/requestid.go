@@ -19,19 +19,19 @@ package middleware
 
 import (
 	"context"
-	"github.com/mageg-x/boulder/internal/config"
+	"github.com/mageg-x/dedups3/internal/config"
 	"net/http"
 
-	"github.com/mageg-x/boulder/internal/logger"
+	"github.com/mageg-x/dedups3/internal/logger"
 
-	xhttp "github.com/mageg-x/boulder/internal/http"
-	"github.com/mageg-x/boulder/internal/utils"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
+	"github.com/mageg-x/dedups3/internal/utils"
 )
 
 // RequestIDMiddleware 为所有请求生成唯一ID
 func RequestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		logger.GetLogger("boulder").Tracef("get req %s %s %#v", r.Method, r.URL.Path, r.Header)
+		logger.GetLogger("dedups3").Tracef("get req %s %s %#v", r.Method, r.URL.Path, r.Header)
 		// 生成唯一Request ID
 		// 可以使用UUID或时间戳+随机数的组合
 		requestID := utils.GenUUID()

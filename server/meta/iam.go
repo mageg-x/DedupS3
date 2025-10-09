@@ -22,7 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	xhttp "github.com/mageg-x/boulder/internal/http"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
 	"github.com/twmb/murmur3"
 	"regexp"
 	"strconv"
@@ -30,7 +30,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/mageg-x/boulder/internal/logger"
+	"github.com/mageg-x/dedups3/internal/logger"
 	Rand "math/rand"
 )
 
@@ -174,13 +174,13 @@ func CreateAccount(name string) *IamAccount {
 func (a *IamAccount) CreateRootUser(username, password string) (*IamUser, error) {
 	// 检查是否已存在根用户
 	if _, exists := a.Users["root"]; exists {
-		logger.GetLogger("boulder").Errorf("root user already exists")
+		logger.GetLogger("dedups3").Errorf("root user already exists")
 		return nil, errors.New("root user already exists")
 	}
 
 	rootUser, err := a.CreateUser(username, password, nil, nil, nil, true)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("failed to create root user: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to create root user: %v", err)
 		return nil, err
 	}
 	rootUser.IsRoot = true
@@ -202,7 +202,7 @@ func (a *IamAccount) CreateRootUser(username, password string) (*IamUser, error)
 func (a *IamAccount) IsRootUser(username string) bool {
 	root, exists := a.Users["root"]
 	if !exists || root == nil {
-		logger.GetLogger("boulder").Errorf("root user not exists")
+		logger.GetLogger("dedups3").Errorf("root user not exists")
 		return false
 	}
 	return root.Username == username
@@ -213,16 +213,16 @@ func (a *IamAccount) IsRootUser(username string) bool {
 // CreateUser 创建新用户
 func (a *IamAccount) CreateUser(username, password string, groups, roles, policies []string, enable bool) (*IamUser, error) {
 	if u, _ := a.GetUser(username); u != nil {
-		logger.GetLogger("boulder").Errorf("user %s already exists", username)
+		logger.GetLogger("dedups3").Errorf("user %s already exists", username)
 		return nil, xhttp.ToError(xhttp.ErrUserAlreadyExists)
 	}
 	if err := ValidateUsername(username); err != nil {
-		logger.GetLogger("boulder").Errorf("username %s is invalid format", username)
+		logger.GetLogger("dedups3").Errorf("username %s is invalid format", username)
 		return nil, xhttp.ToError(xhttp.ErrInvalidName)
 	}
 
 	if err := ValidatePassword(password, username); err != nil {
-		logger.GetLogger("boulder").Errorf("password for user %s is invalid: %v", username, err)
+		logger.GetLogger("dedups3").Errorf("password for user %s is invalid: %v", username, err)
 		return nil, xhttp.ToError(xhttp.ErrInvalidRequest)
 	}
 
@@ -261,17 +261,17 @@ func (a *IamAccount) CreateUser(username, password string, groups, roles, polici
 func (a *IamAccount) UpdateUser(username, password string, groups, roles, policies []string, enable bool) (*IamUser, error) {
 	u, err := a.GetUser(username)
 	if err != nil || u == nil {
-		logger.GetLogger("boulder").Errorf("user %s not exists", username)
+		logger.GetLogger("dedups3").Errorf("user %s not exists", username)
 		return nil, xhttp.ToError(xhttp.ErrAdminNoSuchUser)
 	}
 	if err := ValidateUsername(username); err != nil {
-		logger.GetLogger("boulder").Errorf("username %s is invalid format", username)
+		logger.GetLogger("dedups3").Errorf("username %s is invalid format", username)
 		return nil, xhttp.ToError(xhttp.ErrInvalidName)
 	}
 
 	if password != "" {
 		if err := ValidatePassword(password, username); err != nil {
-			logger.GetLogger("boulder").Errorf("password for user %s is invalid: %v", username, err)
+			logger.GetLogger("dedups3").Errorf("password for user %s is invalid: %v", username, err)
 			return nil, xhttp.ToError(xhttp.ErrInvalidRequest)
 		}
 		u.Password = password
@@ -945,7 +945,7 @@ func (a *IamAccount) CheckPermission(username, action, resource string) (bool, e
 func (a *IamAccount) IsAllow(username, action, resource string) bool {
 	allowed, err := a.CheckPermission(username, action, resource)
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("CheckPermission error for user %s: %v", username, err)
+		logger.GetLogger("dedups3").Errorf("CheckPermission error for user %s: %v", username, err)
 		return false
 	}
 	return allowed

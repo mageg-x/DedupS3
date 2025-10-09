@@ -21,16 +21,16 @@ import (
 	"net/http"
 	"time"
 
-	xhttp "github.com/mageg-x/boulder/internal/http"
-	"github.com/mageg-x/boulder/internal/logger"
-	"github.com/mageg-x/boulder/internal/utils"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
+	"github.com/mageg-x/dedups3/internal/logger"
+	"github.com/mageg-x/dedups3/internal/utils"
 
 	"github.com/gorilla/mux"
 )
 
 func AuditMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		logger.GetLogger("boulder").Tracef("get req %s %s %#v", r.Method, r.URL.Path, r.Header)
+		logger.GetLogger("dedups3").Tracef("get req %s %s %#v", r.Method, r.URL.Path, r.Header)
 		start := time.Now().UTC()
 
 		// 创建响应写入器以捕获状态码

@@ -23,7 +23,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mageg-x/boulder/internal/deadlineconn"
+	"github.com/mageg-x/dedups3/internal/deadlineconn"
 )
 
 type acceptResult struct {

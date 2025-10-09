@@ -20,8 +20,8 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
-	"github.com/mageg-x/boulder/handler"
-	"github.com/mageg-x/boulder/middleware"
+	"github.com/mageg-x/dedups3/handler"
+	"github.com/mageg-x/dedups3/middleware"
 )
 
 func SetupAdminRouter() *mux.Router {

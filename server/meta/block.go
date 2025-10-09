@@ -3,10 +3,10 @@ package meta
 
 import (
 	"crypto/md5"
-	"github.com/mageg-x/boulder/internal/config"
+	"github.com/mageg-x/dedups3/internal/config"
 	"time"
 
-	"github.com/mageg-x/boulder/internal/utils"
+	"github.com/mageg-x/dedups3/internal/utils"
 )
 
 const (

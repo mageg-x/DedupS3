@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/apache/rocketmq-client-go/v2"
-	"github.com/mageg-x/boulder/internal/utils"
+	"github.com/mageg-x/dedups3/internal/utils"
 )
 
 // RocketMQArgs 包含RocketMQ目标的配置参数
@@ -180,7 +180,7 @@ func (target *RocketMQTarget) connect() error {
 		producer.WithNameServer(nameServers),
 		producer.WithRetry(2), // 减少默认重试次数，由应用层控制
 		producer.WithGroupName(target.args.Group),
-		producer.WithInstanceName(fmt.Sprintf("boulder_%s_%d", target.args.ID, time.Now().Unix())),
+		producer.WithInstanceName(fmt.Sprintf("dedups3_%s_%d", target.args.ID, time.Now().Unix())),
 		producer.WithQueueSelector(producer.NewRoundRobinQueueSelector()), // 轮询选择队列
 		producer.WithSendMsgTimeout(target.sendTimeout),                   // 设置发送超时
 	}

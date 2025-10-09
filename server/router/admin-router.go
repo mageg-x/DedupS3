@@ -2,10 +2,10 @@ package router
 
 import (
 	"github.com/gorilla/mux"
-	"github.com/mageg-x/boulder/handler"
-	"github.com/mageg-x/boulder/internal/logger"
-	"github.com/mageg-x/boulder/middleware"
-	"github.com/mageg-x/boulder/web"
+	"github.com/mageg-x/dedups3/handler"
+	"github.com/mageg-x/dedups3/internal/logger"
+	"github.com/mageg-x/dedups3/middleware"
+	"github.com/mageg-x/dedups3/web"
 	"io/fs"
 	"net/http"
 	"os"
@@ -42,7 +42,7 @@ func registerAdminRouter(mr *mux.Router) {
 	// 获取嵌入式文件系统
 	dist, err := fs.Sub(web.WebDistFS, "dist")
 	if err != nil {
-		logger.GetLogger("boulder").Errorf("Failed to get sub filesystem: %v", err)
+		logger.GetLogger("dedups3").Errorf("Failed to get sub filesystem: %v", err)
 		return
 	}
 
@@ -99,7 +99,7 @@ func registerAdminRouter(mr *mux.Router) {
 
 	// 处理静态资源路由
 	ar.Methods(http.MethodGet).Path("/{path:.*}").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		logger.GetLogger("boulder").Errorf("serving static: %s", r.URL.Path)
+		logger.GetLogger("dedups3").Errorf("serving static: %s", r.URL.Path)
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			http.NotFound(w, r)
 			return
@@ -107,5 +107,5 @@ func registerAdminRouter(mr *mux.Router) {
 		h := http.StripPrefix("/", http.FileServer(FS))
 		h.ServeHTTP(w, r)
 	})
-	logger.GetLogger("boulder").Infof("Admin console routes registered with prefix /")
+	logger.GetLogger("dedups3").Infof("Admin console routes registered with prefix /")
 }

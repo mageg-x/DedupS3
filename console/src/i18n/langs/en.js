@@ -72,7 +72,7 @@ const en = {
   login: {
     title: "Secure Connection",
     subtitle: "Select login method to continue",
-    brandName: "Boulder (S3 Compatible Storage)",
+    brandName: "DeDupS3 (S3 Compatible Storage)",
     tagline: "Advanced Cloud Storage Management Platform",
     subtitleDescription:
       "Securely access and manage your S3 compatible storage through our intuitive browser interface. Combining enterprise-grade security with user-friendly design.",
@@ -835,7 +835,7 @@ const en = {
   },
   // 品牌相关
   brand: {
-    name: "Boulder Storage",
+    name: "DeDupS3 Storage",
     admin: "Admin",
     regularUser: "Regular User",
   },
