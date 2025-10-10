@@ -249,6 +249,7 @@ const menuItems = [
       { path: '/debugtool', label: t('mainMenu.debugTool'), icon: 'fa-bug', permission: 'console:Debug' },
     ]
   },
+  { path: '/about', label: '关于 Boulder', icon: 'fa-info-circle', permission: 'console:About' }
 ];
 
 // ==================== 计算属性 ====================
@@ -316,8 +317,10 @@ const hasPermission = (permission) => {
   if (!permission) {
     return true;
   }
-  // 检查用户权限列表中是否包含该权限
-  return userInfo.value.permissions && userInfo.value.permissions.includes(permission);
+  // 检查用户权限列表中是否包含该权限或通配符
+  const permissions = userInfo.value.permissions || [];
+  // 如果有权限通配符 * 或 console:*, 则拥有所有权限
+  return permissions.includes(permission) || permissions.includes('*') || permissions.includes('console:*');
 };
 
 // 过滤菜单项，根据用户权限禁用或显示菜单
@@ -380,11 +383,23 @@ const extractConsolePermissions = (policies) => {
   if (policies && Array.isArray(policies)) {
     policies.forEach(policy => {
       if (policy.Effect === 'Allow' && policy.Action && Array.isArray(policy.Action)) {
-        policy.Action.forEach(action => {
-          if (action.startsWith('console:')) {
-            consolePermissions.add(action);
-          }
-        });
+        // 检查是否包含全局通配符或console通配符
+        const hasGlobalWildcard = policy.Action.includes('*');
+        const hasConsoleWildcard = policy.Action.includes('console:*');
+        
+        // 如果有权限通配符，直接添加通配符权限
+        if (hasGlobalWildcard) {
+          consolePermissions.add('*');
+        } else if (hasConsoleWildcard) {
+          consolePermissions.add('console:*');
+        } else {
+          // 否则提取具体的console权限
+          policy.Action.forEach(action => {
+            if (action.startsWith('console:')) {
+              consolePermissions.add(action);
+            }
+          });
+        }
       }
     });
   }

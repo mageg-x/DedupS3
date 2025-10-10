@@ -775,6 +775,6 @@ func (s *StatsService) doStats4Global() error {
 		return errMsg
 	}
 	jsonBytes, _ := json.Marshal(globalStats)
-	logger.GetLogger("dedups3").Errorf("global stats: %s", string(jsonBytes))
+	logger.GetLogger("dedups3").Debugf("global stats: %s", string(jsonBytes))
 	return nil
 }

@@ -168,37 +168,7 @@ func CreateAccount(name string) *IamAccount {
 	}
 }
 
-// ============================== 根用户操作 ==============================
-
-// CreateRootUser 创建根用户（账户所有者）
-func (a *IamAccount) CreateRootUser(username, password string) (*IamUser, error) {
-	// 检查是否已存在根用户
-	if _, exists := a.Users["root"]; exists {
-		logger.GetLogger("dedups3").Errorf("root user already exists")
-		return nil, errors.New("root user already exists")
-	}
-
-	rootUser, err := a.CreateUser(username, password, nil, nil, nil, true)
-	if err != nil {
-		logger.GetLogger("dedups3").Errorf("failed to create root user: %v", err)
-		return nil, err
-	}
-	rootUser.IsRoot = true
-	accessKey := generateAccessKeyID()
-	secretAccessKey := generateSecretAccessKey()
-	rootUser.AccessKeys = append(rootUser.AccessKeys, AccessKey{
-		AccessKeyID:     accessKey,
-		SecretAccessKey: secretAccessKey,
-		Status:          "Active",
-		CreatedAt:       time.Now().UTC(),
-		ExpiredAt:       time.Now().AddDate(100, 0, 0).UTC(),
-		AccountID:       a.AccountID,
-		Username:        username,
-	})
-	a.Users["root"] = rootUser
-	return rootUser, nil
-}
-
+// ============================== 用户操作 ==============================
 func (a *IamAccount) IsRootUser(username string) bool {
 	root, exists := a.Users["root"]
 	if !exists || root == nil {
@@ -207,8 +177,6 @@ func (a *IamAccount) IsRootUser(username string) bool {
 	}
 	return root.Username == username
 }
-
-// ============================== 用户操作 ==============================
 
 // CreateUser 创建新用户
 func (a *IamAccount) CreateUser(username, password string, groups, roles, policies []string, enable bool) (*IamUser, error) {
@@ -389,37 +357,110 @@ func (a *IamAccount) DeleteUser(username string) error {
 }
 
 // CreateAccessKey 为用户创建访问密钥
-func (a *IamAccount) CreateAccessKey(username string, expiredAt time.Time, ak, sk string) (*AccessKey, error) {
+func (a *IamAccount) CreateAccessKey(username string, ak, sk string, expiredAt time.Time, enable bool) (*AccessKey, error) {
 	user, exists := a.Users[username]
 	if a.Users["root"] != nil && a.Users["root"].Username == username {
 		user = a.Users["root"]
 		exists = true
 	}
 	if !exists {
-		return nil, errors.New("user not found")
+		return nil, xhttp.ToError(xhttp.ErrAdminNoSuchUser)
 	}
 
 	if expiredAt.Before(time.Now()) {
 		return nil, errors.New("expired time cannot be before current time")
 	}
 	if ak == "" {
-		ak = generateAccessKeyID()
+		ak = GenerateAccessKeyID()
 	}
 	if sk == "" {
-		sk = generateSecretAccessKey()
+		sk = GenerateSecretAccessKey()
 	}
+
+	// 是否已经存在， ak是全局唯一
+	for _, u := range a.Users {
+		if u == nil {
+			continue
+		}
+		for _, _ak := range u.AccessKeys {
+			if _ak.AccessKeyID == ak {
+				return nil, xhttp.ToError(xhttp.ErrAdminConfigDuplicateKeys)
+			}
+		}
+	}
+
 	accessKey := AccessKey{
 		AccessKeyID:     ak,
 		SecretAccessKey: sk,
-		Status:          "Active",
 		CreatedAt:       time.Now().UTC(),
 		ExpiredAt:       expiredAt,
 		Username:        username,
 		AccountID:       a.AccountID,
+		Status:          "Inactive",
+	}
+	if enable {
+		accessKey.Status = "Active"
 	}
 
 	user.AccessKeys = append(user.AccessKeys, accessKey)
 	return &accessKey, nil
+}
+
+// UpdateAccessKey 更新访问密钥
+func (a *IamAccount) UpdateAccessKey(ak, sk string, expiredAt time.Time, enable bool) (*AccessKey, error) {
+	if expiredAt.Before(time.Now()) {
+		return nil, errors.New("expired time cannot be before current time")
+	}
+
+	var _ak *AccessKey
+	for _, u := range a.Users {
+		if u == nil {
+			continue
+		}
+		for i, _ := range u.AccessKeys {
+			_key := &u.AccessKeys[i]
+			if _key.AccessKeyID == ak {
+				_ak = _key
+				break
+			}
+		}
+	}
+
+	if _ak == nil {
+		return nil, xhttp.ToError(xhttp.ErrAdminNoSuchAccessKey)
+	}
+
+	_ak.SecretAccessKey = sk
+	_ak.ExpiredAt = expiredAt
+	if enable {
+		_ak.Status = "Active"
+	} else {
+		_ak.Status = "Inactive"
+	}
+
+	return _ak, nil
+}
+
+func (a *IamAccount) DeleteAccessKey(ak string) error {
+	founded := false
+	for _, u := range a.Users {
+		if u == nil {
+			continue
+		}
+		j := 0
+		for _, _ak := range u.AccessKeys {
+			if _ak.AccessKeyID != ak {
+				founded = true
+				u.AccessKeys[j] = _ak
+				j++
+			}
+		}
+		u.AccessKeys = u.AccessKeys[:j]
+	}
+	if !founded {
+		return xhttp.ToError(xhttp.ErrAdminNoSuchAccessKey)
+	}
+	return nil
 }
 
 // ============================== 组操作 ==============================
@@ -1294,7 +1335,7 @@ func ValidatePassword(password, username string) error {
 }
 
 // 生成访问密钥ID (20字符)
-func generateAccessKeyID() string {
+func GenerateAccessKeyID() string {
 	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, 20)
 	for i := range b {
@@ -1304,11 +1345,43 @@ func generateAccessKeyID() string {
 }
 
 // 生成秘密访问密钥 (40字符)
-func generateSecretAccessKey() string {
+func GenerateSecretAccessKey() string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, 40)
 	for i := range b {
 		b[i] = charset[Rand.Intn(len(charset))]
 	}
 	return string(b)
+}
+
+func ValidateAccessKeyID(ak string) bool {
+	if len(ak) < 5 {
+		return false
+	}
+	for i := 0; i < len(ak); i++ {
+		c := ak[i]
+		if !((c >= 'A' && c <= 'Z') ||
+			(c >= 'a' && c <= 'z') ||
+			(c >= '0' && c <= '9') ||
+			c == '+' || c == '.' || c == '-' || c == '_' || c == '=' || c == '&' || c == '@' || c == '#' || c == '!') {
+			return false
+		}
+	}
+	return true
+}
+
+func ValidateSecretAccessKey(sk string) bool {
+	if len(sk) < 5 {
+		return false
+	}
+	for i := 0; i < len(sk); i++ {
+		c := sk[i]
+		if !((c >= 'A' && c <= 'Z') ||
+			(c >= 'a' && c <= 'z') ||
+			(c >= '0' && c <= '9') ||
+			c == '+' || c == '.' || c == '-' || c == '_' || c == '=' || c == '&' || c == '@' || c == '#' || c == '!') {
+			return false
+		}
+	}
+	return true
 }

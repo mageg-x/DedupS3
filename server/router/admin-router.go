@@ -1,16 +1,18 @@
 package router
 
 import (
-	"github.com/gorilla/mux"
-	"github.com/mageg-x/dedups3/handler"
-	"github.com/mageg-x/dedups3/internal/logger"
-	"github.com/mageg-x/dedups3/middleware"
-	"github.com/mageg-x/dedups3/web"
 	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/gorilla/mux"
+
+	"github.com/mageg-x/dedups3/handler"
+	"github.com/mageg-x/dedups3/internal/logger"
+	"github.com/mageg-x/dedups3/middleware"
+	"github.com/mageg-x/dedups3/web"
 )
 
 // 自定义文件处理器 (解决目录浏览和SPA路由问题)
@@ -96,6 +98,10 @@ func registerAdminRouter(mr *mux.Router) {
 	api_router.Methods(http.MethodPost).Path("/policy/create").HandlerFunc(handler.AdminCreatePolicyHandler)
 	api_router.Methods(http.MethodPost).Path("/policy/update").HandlerFunc(handler.AdminUpdatePolicyHandler)
 	api_router.Methods(http.MethodDelete).Path("/policy/delete").HandlerFunc(handler.AdminDeletePolicyHandler)
+	api_router.Methods(http.MethodGet).Path("/accesskey/list").HandlerFunc(handler.AdminListAccessKeyHandler)
+	api_router.Methods(http.MethodPost).Path("/accesskey/create").HandlerFunc(handler.AdminCreateAccessKeyHandler)
+	api_router.Methods(http.MethodPost).Path("/accesskey/update").HandlerFunc(handler.AdminUpdateAccessKeyHandler)
+	api_router.Methods(http.MethodDelete).Path("/accesskey/delete").HandlerFunc(handler.AdminDeleteAccessKeyHandler)
 
 	// 处理静态资源路由
 	ar.Methods(http.MethodGet).Path("/{path:.*}").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

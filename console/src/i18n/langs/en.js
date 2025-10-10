@@ -1,5 +1,96 @@
 // 英文翻译
 const en = {
+  // About page
+  about: {
+    pageTitle: "About Boulder",
+    title: "About Boulder",
+    subtitle: "High Performance Open Source S3 Compatible Storage",
+    description: "Open source object storage solution focused on efficient storage utilization and high performance",
+    tagline: "S3 Compatible • Global Deduplication • High Performance Compression",
+    navFeatures: "Core Features",
+    navArchitecture: "Architecture",
+    navAPI: "API Support",
+    navPerformance: "Performance",
+    navLicense: "License",
+    
+    // Core features
+    featuresTitle: "Core Features",
+    feature1Title: "Extreme Storage Efficiency",
+    feature1Desc: "Achieve over 90% storage savings through global content deduplication and intelligent chunking strategy, significantly reducing storage costs.",
+    feature2Title: "Full S3 Compatibility",
+    feature2Desc: "100% compatible with Amazon S3 API, seamlessly integrating with existing S3 clients and applications without code modification.",
+    feature3Title: "High Performance Compression",
+    feature3Desc: "Integrated zstd compression algorithm with adaptive compression levels, providing excellent performance while maintaining high compression rates.",
+    feature4Title: "Multiple Storage Backends",
+    feature4Desc: "Support for local disks, standard S3, and other storage backends to meet different scenario requirements and deployment methods.",
+    feature5Title: "Flexible Deployment",
+    feature5Desc: "Support for standalone and cluster deployment modes, with flexible scaling from development testing to large-scale production environments.",
+    feature6Title: "Data Security",
+    feature6Desc: "End-to-end encryption, encrypted storage after compression, ensuring data security during transmission and storage.",
+    
+    // Architecture
+    architectureTitle: "Technical Architecture",
+    architectureThreeLevels: "Three-Level Data Organization Architecture",
+    architectureDesc: "Boulder adopts an innovative three-level data organization structure to achieve efficient storage utilization and data deduplication:",
+    architectureObjectLayer: "Object Layer",
+    architectureObjectDesc: "Storage units directly operated by users, containing metadata and data references",
+    architectureSliceLayer: "Slice Layer",
+    architectureSliceDesc: "Using fastcdc algorithm to split object data into variable-length slices, each with a unique hash fingerprint",
+    architectureBlockLayer: "Block Layer",
+    architectureBlockDesc: "Aggregating multiple slices into fixed-size blocks, storing them after zstd compression and encryption",
+    architectureDiagramAlt: "System Architecture Diagram",
+    
+    // API Support
+    apiTitle: "Supported S3 APIs",
+    apiType: "Operation Type",
+    apiMethod: "API Method",
+    apiDescription: "Description",
+    apiBucketOps: "Bucket Operations",
+    apiObjectOps: "Object Operations",
+    apiMultipart: "Multipart Upload",
+    apiCreateBucket: "Create new bucket",
+    apiHeadBucket: "Check if bucket exists",
+    apiListBuckets: "List all user buckets",
+    apiDeleteBucket: "Delete bucket",
+    apiPutObject: "Upload object",
+    apiGetObject: "Download object",
+    apiHeadObject: "Get object metadata",
+    apiDeleteObject: "Delete single object",
+    apiCreateMultipartUpload: "Initialize multipart upload",
+    apiUploadPart: "Upload part data",
+    apiCompleteMultipartUpload: "Complete multipart upload",
+    
+    // Performance
+    performanceTitle: "Performance Optimization & Tuning",
+    performanceMetricStorage: "Storage Savings Rate",
+    performanceMetricUltraCDC: "UltraCDC Performance",
+    performanceMetricFastCDC: "FastCDC Performance",
+    performanceMetricChunking: "Intelligent Chunking Range",
+    performanceStrategyTitle: "Optimization Strategies",
+    performanceStrategy1Title: "Deduplication Optimization",
+    performanceStrategy1Desc: "Adjust fastcdc chunking parameters according to data characteristics to optimize deduplication effect and performance balance",
+    performanceStrategy2Title: "Compression Strategy",
+    performanceStrategy2Desc: "Adaptive compression levels, automatically selecting optimal compression configuration based on data type",
+    performanceStrategy3Title: "Cache Optimization",
+    performanceStrategy3Desc: "Adjust deduplication cache size to balance memory usage and deduplication efficiency",
+    
+    // License
+    licenseTitle: "License",
+    licenseGPL: "GNU General Public License v3.0",
+    licenseDesc: "Boulder project is open source under GPL-3.0 license, allowing free use, modification and distribution, but must remain open source with the same license terms.",
+    licenseTerm1: "Free Use",
+    licenseTerm2: "Free Modification",
+    licenseTerm3: "Free Distribution",
+    licenseTerm4: "Open Source",
+    
+    // Acknowledgments
+    acknowledgmentsTitle: "Acknowledgments",
+    acknowledgmentsDesc: "The development of Boulder project benefits from the following open source projects:",
+    acknowledgmentBadgerDB: "Efficient Key-Value Storage",
+    acknowledgmentTiKV: "Distributed Key-Value Storage",
+    acknowledgmentFastcdc: "Content-Defined Chunking Algorithm",
+    acknowledgmentAWSSDK: "S3 API Compatibility"
+  },
   // 公共部分
   common: {
     home: "Home",
@@ -53,7 +144,7 @@ const en = {
     user: "User",
     group: "Group",
     role: "Role",
-    advancedFeatures: "Advanced Features",
+    advancedFeatures: "Advanced",
     migration: "Migration",
     defragment: "Defragment",
     snapshot: "SnapShot",
@@ -72,7 +163,7 @@ const en = {
   login: {
     title: "Secure Connection",
     subtitle: "Select login method to continue",
-    brandName: "DeDupS3 (S3 Compatible Storage)",
+    brandName: "Boulder (S3 Compatible Storage)",
     tagline: "Advanced Cloud Storage Management Platform",
     subtitleDescription:
       "Securely access and manage your S3 compatible storage through our intuitive browser interface. Combining enterprise-grade security with user-friendly design.",
@@ -119,6 +210,7 @@ const en = {
     endpointHint: "Optional, required for third-party S3 systems",
     regionHint: "Optional, required for third-party S3 systems",
     s3AKLoginNote: "When you log in using an S3 AccessKey, this system becomes a universal S3 web terminal, enabling you to access and browse any third-party storage system compatible with the S3 protocol, including AWS, Alibaba Cloud, Tencent Cloud, MinIO, and others.",
+    about: "About",
   },
 
   // 仪表盘页面翻译
@@ -151,6 +243,7 @@ const en = {
     status: "Status",
     isExpired: "Expired",
     isEnabled: "Enabled",
+    creater: "Creator",
     createdDate: "Created Date",
     expiryDate: "Expiry Date",
     deleteAccessKey: "Delete Access Key",
@@ -835,7 +928,7 @@ const en = {
   },
   // 品牌相关
   brand: {
-    name: "DeDupS3 Storage",
+    name: "Boulder Storage",
     admin: "Admin",
     regularUser: "Regular User",
   },

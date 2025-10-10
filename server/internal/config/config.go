@@ -27,12 +27,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/mageg-x/dedups3/internal/utils"
-
-	"github.com/mageg-x/dedups3/internal/logger"
-
 	"github.com/creasty/defaults"
 	"github.com/spf13/viper"
+
+	"github.com/mageg-x/dedups3/internal/logger"
+	"github.com/mageg-x/dedups3/internal/utils"
 )
 
 var (

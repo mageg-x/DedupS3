@@ -11,6 +11,15 @@ const routes = [
     component: () => import("@/views/Login.vue"),
   },
   {
+    path: '/about',
+    name: 'About',
+    component: () => import("@/views/About.vue"),
+    meta: {
+      title: '关于 Boulder',
+      requireAuth: false
+    }
+  },
+  {
     path: '/dashboard',
     name: 'MainLayout',
     component: () => import("@/views/Main.vue"),
@@ -31,10 +40,14 @@ const routes = [
         component: () => import("@/views/Browser.vue")
       },
       {
-        path: '/accesskey',
-        name: 'AccessKey',
-        component: () => import("@/views/AccessKey.vue")
-      },
+      path: '/accesskey',
+      name: 'AccessKey',
+      component: () => import("@/views/AccessKey.vue"),
+      meta: {
+        title: '访问密钥',
+        requireAuth: true
+      }
+    },
       {
         path: '/endpoint',
         name: 'EndPoint',
@@ -112,7 +125,8 @@ const router = createRouter({
 // 前端路由守卫
 router.beforeEach(async (to, from, next) => {
   console.log('router.beforeEach', to, from);
-  if (to.path === '/login') {
+  // 登录页和关于页面不需要登录验证
+  if (to.path === '/login' || to.path === '/about') {
     next();
     return;
   }

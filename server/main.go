@@ -270,11 +270,11 @@ func main() {
 			logger.GetLogger("dedups3").Fatal("failed to create account", zap.Error(err))
 		}
 	}
-	ak, err := iamService.CreateAccessKey(account.AccountID, account.Name, time.Now().Add(time.Hour*24*365), cfg.Iam.AK, cfg.Iam.SK)
+	ak, err := iamService.CreateAccessKey(account.AccountID, account.Name, cfg.Iam.AK, cfg.Iam.SK, time.Now().Add(time.Hour*24*365), true)
 	logger.GetLogger("dedups3").Warnf("create account %v ak %v ", account, ak)
 
 	iamService.CreateUser(account.AccountID, "admin", "Abcd@1234", nil, nil, nil, true)
-	iamService.CreateAccessKey(account.AccountID, "admin", time.Now().Add(time.Hour*24*365), "D"+cfg.Iam.AK, "D"+cfg.Iam.SK)
+	iamService.CreateAccessKey(account.AccountID, "admin", "D"+cfg.Iam.AK, "D"+cfg.Iam.SK, time.Now().Add(time.Hour*24*365), true)
 	// 启动 admin server
 	if err := startAdminSvr(); err != nil {
 		logger.GetLogger("dedups3").Error("failed to start admin server", zap.Error(err))

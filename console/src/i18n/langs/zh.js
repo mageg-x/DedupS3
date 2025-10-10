@@ -1,5 +1,96 @@
 // 中文翻译
 const zh = {
+  // About页面
+  about: {
+    pageTitle: "关于 Boulder",
+    title: "关于 Boulder",
+    subtitle: "高性能开源S3兼容存储服务",
+    description: "专注于高效存储利用与高性能的开源对象存储解决方案",
+    tagline: "S3兼容 • 全局去重 • 高性能压缩",
+    navFeatures: "核心特点",
+    navArchitecture: "技术架构",
+    navAPI: "API支持",
+    navPerformance: "性能优化",
+    navLicense: "许可证",
+    
+    // 核心特点
+    featuresTitle: "核心特点",
+    feature1Title: "极致存储效率",
+    feature1Desc: "通过全局内容去重和智能分块策略，实现高达90%以上的存储节省，显著降低存储成本。",
+    feature2Title: "S3完全兼容",
+    feature2Desc: "100%兼容Amazon S3 API，可无缝对接现有S3客户端和应用，无需修改现有代码。",
+    feature3Title: "高性能压缩",
+    feature3Desc: "集成zstd压缩算法，自适应压缩级别，在保持高压缩率的同时提供卓越性能。",
+    feature4Title: "多存储后端",
+    feature4Desc: "支持本地磁盘、标准S3等多种存储后端，满足不同场景需求和部署方式。",
+    feature5Title: "灵活部署",
+    feature5Desc: "支持单机和集群部署模式，从开发测试到大规模生产环境的灵活扩展。",
+    feature6Title: "数据安全",
+    feature6Desc: "端到端加密，压缩后加密存储，确保数据在传输和存储过程中的安全性。",
+    
+    // 技术架构
+    architectureTitle: "技术架构",
+    architectureThreeLevels: "三级数据组织架构",
+    architectureDesc: "Boulder采用创新的三级数据组织结构，实现高效的存储利用和数据去重：",
+    architectureObjectLayer: "对象层",
+    architectureObjectDesc: "用户直接操作的存储单元，包含元数据和数据引用",
+    architectureSliceLayer: "切片层",
+    architectureSliceDesc: "使用fastcdc算法将对象数据切分为变长切片，每个切片有唯一哈希指纹",
+    architectureBlockLayer: "块层",
+    architectureBlockDesc: "将多个切片聚合为固定大小的块，进行zstd压缩和加密后存储",
+    architectureDiagramAlt: "系统架构图",
+    
+    // API支持
+    apiTitle: "支持的S3 API",
+    apiType: "操作类型",
+    apiMethod: "API方法",
+    apiDescription: "功能描述",
+    apiBucketOps: "存储桶操作",
+    apiObjectOps: "对象操作",
+    apiMultipart: "分段上传",
+    apiCreateBucket: "创建新的存储桶",
+    apiHeadBucket: "检查存储桶是否存在",
+    apiListBuckets: "列出用户所有存储桶",
+    apiDeleteBucket: "删除存储桶",
+    apiPutObject: "上传对象",
+    apiGetObject: "下载对象",
+    apiHeadObject: "获取对象元数据",
+    apiDeleteObject: "删除单个对象",
+    apiCreateMultipartUpload: "初始化分段上传",
+    apiUploadPart: "上传分段数据",
+    apiCompleteMultipartUpload: "完成分段上传",
+    
+    // 性能优化
+    performanceTitle: "性能优化与调优",
+    performanceMetricStorage: "存储节省率",
+    performanceMetricUltraCDC: "UltraCDC性能",
+    performanceMetricFastCDC: "FastCDC性能",
+    performanceMetricChunking: "智能分块范围",
+    performanceStrategyTitle: "优化策略",
+    performanceStrategy1Title: "去重优化",
+    performanceStrategy1Desc: "根据数据特点调整fastcdc分块参数，优化去重效果和性能平衡",
+    performanceStrategy2Title: "压缩策略",
+    performanceStrategy2Desc: "自适应压缩级别，根据数据类型自动选择最优压缩配置",
+    performanceStrategy3Title: "缓存优化",
+    performanceStrategy3Desc: "调整去重缓存大小，平衡内存占用和去重效率",
+    
+    // 许可证
+    licenseTitle: "许可证",
+    licenseGPL: "GNU General Public License v3.0",
+    licenseDesc: "Boulder项目基于GPL-3.0许可证开源，允许自由使用、修改和分发，但必须保持开源和相同的许可条款。",
+    licenseTerm1: "自由使用",
+    licenseTerm2: "自由修改",
+    licenseTerm3: "自由分发",
+    licenseTerm4: "开源",
+    
+    // 鸣谢
+    acknowledgmentsTitle: "鸣谢",
+    acknowledgmentsDesc: "Boulder项目的开发得益于以下开源项目：",
+    acknowledgmentBadgerDB: "高效键值存储",
+    acknowledgmentTiKV: "分布式键值存储",
+    acknowledgmentFastcdc: "内容定义分块算法",
+    acknowledgmentAWSSDK: "S3 API兼容"
+  },
   // 公共部分
   common: {
     home: "首页",
@@ -118,6 +209,7 @@ const zh = {
     endpointHint: "选填，登录第三方S3系统时需要填写",
     regionHint: "选填，登录第三方S3系统时需要填写",
     s3AKLoginNote: "当你通过S3的AccessKey登录时候，本系统就是一个通用S3的Web终端，可以用来登录浏览任何兼容S3协议的第三方存储系统，包括AWS、阿里云、腾讯云、MinIO等。",
+    about: "关于",
   },
 
   // 仪表盘页面翻译
@@ -149,6 +241,7 @@ const zh = {
     status: "状态",
     isExpired: "是否过期",
     isEnabled: "是否启用",
+    creater: "创建者",
     createdDate: "创建时间",
     expiryDate: "过期日期",
     deleteAccessKey: "删除访问密钥",

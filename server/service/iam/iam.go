@@ -104,25 +104,30 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IamAccount,
 
 	// 创建新账户
 	account := meta.CreateAccount(username)
-
+	// 添加根策略
+	rootPolicyName := "root-policy"
+	rootPolicy := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["*"],"Resource":["*"]}]}`
+	account.Policies[rootPolicyName] = &meta.IamPolicy{
+		ARN:         meta.FormatPolicyARN(account.AccountID, rootPolicyName),
+		Name:        rootPolicyName,
+		Description: rootPolicyName,
+		Document:    rootPolicy,
+	}
 	// 创建根用户
-	rootUser, err := account.CreateRootUser(username, password)
+	rootUser, err := account.CreateUser(username, password, nil, nil, []string{rootPolicyName}, true)
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to create root user for account %s: %v", account.AccountID, err)
 		return nil, err
 	}
+	rootUser.IsRoot = true
+	account.Users["root"] = rootUser
+	delete(account.Users, username)
 
 	if err = txn.Set(key, account); err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to store account %s data in transaction: %v", account.AccountID, err)
 		return nil, err
 	}
 
-	// 更新 access key 索引
-	key = "aws:iam:account:ak:" + rootUser.AccessKeys[0].AccessKeyID
-	if err = txn.Set(key, &rootUser.AccessKeys[0]); err != nil {
-		logger.GetLogger("dedups3").Errorf("failed to store account %s access key in transaction: %v", account.AccountID, err)
-		return nil, err
-	}
 	if err = txn.Commit(); err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
 		return nil, err
@@ -383,7 +388,18 @@ func (s *IamService) DeleteUser(accountID, username string) error {
 	return nil
 }
 
-func (s *IamService) CreateAccessKey(accountID, username string, expiredAt time.Time, ak, sk string) (*meta.AccessKey, error) {
+func (s *IamService) CreateAccessKey(accountID, username string, ak, sk string, expiredAt time.Time, enable bool) (*meta.AccessKey, error) {
+	if ak != "" {
+		if !meta.ValidateAccessKeyID(ak) {
+			return nil, xhttp.ToError(xhttp.ErrInvalidAccessKeyID)
+		}
+		if _ak, _ := s.GetAccessKey(ak); _ak != nil {
+			return nil, xhttp.ToError(xhttp.ErrAdminConfigDuplicateKeys)
+		}
+	}
+	if sk != "" && !meta.ValidateSecretAccessKey(sk) {
+		return nil, xhttp.ToError(xhttp.ErrAdminInvalidSecretKey)
+	}
 	var key *meta.AccessKey
 	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
 		if a == nil {
@@ -391,7 +407,7 @@ func (s *IamService) CreateAccessKey(accountID, username string, expiredAt time.
 			return fmt.Errorf("account %s not found", accountID)
 		}
 		var err error
-		key, err = a.CreateAccessKey(username, expiredAt, ak, sk)
+		key, err = a.CreateAccessKey(username, ak, sk, expiredAt, enable)
 		if err != nil {
 			logger.GetLogger("dedups3").Errorf("failed to create access key %s in account %s: %v", username, accountID, err)
 		}
@@ -404,21 +420,49 @@ func (s *IamService) CreateAccessKey(accountID, username string, expiredAt time.
 	return key, nil
 }
 
-func (s *IamService) DeleteAccessKey(accountID, accessKeyID string) error {
+func (s *IamService) UpdateAccessKey(accountID, ak, sk string, expiredAt time.Time, enable bool) (*meta.AccessKey, error) {
+	if ak == "" || !meta.ValidateAccessKeyID(ak) {
+		return nil, xhttp.ToError(xhttp.ErrInvalidAccessKeyID)
+	}
+	if _ak, _ := s.GetAccessKey(ak); _ak == nil {
+		return nil, xhttp.ToError(xhttp.ErrAdminNoSuchAccessKey)
+	}
+	if sk == "" || !meta.ValidateSecretAccessKey(sk) {
+		return nil, xhttp.ToError(xhttp.ErrAdminInvalidSecretKey)
+	}
+	var key *meta.AccessKey
+	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
+		if a == nil {
+			logger.GetLogger("dedups3").Errorf("account %s not found", accountID)
+			return fmt.Errorf("account %s not found", accountID)
+		}
+		var err error
+		key, err = a.UpdateAccessKey(ak, sk, expiredAt, enable)
+		if err != nil {
+			logger.GetLogger("dedups3").Errorf("failed to update access key %s in account %s: %v", ak, accountID, err)
+		}
+		return err
+	})
+
+	if err != nil || !ok {
+		return nil, err
+	}
+	return key, nil
+}
+
+func (s *IamService) DeleteAccessKey(accountID, ak string) error {
+	if ak == "" || !meta.ValidateAccessKeyID(ak) {
+		return xhttp.ToError(xhttp.ErrInvalidAccessKeyID)
+	}
+	if _ak, _ := s.GetAccessKey(ak); _ak == nil {
+		return xhttp.ToError(xhttp.ErrAdminNoSuchAccessKey)
+	}
+
 	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
 		if a == nil {
 			return fmt.Errorf("account %s not found", accountID)
 		}
-		for _, user := range a.Users {
-			keys := make([]meta.AccessKey, 0, len(user.AccessKeys)-1)
-			for _, ak := range user.AccessKeys {
-				if ak.AccessKeyID != accessKeyID {
-					keys = append(keys, ak)
-				}
-			}
-			user.AccessKeys = keys
-		}
-		return nil
+		return a.DeleteAccessKey(ak)
 	})
 
 	if err != nil || !ok {
@@ -444,7 +488,7 @@ func (s *IamService) GetAccessKey(accessKeyID string) (*meta.AccessKey, error) {
 
 	ak := meta.AccessKey{}
 	if ok, err := s.iam.Get(key, &ak); err != nil || !ok {
-		logger.GetLogger("dedups3").Errorf("get accesskey id %s failed", accessKeyID)
+		logger.GetLogger("dedups3").Debugf("get accesskey id %s failed", accessKeyID)
 		return nil, fmt.Errorf("access key %s not found", accessKeyID)
 	}
 

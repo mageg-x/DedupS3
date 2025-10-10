@@ -13,11 +13,17 @@
         </div>
 
         <div class="content-wrapper">
+            <!-- 关于链接 -->
+            <div class="about-link-container mr-16 mt-8 z-10">
+                <a href="#" @click.prevent="goToAbout" class="about-link mr-4">
+                    <i class="fas fa-info-circle mr-1"></i>{{ t('login.about') }}
+                </a>
+            </div>
             <!-- 语言切换 -->
             <div class="language-switch-container mr-16 mt-8 z-10">
                 <LanguageSwitch :sidebar-collapsed="false" />
             </div>
-
+            
             <!-- 介绍区域 -->
             <div class="intro-section">
                 <div class="logo">
@@ -66,6 +72,13 @@
             <!-- 登录表单区域 -->
             <div class="login-section">
                 <div class="login-card">
+                    <!-- 添加隐藏的自动填充表单用于浏览器密码管理 -->
+                    <form v-show="false" id="autofill-form">
+                        <input type="text" name="username" v-model="loginForm.username" autocomplete="username">
+                        <input type="password" name="password" v-model="loginForm.password" autocomplete="current-password">
+                        <input type="password" name="secretAccessKey" v-model="loginForm.secretAccessKey" autocomplete="current-password">
+                    </form>
+                    
                     <div class="login-header">
                         <div class="login-icon">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
@@ -89,18 +102,35 @@
                     </div>
 
                     <!-- 登录表单 -->
-                    <el-form ref="loginFormRef" :model="loginForm" :rules="rules" @submit.prevent="handleLogin"
+                    <form @submit.prevent="handleLogin" autocomplete="on" id="login-form">
+                    <el-form ref="loginFormRef" :model="loginForm" :rules="rules"
                         label-position="top">
                         <!-- S3凭证登录表单 -->
                         <div v-if="loginMethod === 's3'">
                             <el-form-item :label="t('login.accessKeyId')" prop="accessKeyId">
-                                <el-input v-model="loginForm.accessKeyId" :placeholder="t('login.accessKeyPlaceholder')"
-                                    size="large" />
+                                <el-input 
+                                    v-model="loginForm.accessKeyId" 
+                                    :placeholder="t('login.accessKeyPlaceholder')"
+                                    size="large" 
+                                    autocomplete="username" 
+                                    id="accessKeyId" 
+                                    name="accessKeyId" 
+                                    @input="onInput"
+                                />
                             </el-form-item>
 
                             <el-form-item :label="t('login.secretAccessKey')" prop="secretAccessKey">
-                                <el-input v-model="loginForm.secretAccessKey" type="password"
-                                    :placeholder="t('login.secretKeyPlaceholder')" size="large" show-password />
+                                <el-input 
+                                    v-model="loginForm.secretAccessKey" 
+                                    type="password"
+                                    :placeholder="t('login.secretKeyPlaceholder')" 
+                                    size="large" 
+                                    show-password 
+                                    autocomplete="current-password" 
+                                    id="secretAccessKey" 
+                                    name="secretAccessKey"
+                                    @input="onInput"
+                                />
                             </el-form-item>
 
                             <!-- 分割线 -->
@@ -139,18 +169,39 @@
                         <!-- 用户名密码登录表单 -->
                         <div v-if="loginMethod === 'iam'">
                             <el-form-item :label="t('login.username')" prop="username">
-                                <el-input v-model="loginForm.username" :placeholder="t('login.usernamePlaceholder',{ at: '@' })"
-                                    size="large" />
+                                <el-input 
+                                    v-model="loginForm.username" 
+                                    :placeholder="t('login.usernamePlaceholder',{ at: '@' })"
+                                    size="large" 
+                                    autocomplete="username" 
+                                    id="username" 
+                                    name="username"
+                                    @input="onInput"
+                                />
                             </el-form-item>
 
                             <el-form-item :label="t('login.password')" prop="password">
-                                <el-input v-model="loginForm.password" type="password"
-                                    :placeholder="t('login.passwordPlaceholder')" size="large" show-password />
+                                <el-input 
+                                    v-model="loginForm.password" 
+                                    type="password"
+                                    :placeholder="t('login.passwordPlaceholder')" 
+                                    size="large" 
+                                    show-password 
+                                    autocomplete="current-password" 
+                                    id="password" 
+                                    name="password"
+                                    @input="onInput"
+                                />
                             </el-form-item>
 
                             <div class="remember-forgot">
                                 <div class="remember-me">
-                                    <input type="checkbox" id="remember" v-model="loginForm.remember">
+                                    <input 
+                                        type="checkbox" 
+                                        id="remember" 
+                                        v-model="loginForm.remember"
+                                        @change="onRememberChange"
+                                    >
                                     <label for="remember">{{ t('login.rememberMe') }}</label>
                                 </div>
                                 <a href="#" class="forgot-password">{{ t('login.forgotPassword') }}</a>
@@ -158,12 +209,25 @@
                         </div>
 
                         <el-form-item>
-                            <el-button type="primary" @click="handleLogin" :loading="loading" size="large">
+                            <el-button 
+                                type="primary" 
+                                @click="handleLogin" 
+                                :loading="loading" 
+                                size="large" 
+                                native-type="submit">
                                 {{ loading ? t('login.connecting') :
                                     loginMethod === 's3' ? t('login.connectToS3') : t('login.loginSystem') }}
                             </el-button>
                         </el-form-item>
                     </el-form>
+                    </form>
+
+                    <!-- 隐藏表单，专用于触发浏览器密码保存提示 -->
+                    <form id="hidden-password-form" style="position: absolute; left: -9999px; opacity: 0; pointer-events: none;">
+                        <input type="text" id="hidden-username" name="hidden-username" autocomplete="username">
+                        <input type="password" id="hidden-password" name="hidden-password" autocomplete="current-password">
+                        <input type="submit" id="hidden-submit">
+                    </form>
                 </div>
             </div>
         </div>
@@ -171,7 +235,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch, computed } from 'vue';
+import { ref, reactive, watch, computed, onMounted, nextTick } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
@@ -201,6 +265,91 @@ const loginForm = reactive({
     password: '',
     remember: false
 });
+
+// 组件挂载时，检查是否有保存的登录信息
+onMounted(() => {
+    // 使用setTimeout延迟恢复数据，给浏览器自动填充留出时间
+    setTimeout(() => {
+        try {
+            // 检查用户名和密码字段是否已有值（可能是浏览器自动填充的）
+            if (!loginForm.username && !loginForm.accessKeyId) {
+                const savedLoginInfo = localStorage.getItem('rememberedLoginInfo');
+                if (savedLoginInfo) {
+                    const parsedInfo = JSON.parse(savedLoginInfo);
+                    // 恢复表单数据
+                    if (parsedInfo.username) {
+                        loginForm.username = parsedInfo.username;
+                        loginMethod.value = 'iam';
+                    }
+                    if (parsedInfo.accessKeyId) {
+                        loginForm.accessKeyId = parsedInfo.accessKeyId;
+                        loginMethod.value = 's3';
+                        // 恢复endpoint和region
+                        if (parsedInfo.endpoint) {
+                            loginForm.endpoint = parsedInfo.endpoint;
+                        }
+                        if (parsedInfo.region) {
+                            loginForm.region = parsedInfo.region;
+                        }
+                    }
+                    loginForm.remember = true;
+                }
+            }
+        } catch (error) {
+            console.error('Error reading saved login info:', error);
+        }
+    }, 100);
+    
+    // 检查浏览器自动填充
+    setTimeout(() => {
+        checkAutofill();
+    }, 500);
+});
+
+// 监听浏览器自动填充事件
+const checkAutofill = () => {
+    // 确保DOM更新完成
+    nextTick(() => {
+        // 检查用户名字段
+        const usernameInput = document.getElementById('username');
+        if (usernameInput && usernameInput.value && !loginForm.username) {
+            loginForm.username = usernameInput.value;
+        }
+        
+        // 检查密码字段
+        const passwordInput = document.getElementById('password');
+        if (passwordInput && passwordInput.value && !loginForm.password) {
+            loginForm.password = passwordInput.value;
+        }
+        
+        // 检查S3密钥字段
+        const secretInput = document.getElementById('secretAccessKey');
+        if (secretInput && secretInput.value && !loginForm.secretAccessKey) {
+            loginForm.secretAccessKey = secretInput.value;
+        }
+    });
+};
+
+// 监听输入事件
+const onInput = () => {
+    // 输入时清空自动填充检测的值
+    if (loginForm.username) {
+        document.getElementById('username').value = loginForm.username;
+    }
+    if (loginForm.password) {
+        document.getElementById('password').value = loginForm.password;
+    }
+    if (loginForm.secretAccessKey) {
+        document.getElementById('secretAccessKey').value = loginForm.secretAccessKey;
+    }
+};
+
+// 记住我状态变化
+const onRememberChange = () => {
+    if (!loginForm.remember) {
+        localStorage.removeItem('rememberedLoginInfo');
+    }
+};
 
 // 扩展区域状态
 const expandVisible = ref(false);
@@ -297,6 +446,11 @@ const rules = reactive({
 // 切换登录方式
 const setLoginMethod = (method) => {
     loginMethod.value = method;
+    
+    // 切换登录方式后检查自动填充
+    setTimeout(() => {
+        checkAutofill();
+    }, 100);
 };
 
 // 切换登录方式时重置表单验证
@@ -314,6 +468,11 @@ const toggleExpand = () => {
     }
 };
 
+// 跳转到关于页面
+const goToAbout = () => {
+    router.push('/about');
+};
+
 // 处理登录
 const handleLogin = async () => {
     if (!loginFormRef.value) {
@@ -322,16 +481,27 @@ const handleLogin = async () => {
 
     loginFormRef.value.validate(async (valid) => {
         if (valid) {
+            // 复制数据到隐藏表单，触发浏览器保存密码提示
+            if (loginMethod.value === 'iam') {
+                const hiddenUsername = document.getElementById('hidden-username');
+                const hiddenPassword = document.getElementById('hidden-password');
+                if (hiddenUsername && hiddenPassword) {
+                    hiddenUsername.value = loginForm.username;
+                    hiddenPassword.value = loginForm.password;
+                }
+            }
+            
             loading.value = true;
             try {
+                let response;
                 if (loginMethod.value === 'iam') {
-                    await login({
+                    response = await login({
                         username: loginForm.username,
                         password: loginForm.password,
                         remember: loginForm.remember
                     });
                 } else if (loginMethod.value === 's3') {
-                    await login({
+                    response = await login({
                         accessKeyId: loginForm.accessKeyId,
                         secretAccessKey: loginForm.secretAccessKey,
                         endpoint: loginForm.endpoint || '',
@@ -340,12 +510,58 @@ const handleLogin = async () => {
                     });
                 }
 
-                ElMessage.success(t('login.loginSuccess'));
-                router.push('/dashboard');
+                // 检查登录结果
+                if (response && response.success) {
+                    ElMessage.success(t('login.loginSuccess'));
+                    
+                    // 保存记住我信息
+                    if (loginForm.remember) {
+                        try {
+                            const loginInfoToSave = {};
+                            
+                            // 仅保存非敏感信息
+                            if (loginMethod.value === 'iam' && loginForm.username) {
+                                loginInfoToSave.username = loginForm.username;
+                            } else if (loginMethod.value === 's3' && loginForm.accessKeyId) {
+                                loginInfoToSave.accessKeyId = loginForm.accessKeyId;
+                                // 也可以保存endpoint和region（如果用户输入了）
+                                if (loginForm.endpoint) {
+                                    loginInfoToSave.endpoint = loginForm.endpoint;
+                                }
+                                if (loginForm.region) {
+                                    loginInfoToSave.region = loginForm.region;
+                                }
+                            }
+                            
+                            localStorage.setItem('rememberedLoginInfo', JSON.stringify(loginInfoToSave));
+                        } catch (error) {
+                            console.error('Error saving login info:', error);
+                        }
+                    } else {
+                        // 如果未勾选记住我，则清除之前保存的信息
+                        localStorage.removeItem('rememberedLoginInfo');
+                    }
+                    
+                    // 触发隐藏表单的提交，强制浏览器识别登录事件
+                            setTimeout(() => {
+                                const hiddenForm = document.getElementById('hidden-password-form');
+                                if (hiddenForm) {
+                                    hiddenForm.dispatchEvent(new Event('submit', { cancelable: true }));
+                                }
+                            }, 100);
+                            
+                            // 添加延迟再导航，给浏览器时间触发密码保存提示
+                            setTimeout(() => {
+                                router.push('/dashboard');
+                            }, 300);
+                } else {
+                    const message = response?.msg || t('login.loginFailed');
+                    ElMessage.error(message);
+                }
             } catch (error) {
-                loading.value = false;
-                // 处理登录失败
+                // 处理异常情况
                 const message = error.response?.data?.msg || t('login.loginFailed');
+                ElMessage.error(message);
             } finally {
                 loading.value = false;
             }
@@ -369,6 +585,13 @@ const handleLogin = async () => {
     --text-dark: #2d3748;
     --text-muted: #718096;
     --border-light: rgba(203, 213, 225, 0.5);
+}
+
+/* 修复Element Plus样式覆盖 */
+:root {
+    --el-input-border-color: var(--border-light) !important;
+    --el-input-hover-border-color: var(--accent-blue) !important;
+    --el-input-focus-border-color: var(--accent-blue) !important;
 }
 </style>
 
@@ -755,6 +978,28 @@ const handleLogin = async () => {
     position: absolute;
     top: 0;
     right: 0;
+}
+
+.about-link-container {
+    position: absolute;
+    top: 0;
+    right: 80px;
+}
+
+.about-link {
+    display: flex;
+    align-items: center;
+    color: var(--text-muted);
+    text-decoration: none;
+    padding: 8px 12px;
+    border-radius: 6px;
+    transition: all 0.3s ease;
+    font-size: 14px;
+}
+
+.about-link:hover {
+    color: var(--accent-blue);
+    background-color: rgba(79, 109, 245, 0.1);
 }
 
 .login-icon {

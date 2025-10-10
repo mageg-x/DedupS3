@@ -178,8 +178,8 @@ func AdminLoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 验证用户名密码
-	user := ac.Users[username]
-	if user == nil {
+	user, err := ac.GetUser(username)
+	if user == nil || err != nil {
 		logger.GetLogger("dedups3").Errorf("user %s not found", username)
 		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "user not found", nil, http.StatusBadRequest)
 		return
@@ -1129,7 +1129,9 @@ func AdminListPolicyHandler(w http.ResponseWriter, r *http.Request) {
 	policies := make([]*meta.IamPolicy, 0)
 	if pe.ac.Policies != nil {
 		for _, policy := range pe.ac.Policies {
-			policies = append(policies, policy)
+			if policy.Name != "root-policy" {
+				policies = append(policies, policy)
+			}
 		}
 	}
 	// 返回成功响应
@@ -1581,6 +1583,167 @@ func AdminDeleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "delete group failed", nil, http.StatusBadRequest)
+		return
+	}
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
+
+func AdminListAccessKeyHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("dedups3").Errorf("[call adminListAccessKeyHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil || pe.user == nil {
+		return
+	}
+	type AkItem struct {
+		AccessKeyID     string    `json:"accessKeyId"`
+		SecretAccessKey string    `json:"secretAccessKey"`
+		Enable          bool      `json:"enable"`
+		ExpiredAt       time.Time `json:"expiredAt"`
+		Creater         string    `json:"creater"`
+	}
+
+	akList := make([]AkItem, 0)
+	for _, user := range pe.ac.Users {
+		if user == nil {
+			continue
+		}
+		for _, ak := range user.AccessKeys {
+			enable := false
+			if ak.Status == "Active" {
+				enable = true
+			}
+			akList = append(akList, AkItem{
+				AccessKeyID:     ak.AccessKeyID,
+				SecretAccessKey: ak.SecretAccessKey,
+				Enable:          enable,
+				ExpiredAt:       ak.ExpiredAt,
+				Creater:         user.Username,
+			})
+		}
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", &akList, http.StatusOK)
+}
+
+func AdminCreateAccessKeyHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("dedups3").Errorf("[call adminCreateAccessKeyHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
+		return
+	}
+
+	type Req struct {
+		AccessKey string    `json:"accessKey"`
+		SecretKey string    `json:"secretKey"`
+		ExpiredAt time.Time `json:"expiredAt"`
+		Enabled   bool      `json:"enabled"`
+	}
+
+	// 解析请求体
+	var req Req
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.AccessKey == "" || req.SecretKey == "" {
+		logger.GetLogger("dedups3").Errorf("failed to decode request: %v", err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
+		return
+	}
+
+	if _, err := pe.iam.CreateAccessKey(pe.accountID, pe.username, req.AccessKey, req.SecretKey, req.ExpiredAt, req.Enabled); err != nil {
+		logger.GetLogger("dedups3").Errorf("failed to create accesskey: %v", err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidAccessKeyID)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid formate access key", nil, http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAdminInvalidSecretKey)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid formate secret key", nil, http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAdminConfigDuplicateKeys)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusConflict, "accessKey already exists", nil, http.StatusConflict)
+			return
+		}
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "create accessKey failed", nil, http.StatusBadRequest)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
+
+func AdminUpdateAccessKeyHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("dedups3").Errorf("[call AdminUpdateAccessKeyHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil {
+		return
+	}
+
+	type Req struct {
+		AccessKey string    `json:"accessKey"`
+		SecretKey string    `json:"secretKey"`
+		ExpiredAt time.Time `json:"expiredAt"`
+		Enabled   bool      `json:"enabled"`
+	}
+
+	// 解析请求体
+	var req Req
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.AccessKey == "" || req.SecretKey == "" {
+		logger.GetLogger("dedups3").Errorf("failed to decode request: %v", err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
+		return
+	}
+
+	if _, err := pe.iam.UpdateAccessKey(pe.accountID, req.AccessKey, req.SecretKey, req.ExpiredAt, req.Enabled); err != nil {
+		logger.GetLogger("dedups3").Errorf("failed to create access key: %v", err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidAccessKeyID)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid formate key", nil, http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAdminInvalidSecretKey)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid formate key", nil, http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAdminNoSuchAccessKey)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "accessKey not exists", nil, http.StatusNotFound)
+			return
+		}
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "create accessKey failed", nil, http.StatusBadRequest)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
+
+func AdminDeleteAccessKeyHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("dedups3").Errorf("[call adminDeleteAccessKeyHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+	query := utils.DecodeQuerys(r.URL.Query())
+	accessKey := query.Get("accessKey")
+	accessKey = strings.TrimSpace(accessKey)
+
+	if err := pe.iam.DeleteAccessKey(pe.accountID, accessKey); err != nil {
+		logger.GetLogger("dedups3").Errorf("failed to delete accessKey: %v", err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAdminNoSuchAccessKey)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "accessKey not exists", nil, http.StatusNotFound)
+			return
+		}
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "delete accessKey failed", nil, http.StatusBadRequest)
 		return
 	}
 	// 返回成功响应

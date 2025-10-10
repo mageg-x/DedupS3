@@ -53,7 +53,7 @@ export async function login(form) {
     if (res.data.code == 0) {
       return { success: true, msg: res.data.msg };
     } else {
-      return { success: true, msg: res.data.msg };
+      return { success: false, msg: res.data.msg };
     }
   } catch (error) {
     const msg = error.response?.data?.msg || "登录失败...";
@@ -293,3 +293,7 @@ export const getpolicy = apicall.get("/policy/get", "Failed to get policy info")
 export const createpolicy = apicall.post("/policy/create", "Failed to create policy info");
 export const setpolicy = apicall.post("/policy/update", "Failed to update policy info");
 export const delpolicy = apicall.delete("/policy/delete", "Failed to delete policy info");
+export const listaccesskey = apicall.get("/accesskey/list", "Failed to list accesskey info");
+export const createaccesskey = apicall.post("/accesskey/create", "Failed to create accesskey info");
+export const setaccesskey = apicall.post("/accesskey/update", "Failed to update accesskey info");
+export const delaccesskey= apicall.delete("/accesskey/delete", "Failed to delete accesskey info");

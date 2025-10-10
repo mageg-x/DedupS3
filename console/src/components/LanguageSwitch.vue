@@ -28,7 +28,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { ElMessage } from 'element-plus';
 
@@ -38,7 +38,35 @@ const props = defineProps({
 
 const { locale } = useI18n();
 const isDropdownOpen = ref(false);
-const currentLanguage = ref(locale.value);
+const currentLanguage = ref('');
+
+// 获取用户系统语言
+const getSystemLanguage = () => {
+  // 尝试获取浏览器的首选语言
+  const browserLang = navigator.language || navigator.userLanguage;
+  // 检查是否是中文（包括简体和繁体）
+  if (browserLang.includes('zh')) {
+    return 'zh';
+  } else {
+    // 默认返回英文
+    return 'en';
+  }
+};
+
+onMounted(() => {
+  // 首先检查本地存储中是否有保存的语言设置
+  const savedLang = localStorage.getItem('language');
+  if (savedLang) {
+    currentLanguage.value = savedLang;
+    locale.value = savedLang;
+  } else {
+    // 如果没有保存的语言设置，使用系统语言
+    const systemLang = getSystemLanguage();
+    currentLanguage.value = systemLang;
+    locale.value = systemLang;
+    localStorage.setItem('language', systemLang);
+  }
+});
 
 const languages = [
   { code: 'zh', name: '简体中文', icon: 'fas fa-language' },

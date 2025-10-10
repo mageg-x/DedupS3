@@ -203,7 +203,7 @@ const fetchStats = async () => {
       stats.value.blockCount = accountStats.blockCount || 0;
       stats.value.chunkCount = accountStats.chunkCount || 0;
       stats.value.originalSize = accountStats.sizeOfObject || 0;
-      stats.value.actualSize = accountStats.sizeOfChunk || 0;
+      stats.value.actualSize = accountStats.sizeOfBlock2 || 0;
 
       // 计算派生数据
       stats.value.savedSize = Math.max(0, stats.value.originalSize - stats.value.actualSize);
