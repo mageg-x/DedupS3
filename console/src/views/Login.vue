@@ -75,8 +75,8 @@
                     <!-- 添加隐藏的自动填充表单用于浏览器密码管理 -->
                     <form v-show="false" id="autofill-form">
                         <input type="text" name="username" v-model="loginForm.username" autocomplete="username">
-                        <input type="password" name="password" v-model="loginForm.password" autocomplete="current-password">
-                        <input type="password" name="secretAccessKey" v-model="loginForm.secretAccessKey" autocomplete="current-password">
+                        <input type="password" name="password" v-model="loginForm.password" autocomplete="password">
+                        <input type="password" name="secretAccessKey" v-model="loginForm.secretAccessKey" autocomplete="password">
                     </form>
                     
                     <div class="login-header">
@@ -126,7 +126,7 @@
                                     :placeholder="t('login.secretKeyPlaceholder')" 
                                     size="large" 
                                     show-password 
-                                    autocomplete="current-password" 
+                                    autocomplete="password" 
                                     id="secretAccessKey" 
                                     name="secretAccessKey"
                                     @input="onInput"
@@ -187,7 +187,7 @@
                                     :placeholder="t('login.passwordPlaceholder')" 
                                     size="large" 
                                     show-password 
-                                    autocomplete="current-password" 
+                                    autocomplete="password" 
                                     id="password" 
                                     name="password"
                                     @input="onInput"
@@ -225,7 +225,7 @@
                     <!-- 隐藏表单，专用于触发浏览器密码保存提示 -->
                     <form id="hidden-password-form" style="position: absolute; left: -9999px; opacity: 0; pointer-events: none;">
                         <input type="text" id="hidden-username" name="hidden-username" autocomplete="username">
-                        <input type="password" id="hidden-password" name="hidden-password" autocomplete="current-password">
+                        <input type="password" id="hidden-password" name="hidden-password" autocomplete="password">
                         <input type="submit" id="hidden-submit">
                     </form>
                 </div>
