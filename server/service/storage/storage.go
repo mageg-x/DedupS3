@@ -113,8 +113,19 @@ func (s *StorageService) AddStorage(strType, strClass string, conf config.Storag
 		}
 	}
 
-	if strType == meta.DISK_TYPE_STORAGE || strType == meta.S3_TYPE_STORAGE || id != "" {
-		// pass
+	if strType == meta.DISK_TYPE_STORAGE || strType == meta.S3_TYPE_STORAGE {
+		if strType == meta.S3_TYPE_STORAGE {
+			// 测试读写权限
+			if err = block.TestS3AccessPermissions(conf.S3); err != nil {
+				logger.GetLogger("dedups3").Errorf("test s3 access permissions failed: %v", err)
+				return nil, fmt.Errorf("test s3 access permissions failed: %v", err)
+			}
+		} else {
+			if err = block.TestDiskAccessPermissions(conf.Disk); err != nil {
+				logger.GetLogger("dedups3").Errorf("test disk access permissions failed: %v", err)
+				return nil, fmt.Errorf("test disk access permissions failed: %v", err)
+			}
+		}
 	} else {
 		logger.GetLogger("dedups3").Errorf("unknown storage type: %s id %s", strType, id)
 		return nil, fmt.Errorf("unknown storage type: %s", strType)

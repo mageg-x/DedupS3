@@ -28,7 +28,7 @@ import (
 	"time"
 
 	xconf "github.com/mageg-x/dedups3/internal/config"
-	"github.com/mageg-x/dedups3/internal/fs"
+	"github.com/mageg-x/dedups3/internal/vfs"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
@@ -41,8 +41,8 @@ var (
 
 var (
 	// 全局共享一个缓存文件系统
-	mmfile       *fs.TieredFs = nil
-	mmfileLocker sync.Mutex   = sync.Mutex{}
+	mmfile       *vfs.TieredFs = nil
+	mmfileLocker sync.Mutex    = sync.Mutex{}
 )
 
 // BlockStore  存储后端接口
@@ -62,7 +62,7 @@ type BaseBlockStore struct {
 	Type  string
 }
 
-func GetTieredFs() (*fs.TieredFs, error) {
+func GetTieredFs() (*vfs.TieredFs, error) {
 	mmfileLocker.Lock()
 	defer mmfileLocker.Unlock()
 	if mmfile != nil {
@@ -75,13 +75,13 @@ func GetTieredFs() (*fs.TieredFs, error) {
 		cacheDir, _ = filepath.Abs("./data/cache")
 	}
 	// 创建配置
-	config := &fs.Config{
+	config := &vfs.Config{
 		MmapSize: 2 << 30, // 2GB
 		DiskDir:  cacheDir,
 	}
 
 	// 创建TieredFs实例
-	tfs, err := fs.NewTieredFs(config)
+	tfs, err := vfs.NewTieredFs(config)
 	if err != nil || tfs == nil {
 		logger.GetLogger("dedups3").Errorf("failed to create TieredFs: %v", err)
 		return nil, err

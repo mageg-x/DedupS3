@@ -15,12 +15,15 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+// 存放本机配置
+
 package config
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -39,8 +42,14 @@ var (
 	loadMutex    sync.Mutex
 )
 
+// 全局变量
+var (
+	GlobalNodeID = ""
+	IsDev        = isDevelopment()
+)
+
 type IAMConfig struct {
-	Username string `json:"username" mapstructure:"username" env:"IAM_USERNAME" default:"stevenrao"`
+	Username string `json:"username" mapstructure:"username" env:"IAM_USERNAME" default:"boulder"`
 	Password string `json:"password" mapstructure:"password" env:"IAM_PASSWORD" default:"Abcd@1234"`
 	AK       string `json:"access_key" mapstructure:"access_key" env:"IAM_ACCESS_KEY" default:"GGP5NTUY9WRH5NS78UVU"`
 	SK       string `json:"secret_key" mapstructure:"secret_key" env:"IAM_SECRET_KEY" default:"5oj6y3Jy7MO4Y2FTI5dOUvCbnOZf8mQGvbCqGN4I"`
@@ -145,8 +154,12 @@ func (d *DiskConfig) Equal(other *DiskConfig) bool {
 
 // StorageConfig 存储Block相关配置
 type StorageConfig struct {
-	ID    string `mapstructure:"id" json:"id" env:"DEDUPS3_BLOCK_STORAGE_ID"`
-	Class string `mapstructure:"class" json:"class" env:"DEDUPS3_STORAGE_CLASS" default:"STANDARD"`
+	ID        string `mapstructure:"id" json:"id" env:"DEDUPS3_BLOCK_STORAGE_ID"`
+	Class     string `mapstructure:"class" json:"class" env:"DEDUPS3_STORAGE_CLASS" default:"STANDARD"`
+	Compress  bool   `mapstructure:"compress" json:"compress" env:"DEDUPS3_BLOCK_COMPRESS" default:"true"`
+	Encrypt   bool   `mapstructure:"encryte" json:"encrypt" env:"DEDUPS3_BLOCK_ENCRYPT" default:"true"`
+	ChunkSize int    `mapstructure:"chunk_size" json:"chunkSize" env:"DEDUPS3_BLOCK_CHUNK_SIZE" default:"2097152"`
+	FixChunk  bool   `mapstructure:"fix_chunk"json:"fixChunk" env:"DEDUPS3_BLOCK_FIX_CHUNK" default:"false"`
 
 	// Only one of the following should be set
 	S3   *S3Config   `mapstructure:"s3" json:"s3,omitempty"`
@@ -249,10 +262,6 @@ type BlockConfig struct {
 	ShardNum         int           `mapstructure:"shard_num" json:"shardNum" env:"DEDUPS3_BLOCK_SHARD_NUM" default:"10"`
 	MaxSize          int           `mapstructure:"max_size" json:"maxSize" env:"DEDUPS3_BLOCK_MAX_SIZE" default:"67108864"`
 	MaxHeadSize      int           `mapstructure:"max_head_size" json:"maxHeadSize" env:"DEDUPS3_BLOCK_MAX_HEAD_SIZE" default:"204800"`
-	Compress         bool          `mapstructure:"compress" json:"compress" env:"DEDUPS3_BLOCK_COMPRESS" default:"true"`
-	Encrypt          bool          `mapstructure:"encryte" json:"encrypt" env:"DEDUPS3_BLOCK_ENCRYPT" default:"true"`
-	ChunkSize        int           `mapstructure:"chunk_size" json:"chunkSize" env:"DEDUPS3_BLOCK_CHUNK_SIZE" default:"67108864"`
-	FixChunk         bool          `mapstructure:"fix_chunk"json:"fixChunk" env:"DEDUPS3_BLOCK_FIX_CHUNK" default:"false"`
 }
 
 type NodeConfig struct {
@@ -262,31 +271,13 @@ type NodeConfig struct {
 }
 
 type Config struct {
-	Server   ServerConfig    `mapstructure:"server" json:"server"`
-	Log      LogConfig       `mapstructure:"log" json:"log"`
-	KV       KVConfig        `mapstructure:"kv" json:"kv"`
-	Cache    CacheConfig     `mapstructure:"cache" json:"cache"`
-	Iam      IAMConfig       `mapstructure:"iam" json:"iam"`
-	Block    BlockConfig     `mapstructure:"block" json:"block"`
-	Node     NodeConfig      `mapstructure:"node" json:"node"`
-	Storages []StorageConfig `mapstructure:"storage" json:"storage"`
-}
-
-func (c *Config) Validate() error {
-	// 检查 storages 的配置
-	// 一个class 只能配置一个存储
-	classMap := make(map[string]bool, 0)
-	for _, storage := range c.Storages {
-		storage.Class = strings.ToUpper(storage.Class)
-		if yes := classMap[storage.Class]; yes {
-			return fmt.Errorf("config error: must specify one storage of class %s", storage.Class)
-		}
-		if err := storage.Validate(); err != nil {
-			return err
-		}
-		classMap[storage.Class] = true
-	}
-	return nil
+	Server ServerConfig `mapstructure:"server" json:"server"`
+	Log    LogConfig    `mapstructure:"log" json:"log"`
+	KV     KVConfig     `mapstructure:"kv" json:"kv"`
+	Cache  CacheConfig  `mapstructure:"cache" json:"cache"`
+	Iam    IAMConfig    `mapstructure:"iam" json:"iam"`
+	Block  BlockConfig  `mapstructure:"block" json:"block"`
+	Node   NodeConfig   `mapstructure:"node" json:"node"`
 }
 
 // DefaultConfig 创建带默认值的配置实例
@@ -396,4 +387,10 @@ func Get() Config {
 	cfg := DefaultConfig()
 	globalConfig.Store(cfg)
 	return *cfg
+}
+
+// IsDev 表示是否是开发环境
+func isDevelopment() bool {
+	env := strings.ToLower(os.Getenv("ENV"))
+	return env == "dev" || env == "development"
 }

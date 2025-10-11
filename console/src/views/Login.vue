@@ -261,8 +261,8 @@ const loginForm = reactive({
     secretAccessKey: '',
     endpoint: '',
     region: '',
-    username: '',
-    password: '',
+    username: 'boulder',
+    password: 'Abcd@1234',
     remember: false
 });
 

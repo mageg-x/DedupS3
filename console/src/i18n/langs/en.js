@@ -650,8 +650,8 @@ const en = {
     cancelEditing: "Cancel Editing",
     noQuotas: "No quota configurations found",
     accountId: "Account ID",
-    storageLimit: "Storage Limit",
-    objectLimit: "Object Limit",
+    storageLimit: "Storage Space Limit",
+    objectLimit: "Object Count Limit",
     status: "Status",
     operation: "Actions",
     enabled: "Enabled",
@@ -985,6 +985,7 @@ const en = {
     confirmDelete: "Confirm Delete",
     enterDiskPath: "Please enter disk absolute path",
     enterValidWindowsPath: "Please enter a valid Windows absolute path",
+    enterValidLinuxPath: "Please enter a valid Linux absolute path",
     enterAccessKeys: "Please enter Access Key and Secret Key",
     enterRegionOrEndpoint: "Please enter Region or Endpoint",
     enterCompleteS3Config: "Please complete all S3 configuration information",
@@ -1039,7 +1040,8 @@ const en = {
     bucketNotFound: "Bucket not found",
     loadingObjects: "Loading objects...",
     failedToLoadObjects: "Failed to load objects",
-    downloadFailed: "Failed to download objects"
+    downloadFailed: "Failed to download objects",
+    uploadFailed: "Upload failed"
   },
 };
 

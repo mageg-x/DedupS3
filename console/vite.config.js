@@ -11,7 +11,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://172.17.49.152:3002',
+        target: 'http://172.18.176.90:3002',
         changeOrigin: true,
         secure: false,
         // 👇 只代理非静态资源的请求

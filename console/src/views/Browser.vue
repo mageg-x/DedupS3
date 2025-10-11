@@ -454,17 +454,30 @@ const getParentDirLastModified = () => {
 
 // ====== 文件选择与操作函数 ======
 const selectFile = (file) => {
-  selectedFile.value = file;
+  // 当点击已选中的文件时，先检查是否是取消选择
+  const isCurrentlySelected = selectedFiles.value.some(f => f.fullPath === file.fullPath);
   
-  if (file.hasOwnProperty('isSelected')) {
-    file.isSelected = !file.isSelected;
-    const index = selectedFiles.value.findIndex(f => f.fullPath === file.fullPath);
-    if (file.isSelected && index === -1) {
-      selectedFiles.value.push(file);
-    } else if (!file.isSelected && index > -1) {
-      selectedFiles.value.splice(index, 1);
-    }
+  file.isSelected = !file.isSelected;
+  const index = selectedFiles.value.findIndex(f => f.fullPath === file.fullPath);
+  
+  if (file.isSelected && index === -1) {
+    selectedFiles.value.push(file);
+  } else if (!file.isSelected && index > -1) {
+    selectedFiles.value.splice(index, 1);
   }
+  
+  // 正确更新selectedFile的值
+  if (selectedFiles.value.length === 1) {
+    selectedFile.value = selectedFiles.value[0];
+  } else if (selectedFiles.value.length > 1) {
+    selectedFile.value = {
+      name: `${selectedFiles.value.length} 个对象已选择`
+    };
+  } else {
+    selectedFile.value = null;
+  }
+  
+  updateSelectAllState();
 };
 
 const toggleSelect = (item) => {
@@ -892,6 +905,13 @@ watch(() => currentFiles.value, (newFiles) => {
             selectedFiles.value.push(file);
           } else if (!newValue && index > -1) {
             selectedFiles.value.splice(index, 1);
+            
+            // 修复问题：当取消选中时，如果还有其他选中的对象，更新selectedFile为第一个选中的对象
+            if (selectedFiles.value.length === 1) {
+              selectedFile.value = selectedFiles.value[0];
+            } else if (selectedFiles.value.length === 0) {
+              selectedFile.value = null;
+            }
           }
           updateSelectAllState();
         }, { immediate: false });

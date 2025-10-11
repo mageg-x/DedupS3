@@ -1,13 +1,12 @@
 <template>
   <div class="quota-container">
-    <!-- 头部标题和说明 -->
+    <!-- 头部 -->
     <div class="storage-points-header mb-6 flex justify-between items-center px-4">
       <div>
         <h2 class="text-2xl font-bold text-gray-800">{{ t('quota.pageTitle') }}</h2>
         <p class="text-gray-500 mt-2">{{ t('quota.pageDescription') }}</p>
       </div>
 
-      <!-- 按钮区域 -->
       <div class="flex gap-3">
         <button v-if="!isEditing" @click="startEditing(null)"
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition-all duration-300 flex items-center gap-2">
@@ -22,9 +21,8 @@
       </div>
     </div>
 
-    <!-- 配额列表卡片 -->
+    <!-- 配额列表 -->
     <div class="config-card bg-white rounded-xl shadow-md p-6 mb-6">
-      <!-- 无配额提示 -->
       <div v-if="quotas.length === 0" class="text-center py-10">
         <p class="text-gray-500 mb-4">{{ t('quota.noQuotas') }}</p>
         <button @click="startEditing(null)"
@@ -34,7 +32,6 @@
         </button>
       </div>
 
-      <!-- 配额列表 -->
       <div v-else class="overflow-x-auto">
         <table class="min-w-full divide-y divide-gray-200">
           <thead>
@@ -47,7 +44,7 @@
             </tr>
           </thead>
           <tbody class="bg-white divide-y divide-gray-200">
-            <tr v-for="quota in quotas" :key="quota.id">
+            <tr v-for="quota in quotas" :key="quota.accountId">
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ quota.accountId }}</td>
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 {{ quota.storageLimit > 0 ? formatStorage(quota.storageLimit) : t('quota.unlimited') }}
@@ -75,44 +72,56 @@
       </div>
     </div>
 
-    <!-- 配置表单卡片 - 仅在新增或编辑时显示 -->
+    <!-- 编辑/新增表单 -->
     <div v-if="isEditing" class="config-card bg-white rounded-xl shadow-md p-6 mb-6">
-      <!-- 表单内容 -->
       <form @submit.prevent="saveQuota" class="space-y-6">
         <div class="form-section">
-          <h3 class="text-lg font-semibold text-gray-700 mb-4">{{ editingQuota.id ? t('quota.edit') : t('quota.addQuota') }}</h3>
-          
+          <h3 class="text-lg font-semibold text-gray-700 mb-4">
+            {{ editingQuota.accountId ? t('quota.edit') : t('quota.addQuota') }}
+          </h3>
+
           <div class="space-y-4">
             <div class="form-field">
-              <label for="accountId" class="block text-sm font-medium text-gray-700 mb-1">{{ t('quota.accountId') }} *</label>
+              <label for="accountId" class="block text-sm font-medium text-blue-600 mb-1">{{ t('quota.accountId') }} *</label>
               <input
                 id="accountId"
-                v-model="editingQuota.accountId"
+                v-model.trim="editingQuota.accountId"
                 type="text"
                 :placeholder="t('quota.enterAccountId')"
-                :disabled="!!editingQuota.id"
+                :disabled="!!editingQuota.accountId"
                 class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300"
               />
               <p class="text-xs text-gray-500 mt-1">{{ t('quota.accountIdDesc') }}</p>
             </div>
 
             <div class="form-field">
-              <label class="block text-sm font-medium text-gray-700 mb-3">{{ t('quota.quotaConfig') }}</label>
+              <label class="block text-sm font-medium text-green-600 mb-3">{{ t('quota.quotaConfig') }}</label>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label for="storageLimit" class="block text-sm font-medium text-gray-700 mb-1">{{ t('quota.storageLimit') }}</label>
-                  <input
-                    id="storageLimit"
-                    v-model.number="editingQuota.storageLimit"
-                    type="number"
-                    min="0"
-                    placeholder="0"
-                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300"
-                  />
+                  <label for="storageLimit" class="block text-sm font-medium text-purple-600 mb-1">{{ t('quota.storageLimit') }}</label>
+                  <div class="relative">
+                    <input
+                      id="storageLimit"
+                      v-model.number="editingQuota.storageLimitDisplay"
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-300"
+                    />
+                    <select
+                      v-model="editingQuota.storageUnit"
+                      class="absolute right-2 top-1/2 transform -translate-y-1/2 border-0 bg-transparent text-gray-500 focus:ring-0"
+                    >
+                      <option value="KB">KB</option>
+                      <option value="MB">MB</option>
+                      <option value="GB">GB</option>
+                      <option value="TB">TB</option>
+                    </select>
+                  </div>
                   <p class="text-xs text-gray-500 mt-1">{{ t('quota.zeroMeansUnlimited') }}</p>
                 </div>
                 <div>
-                  <label for="objectLimit" class="block text-sm font-medium text-gray-700 mb-1">{{ t('quota.objectLimit') }}</label>
+                  <label for="objectLimit" class="block text-sm font-medium text-orange-600 mb-1">{{ t('quota.objectLimit') }}</label>
                   <input
                     id="objectLimit"
                     v-model.number="editingQuota.objectLimit"
@@ -127,7 +136,7 @@
             </div>
 
             <div class="form-field">
-              <label class="block text-sm font-medium text-gray-700 mb-1">{{ t('quota.statusConfig') }}</label>
+              <label class="block text-sm font-medium text-red-600 mb-1">{{ t('quota.statusConfig') }}</label>
               <div class="flex items-center mt-2">
                 <label class="relative inline-flex items-center cursor-pointer">
                   <input
@@ -143,7 +152,6 @@
           </div>
         </div>
 
-        <!-- 操作按钮 -->
         <div class="form-actions flex justify-end gap-4 pt-4 border-t border-gray-100">
           <button type="button" @click="cancelEditing"
             class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
@@ -151,23 +159,13 @@
           </button>
           <button type="submit"
             class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md hover:shadow-lg transition-all duration-300">
-            {{ editingQuota.id ? t('quota.updateConfig') : t('quota.saveConfig') }}
+            {{ editingQuota.accountId ? t('quota.updateConfig') : t('quota.saveConfig') }}
           </button>
         </div>
       </form>
     </div>
 
-    <!-- 操作结果提示 -->
-    <div v-if="showToast"
-      :class="['fixed top-4 right-4 px-4 py-3 rounded-lg shadow-lg transition-all duration-300 z-50', toastType === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white']">
-      <div class="flex items-center gap-2">
-        <i v-if="toastType === 'success'" class="fas fa-check-circle"></i>
-        <i v-else class="fas fa-exclamation-circle"></i>
-        <span>{{ toastMessage }}</span>
-      </div>
-    </div>
-
-    <!-- 自定义确认对话框 -->
+    <!-- 确认对话框 -->
     <div v-if="showConfirmDialog" class="fixed inset-0 bg-[rgba(0,0,0,0.5)] flex items-center justify-center z-50 transition-opacity duration-300">
       <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 overflow-hidden transition-all duration-300 transform">
         <div class="p-5 border-b border-gray-100 flex items-center justify-between">
@@ -193,173 +191,136 @@
 </template>
 
 <script>
+import { listquota, createquota, setquota, delquota } from '../api/admin.js';
+
 export default {
   name: 'Quota',
+
+  // ========== 响应式数据 ==========
   data() {
     return {
       isEditing: false,
-      editingQuota: {
-        id: null,
-        accountId: '',
-        storageLimit: 0,
-        objectLimit: 0,
-        isEnabled: true,
-      },
-      showToast: false,
-      toastMessage: '',
-      toastType: 'success',
+      editingQuota: this.createEmptyQuota(),
+      quotas: [],
       showConfirmDialog: false,
       confirmDialogTitle: '',
       confirmDialogMessage: '',
       confirmDialogAction: () => {},
-      quotas: [],
     };
   },
+
+  // ========== 生命周期 ==========
   mounted() {
     this.fetchQuotas();
   },
+
+  // ========== 方法 ==========
   methods: {
-    // ========== 工具函数 ==========
-    /**
-     * 保存到 localStorage
-     */
-    saveToStorage() {
-      try {
-        localStorage.setItem('quotas', JSON.stringify(this.quotas));
-      } catch (err) {
-        console.error('持久化失败:', err);
-        this.showToastMessage('保存失败：本地存储已满或受限', 'error');
+    // ---------- 工具函数 ----------
+    convertToDisplayUnit(kbValue) {
+      if (kbValue === 0) return { value: 0, unit: 'KB' };
+      const units = ['KB', 'MB', 'GB', 'TB'];
+      let value = kbValue;
+      let unitIndex = 0;
+      while (value >= 1024 && unitIndex < units.length - 1) {
+        value /= 1024;
+        unitIndex++;
       }
+      return { value: parseFloat(value.toFixed(2)), unit: units[unitIndex] };
     },
 
-    /**
-     * 从 localStorage 加载
-     */
-    fetchQuotas() {
-      try {
-        const saved = localStorage.getItem('quotas');
-        if (saved) {
-          this.quotas = JSON.parse(saved);
-        } else {
-          // 默认模拟数据
-          this.quotas = [
-            { id: '1', accountId: 'admin001', storageLimit: 0, objectLimit: 0, isEnabled: true },
-            { id: '2', accountId: 'user001', storageLimit: 100, objectLimit: 100000, isEnabled: true },
-            { id: '3', accountId: 'user002', storageLimit: 500, objectLimit: 500000, isEnabled: false },
-          ];
-          this.saveToStorage();
-        }
-      } catch (err) {
-        console.warn('加载失败，使用默认数据:', err);
-        this.quotas = [];
-      }
+    convertToKB(displayValue, unit) {
+      if (displayValue === 0) return 0;
+      const multipliers = { KB: 1, MB: 1024, GB: 1024 ** 2, TB: 1024 ** 3 };
+      return Math.round(displayValue * multipliers[unit]);
     },
 
-    /**
-     * 添加配额
-     */
-    addQuota(quota) {
-      const newQuota = {
-        ...quota,
-        id: Date.now().toString(), // 生成唯一ID
-      };
-      this.quotas.push(newQuota);
-      this.saveToStorage();
+    formatStorage(kbValue) {
+      const { value, unit } = this.convertToDisplayUnit(kbValue);
+      return `${value} ${unit}`;
     },
 
-    /**
-     * 更新配额
-     */
-    updateQuota(quota) {
-      const index = this.quotas.findIndex(q => q.id === quota.id);
-      if (index !== -1) {
-        this.quotas[index] = { ...quota };
-        this.saveToStorage();
-      }
-    },
-
-    /**
-     * 删除配额
-     */
-    deleteQuota(id) {
-      const index = this.quotas.findIndex(q => q.id === id);
-      if (index !== -1) {
-        this.quotas.splice(index, 1);
-        this.saveToStorage();
-      }
-    },
-    
-    startEditing(quota) {
-      if (quota) {
-        this.editingQuota = { ...quota };
-      } else {
-        this.editingQuota = {
-          id: null,
-          accountId: '',
-          storageLimit: 0,
-          objectLimit: 0,
-          isEnabled: true,
-        };
-      }
-      this.isEditing = true;
-    },
-    
-    cancelEditing() {
-      this.isEditing = false;
-      this.editingQuota = {
-        id: null,
+    createEmptyQuota() {
+      return {
         accountId: '',
-        storageLimit: 0,
+        storageLimitDisplay: 0,
+        storageUnit: 'GB',
         objectLimit: 0,
         isEnabled: true,
       };
     },
-    
+
+    // ---------- API 调用 ----------
+    async fetchQuotas() {
+      try {
+        const response = await listquota();
+        if (response.code === 0 && response.data) {
+          this.quotas = response.data.map(item => ({
+            accountId: item.accountID || 'default',
+            storageLimit: item.maxSpaceSize || 0,
+            objectLimit: item.maxObjectCount || 0,
+            isEnabled: item.enable || false,
+          }));
+        } else {
+          this.showToastMessage(response.msg || '获取配额失败', 'error');
+          this.quotas = [];
+        }
+      } catch (error) {
+        console.error('获取配额失败:', error);
+        this.showToastMessage('网络错误，获取配额失败', 'error');
+        this.quotas = [];
+      }
+    },
+
     async saveQuota() {
-      if (!this.editingQuota.accountId.trim()) {
+      const { accountId, storageLimitDisplay, storageUnit, objectLimit, isEnabled } = this.editingQuota;
+      const trimmedId = accountId.trim();
+
+      if (!trimmedId) {
         this.showToastMessage(this.t('quota.enterAccountId'), 'error');
         return;
       }
-      
+      if (storageLimitDisplay < 0 || objectLimit < 0) {
+        this.showToastMessage('限制值不能为负数', 'error');
+        return;
+      }
+
       try {
-        const { accountId, storageLimit, objectLimit } = this.editingQuota;
+        const storageLimitInKB = this.convertToKB(storageLimitDisplay, storageUnit);
+        const quotaData = {
+          accountId: trimmedId,
+          MaxSpaceSize: storageLimitInKB,
+          MaxObjectCount: objectLimit,
+          Enable: isEnabled,
+        };
 
-        // 验证
-        if (!accountId.trim()) throw new Error(this.t('quota.enterAccountId'));
-        if (storageLimit < 0) throw new Error('存储空间限制不能为负数');
-        if (objectLimit < 0) throw new Error('对象个数限制不能为负数');
+        const response = this.editingQuota.accountId
+          ? await setquota(quotaData)
+          : await createquota(quotaData);
 
-        const trimmedId = accountId.trim();
+        if (response.code !== 0) throw new Error(response.msg || '操作失败');
 
-        if (this.editingQuota.id) {
-          // 更新
-          const idx = this.quotas.findIndex(q => q.id === this.editingQuota.id);
-          if (idx !== -1) {
-            this.quotas[idx] = { ...this.editingQuota, accountId: trimmedId };
-            this.saveToStorage();
-            this.showToastMessage(this.t('quota.updateSuccess'), 'success');
-          }
-        } else {
-          // 新增
-          if (this.quotas.some(q => q.accountId === trimmedId)) {
-            throw new Error('账号ID已存在，请使用其他ID');
-          }
-          this.addQuota({ ...this.editingQuota, accountId: trimmedId });
-          this.showToastMessage(this.t('quota.addSuccess'), 'success');
-        }
-        this.isEditing = false;
+        this.showToastMessage(
+          this.editingQuota.accountId ? this.t('quota.updateSuccess') : this.t('quota.addSuccess'),
+          'success'
+        );
+
+        await this.fetchQuotas();
+        this.cancelEditing();
       } catch (error) {
         this.showToastMessage(error.message || '操作失败', 'error');
       }
     },
-    
-    handleDelete(quota) {
+
+    async handleDelete(quota) {
       this.confirmDialogTitle = this.t('quota.confirmDeleteTitle');
       this.confirmDialogMessage = this.t('quota.confirmDeleteMessage');
       this.confirmDialogAction = async () => {
         try {
-          this.deleteQuota(quota.id);
+          const response = await delquota({ accountId: quota.accountId });
+          if (response.code !== 0) throw new Error(response.msg || '删除失败');
           this.showToastMessage(this.t('quota.deleteSuccess'), 'success');
+          await this.fetchQuotas();
         } catch (error) {
           this.showToastMessage(error.message || '删除失败', 'error');
         }
@@ -367,70 +328,54 @@ export default {
       };
       this.showConfirmDialog = true;
     },
-    
+
+    // ---------- UI 控制 ----------
+    startEditing(quota) {
+      if (quota) {
+        const { value, unit } = this.convertToDisplayUnit(quota.storageLimit);
+        this.editingQuota = {
+          accountId: quota.accountId,
+          storageLimitDisplay: value,
+          storageUnit: unit,
+          objectLimit: quota.objectLimit,
+          isEnabled: quota.isEnabled,
+        };
+      } else {
+        this.editingQuota = this.createEmptyQuota();
+      }
+      this.isEditing = true;
+    },
+
+    cancelEditing() {
+      this.isEditing = false;
+      this.editingQuota = this.createEmptyQuota();
+    },
+
     closeConfirmDialog() {
       this.showConfirmDialog = false;
       this.confirmDialogAction = () => {};
     },
-    
-    formatStorage(bytes) {
-      if (bytes === 0) return '0 Bytes';
-      
-      const k = 1024;
-      const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    },
-    
+
+    // ---------- 通用工具 ----------
     showToastMessage(message, type = 'info') {
-      // 创建临时toast元素
       const toast = document.createElement('div');
-      toast.className = `toast ${type === 'success' ? 'bg-green-500' : 'bg-red-500'}`;
+      toast.className = `fixed top-4 right-4 px-4 py-3 rounded-lg shadow-lg z-50 transition-opacity duration-300 ${
+        type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+      }`;
       toast.innerHTML = `
         <div class="flex items-center gap-2">
           <i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i>
           <span>${message}</span>
         </div>
       `;
-      
-      // 添加toast样式
-      toast.style.position = 'fixed';
-      toast.style.top = '1rem';
-      toast.style.right = '1rem';
-      toast.style.padding = '0.75rem 1rem';
-      toast.style.borderRadius = '0.5rem';
-      toast.style.color = 'white';
-      toast.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1)';
-      toast.style.zIndex = '50';
-      toast.style.display = 'flex';
-      toast.style.alignItems = 'center';
-      toast.style.gap = '0.5rem';
-      toast.style.opacity = '0';
-      toast.style.transform = 'translateX(20px)';
-      toast.style.transition = 'opacity 0.3s, transform 0.3s';
-      
       document.body.appendChild(toast);
-      
-      // 显示toast
-      setTimeout(() => {
-        toast.style.opacity = '1';
-        toast.style.transform = 'translateX(0)';
-      }, 10);
-      
-      // 3秒后隐藏toast
+
       setTimeout(() => {
         toast.style.opacity = '0';
-        toast.style.transform = 'translateX(20px)';
-        
-        setTimeout(() => {
-          if (document.body.contains(toast)) {
-            document.body.removeChild(toast);
-          }
-        }, 300);
+        setTimeout(() => document.body.contains(toast) && document.body.removeChild(toast), 300);
       }, 3000);
     },
-    
+
     t(key) {
       return this.$t(key);
     },
@@ -445,7 +390,6 @@ export default {
   padding: 20px;
 }
 
-/* 复用 EndPoint.vue 的样式类 */
 .storage-points-header {
   margin-bottom: 24px;
 }
@@ -474,16 +418,15 @@ export default {
   border-top: 1px solid #f0f0f0;
 }
 
-/* 响应式调整 */
 @media (max-width: 768px) {
   .quota-container {
     padding: 16px;
   }
-  
+
   .config-card {
     padding: 16px;
   }
-  
+
   .grid-cols-1.md\:grid-cols-2 {
     grid-template-columns: 1fr;
   }

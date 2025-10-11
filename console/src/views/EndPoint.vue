@@ -9,15 +9,15 @@
 
       <!-- 按钮区域 -->
       <div class="flex gap-3 ml-8">
-        <button v-if="!isEditMode" @click="handleAddNew"
-          class="inline-flex w-fit px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition-all duration-300  items-center gap-2">
+        <button @click="handleAddNew"
+          class="inline-flex w-fit px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition-all duration-300 items-center gap-2">
           <i class="fas fa-plus"></i>
-          <span class=" whitespace-nowrap">{{ t('endpoint.addStoragePoint') }}</span>
+          <span class="whitespace-nowrap">{{ t('endpoint.addStoragePoint') }}</span>
         </button>
-        <button v-else @click="cancelEditing"
-          class="inline-flex w-fit px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg shadow transition-all duration-300  items-center gap-2">
+        <button v-if="isFormVisible" @click="cancelEditing"
+          class="inline-flex w-fit px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg shadow transition-all duration-300 items-center gap-2">
           <i class="fas fa-times"></i>
-          <span class=" whitespace-nowrap">{{ t('endpoint.cancelEditing') }}</span>
+          <span class="whitespace-nowrap">{{ t('endpoint.cancel') }}</span>
         </button>
       </div>
     </div>
@@ -37,7 +37,7 @@
               <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">{{ t('endpoint.id') }}</th>
               <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">{{ t('endpoint.class') }}</th>
               <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">{{ t('endpoint.type') }}</th>
-              <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">{{ t('endpoint.configuration') }}</th>
+              <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider max-w-[300px]">{{ t('endpoint.configuration') }}</th>
               <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">{{ t('endpoint.operation') }}</th>
             </tr>
           </thead>
@@ -52,13 +52,10 @@
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ point.storage === 'disk' ? t('endpoint.diskStorage') :
                 t('endpoint.s3CompatibleStorage') }}</td>
-              <td class="px-6 py-4 text-sm text-gray-500">
+              <td class="px-6 py-4 text-sm text-gray-500 max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap">
                 {{ point.storage === 'disk' ? point.path : point.bucket }}
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                <button @click="handleEdit(point)" class="text-blue-600 hover:text-blue-900 mr-3">
-                  {{ t('endpoint.edit') }}
-                </button>
                 <button @click="handleDelete(point.id)" class="text-red-600 hover:text-red-900">
                   {{ t('endpoint.delete') }}
                 </button>
@@ -69,8 +66,8 @@
       </div>
     </div>
 
-    <!-- 配置表单卡片 - 仅在新增或编辑时显示 -->
-    <div v-if="isEditMode || (!editingStoragePoint && storagePointsList.length === 0)"
+    <!-- 配置表单卡片 -->
+    <div v-if="isFormVisible"
       class="config-card bg-white rounded-xl shadow-md p-6 mb-6">
       <!-- 表单内容 -->
       <form @submit.prevent="handleSave" class="space-y-6">
@@ -90,7 +87,7 @@
                 </div>
                 <div>
                   <div class="font-medium text-gray-800">{{ t('endpoint.storageType.standard.label') }}</div>
-              <div class="text-xs text-gray-500 mt-1">{{ t('endpoint.storageType.standard.description') }}</div>
+                  <div class="text-xs text-gray-500 mt-1">{{ t('endpoint.storageType.standard.description') }}</div>
                 </div>
               </div>
             </div>
@@ -107,7 +104,7 @@
                 </div>
                 <div>
                   <div class="font-medium text-gray-800">{{ t('endpoint.storageType.lowfreq.label') }}</div>
-              <div class="text-xs text-gray-500 mt-1">{{ t('endpoint.storageType.lowfreq.description') }}</div>
+                  <div class="text-xs text-gray-500 mt-1">{{ t('endpoint.storageType.lowfreq.description') }}</div>
                 </div>
               </div>
             </div>
@@ -124,7 +121,7 @@
                 </div>
                 <div>
                   <div class="font-medium text-gray-800">{{ t('endpoint.storageType.archive.label') }}</div>
-              <div class="text-xs text-gray-500 mt-1">{{ t('endpoint.storageType.archive.description') }}</div>
+                  <div class="text-xs text-gray-500 mt-1">{{ t('endpoint.storageType.archive.description') }}</div>
                 </div>
               </div>
             </div>
@@ -215,7 +212,7 @@
             <div class="form-field flex flex-col justify-center">
               <label for="usePathStyle" class="flex items-center text-sm font-medium text-gray-700 my-0">
                 <input id="usePathStyle" v-model="s3Config.usePathStyle" type="checkbox"
-                  class="w-4 h-4  my-0 text-blue-600 border-gray-300 rounded focus:ring-blue-500 transition-all duration-300" />
+                  class="w-4 h-4 my-0 text-blue-600 border-gray-300 rounded focus:ring-blue-500 transition-all duration-300" />
                 <span class="ml-2">{{ t('endpoint.usePathStyle') }}</span>
               </label>
             </div>
@@ -284,21 +281,17 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { liststorage, createstorage, delstorage, teststorage } from '@/api/admin.js';
 
+// 国际化
 const { t } = useI18n();
 
-// 存储点类型选择
+// 响应式变量定义
 const storagePointClass = ref('standard');
-
-// 存储类别选择
 const storageType = ref('disk');
-
-// 磁盘路径
 const diskPath = ref('');
-
-// S3配置
 const s3Config = ref({
   accessKey: '',
   secretKey: '',
@@ -307,31 +300,16 @@ const s3Config = ref({
   bucket: '',
   usePathStyle: false
 });
-
-// 存储点ID
 const storagePointId = ref('');
-
-// 提示框状态
 const showToast = ref(false);
 const toastMessage = ref('');
 const toastType = ref('success');
-
-// 确认对话框状态
 const showConfirmDialog = ref(false);
-const confirmDialogTitle = ref(t('endpoint.confirmDeleteTitle'));
-const confirmDialogMessage = ref(t('endpoint.confirmDeleteMessage'));
 const confirmDialogCallback = ref(null);
-
-// 存储点列表
 const storagePointsList = ref([]);
+const isFormVisible = ref(false);
 
-// 当前编辑的存储点ID
-const editingStoragePoint = ref(null);
-
-// 编辑模式标志
-const isEditMode = ref(false);
-
-// 自动生成存储点ID
+// 工具函数
 const generateStoragePointId = () => {
   const timestamp = Date.now();
   const random = Math.floor(Math.random() * 1000);
@@ -347,14 +325,12 @@ const generateStoragePointId = () => {
   return `${typeMap[storagePointClass.value]}-${storageMap[storageType.value]}-${timestamp}-${random}`;
 };
 
-// 监听存储类型变化，自动生成ID
 const updateStoragePointId = () => {
   if (!storagePointId.value || storagePointId.value === generateStoragePointId()) {
     storagePointId.value = generateStoragePointId();
   }
 };
 
-// 显示提示消息
 const showToastMessage = (message, type = 'success') => {
   toastMessage.value = message;
   toastType.value = type;
@@ -366,98 +342,6 @@ const showToastMessage = (message, type = 'success') => {
   }, 3000);
 };
 
-// 保存存储点列表到本地存储
-const saveStoragePoints = () => {
-  try {
-    localStorage.setItem('storagePoints', JSON.stringify(storagePointsList.value));
-  } catch (error) {
-    console.error('保存存储点列表失败:', error);
-  }
-};
-
-// 重置表单
-const resetForm = () => {
-  storagePointClass.value = 'standard';
-  storageType.value = 'disk';
-  diskPath.value = '';
-  s3Config.value = {
-    accessKey: '',
-    secretKey: '',
-    region: '',
-    endpoint: '',
-    bucket: '',
-    usePathStyle: false
-  };
-  storagePointId.value = generateStoragePointId();
-};
-
-// 编辑存储点
-const handleEdit = (point) => {
-  editingStoragePoint.value = { ...point };
-  isEditMode.value = true;
-  storagePointClass.value = point.type;
-  storageType.value = point.storage;
-  storagePointId.value = point.id;
-
-  if (point.storage === 'disk') {
-    diskPath.value = point.path || '';
-  } else if (point.storage === 's3') {
-    s3Config.value = {
-      accessKey: point.accessKey || '',
-      secretKey: point.secretKey || '',
-      region: point.region || '',
-      endpoint: point.endpoint || '',
-      bucket: point.bucket || '',
-      usePathStyle: point.usePathStyle || false
-    };
-  }
-};
-
-// 处理确认对话框取消
-const handleConfirmCancel = () => {
-  showConfirmDialog.value = false;
-  confirmDialogCallback.value = null;
-};
-
-// 处理确认对话框确认
-const handleConfirmOk = () => {
-  if (typeof confirmDialogCallback.value === 'function') {
-    confirmDialogCallback.value();
-  }
-  showConfirmDialog.value = false;
-  confirmDialogCallback.value = null;
-};
-
-// 删除存储点
-const handleDelete = (id) => {
-  confirmDialogTitle.value = t('endpoint.confirmDeleteTitle');
-  confirmDialogMessage.value = t('endpoint.confirmDeleteMessage');
-  confirmDialogCallback.value = () => {
-    const index = storagePointsList.value.findIndex(p => p.id === id);
-    if (index !== -1) {
-      storagePointsList.value.splice(index, 1);
-      saveStoragePoints();
-      showToastMessage(t('endpoint.deleteSuccess'), 'success');
-    }
-  };
-  showConfirmDialog.value = true;
-};
-
-// 新增存储点
-const handleAddNew = () => {
-  resetForm();
-  isEditMode.value = true;  // 设置为true以便显示表单
-  editingStoragePoint.value = null;
-};
-
-// 取消编辑
-const cancelEditing = () => {
-  resetForm();
-  isEditMode.value = false;
-  editingStoragePoint.value = null;
-};
-
-// 获取存储类型名称
 const getStorageTypeName = (type) => {
   try {
     const translationKey = `endpoint.storageType.${type}.label`;
@@ -473,36 +357,31 @@ const getStorageTypeName = (type) => {
   }
 };
 
+const mapStorageClassToDisplayName = (storageClass) => {
+  const classMap = {
+    'STANDARD_IA': t('endpoint.storageType.lowfreq.label'),
+    'GLACIER_IR': t('endpoint.storageType.archive.label')
+  };
+  return classMap[storageClass] || storageClass.toLowerCase();
+};
 
-
-// 加载存储点列表
-const loadStoragePoints = () => {
+// 数据加载函数
+const loadStoragePoints = async () => {
   try {
-    const saved = localStorage.getItem('storagePoints');
-    if (saved) {
-      storagePointsList.value = JSON.parse(saved);
+    const result = await liststorage();
+    if (result.code === 0 && result.data) {
+      // 转换API返回的数据格式以匹配前端显示需求
+      storagePointsList.value = result.data.map(item => ({
+        id: item.storageID,
+        // 映射storageClass为中文显示名称
+        type: mapStorageClassToDisplayName(item.storageClass),
+        storage: item.storageType.toLowerCase(),
+        // 修复disk和s3属性的大小写问题，确保配置列正确显示path或bucket
+        ...(item.storageType.toLowerCase() === 'disk' && item.disk ? { path: item.disk.path } : {}),
+        ...(item.storageType.toLowerCase() === 's3' && item.s3 ? item.s3 : {})
+      }));
     } else {
-      // 提供一些模拟数据
-      storagePointsList.value = [
-        {
-          id: 'std-dsk-1712345678901-123',
-          type: 'standard',
-          storage: 'disk',
-          path: 'D:\\storage\\data',
-        },
-        {
-          id: 'lfr-s3-1712345678902-456',
-          type: 'lowfreq',
-          storage: 's3',
-          accessKey: 'AKIAIOSFODNN7EXAMPLE',
-          secretKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
-          region: 'us-east-1',
-          endpoint: 'https://s3.amazonaws.com',
-          bucket: 'my-bucket',
-          usePathStyle: false,
-        }
-      ];
-      saveStoragePoints();
+      showToastMessage(result.msg || '加载存储点列表失败', 'error');
     }
   } catch (error) {
     console.error('加载存储点列表失败:', error);
@@ -510,16 +389,42 @@ const loadStoragePoints = () => {
   }
 };
 
-// 测试配置
-const handleTest = () => {
+// 表单操作函数
+const resetForm = () => {
+  storagePointClass.value = 'standard';
+  storageType.value = 'disk';
+  diskPath.value = '';
+  s3Config.value = {
+    accessKey: '',
+    secretKey: '',
+    region: '',
+    endpoint: '',
+    bucket: '',
+    usePathStyle: false
+  };
+  storagePointId.value = generateStoragePointId();
+};
+
+const handleAddNew = () => {
+  resetForm();
+  isFormVisible.value = true;
+};
+
+const cancelEditing = () => {
+  resetForm();
+  isFormVisible.value = false;
+};
+
+// 配置测试函数
+const handleTest = async () => {
   try {
     // 验证必填字段
     if (storageType.value === 'disk') {
       if (!diskPath.value) {
         throw new Error(t('endpoint.enterDiskPath'));
       }
-      if (!diskPath.value.startsWith('D:\\') && !diskPath.value.startsWith('C:\\')) {
-        throw new Error(t('endpoint.enterValidWindowsPath'));
+      if (!diskPath.value.startsWith('/')) {
+        throw new Error(t('endpoint.enterValidLinuxPath'));
       }
     } else if (storageType.value === 's3') {
       if (!s3Config.value.accessKey || !s3Config.value.secretKey) {
@@ -533,31 +438,37 @@ const handleTest = () => {
       }
     }
 
-    // 显示测试成功提示
-    showToastMessage(t('endpoint.testSuccess'), 'success');
+    // 构建请求参数
+    const requestData = {
+      StorageID: storagePointId.value,
+      StorageClass: storagePointClass.value,
+      StorageType: storageType.value.toUpperCase(),
+      ...(storageType.value === 'disk' ? { Disk: { path: diskPath.value } } : { S3: s3Config.value })
+    };
 
-    // 模拟测试过程
-    console.log('测试存储点配置:', {
-      type: storagePointClass.value,
-      storage: storageType.value,
-      id: storagePointId.value,
-      ...(storageType.value === 'disk' ? { path: diskPath.value } : s3Config.value)
-    });
+    // 调用测试API
+    const result = await teststorage(requestData);
+    
+    if (result.code === 0) {
+      showToastMessage(t('endpoint.testSuccess'), 'success');
+    } else {
+      showToastMessage(result.msg || '配置测试失败', 'error');
+    }
   } catch (error) {
     showToastMessage(error.message, 'error');
   }
 };
 
-// 保存配置
-const handleSave = () => {
+// 保存配置函数
+const handleSave = async () => {
   try {
     // 验证必填字段
     if (storageType.value === 'disk') {
       if (!diskPath.value) {
         throw new Error(t('endpoint.enterDiskPath'));
       }
-      if (!diskPath.value.startsWith('D:\\') && !diskPath.value.startsWith('C:\\')) {
-        throw new Error(t('endpoint.enterValidWindowsPath'));
+      if (!diskPath.value.startsWith('/')) {
+        throw new Error(t('endpoint.enterValidLinuxPath'));
       }
     } else if (storageType.value === 's3') {
       if (!s3Config.value.accessKey || !s3Config.value.secretKey || !s3Config.value.bucket) {
@@ -569,41 +480,69 @@ const handleSave = () => {
       throw new Error(t('endpoint.enterStoragePointId'));
     }
 
-    // 构建配置对象
-    const config = {
-      id: storagePointId.value,
-      type: storagePointClass.value,
-      storage: storageType.value,
-      ...(storageType.value === 'disk' ? { path: diskPath.value } : s3Config.value),
+    // 构建API请求对象
+    const requestData = {
+      StorageID: storagePointId.value,
+      StorageClass: storagePointClass.value,
+      StorageType: storageType.value,
+      ...(storageType.value === 'disk' ? { Disk: { path: diskPath.value } } : {}),
+      ...(storageType.value === 's3' ? { S3: s3Config.value } : {})
     };
 
-    // 处理编辑或新增
-    if (isEditMode.value) {
-      // 编辑现有存储点
-      const index = storagePointsList.value.findIndex(p => p.id === editingStoragePoint.value.id);
-      if (index !== -1) {
-        storagePointsList.value[index] = config;
-      }
+    // 调用API创建存储点
+    const result = await createstorage(requestData);
+    if (result.code === 0) {
+      // 重新加载列表以确保数据一致性
+      await loadStoragePoints();
+      showToastMessage(t('endpoint.saveSuccess'), 'success');
+      cancelEditing();
     } else {
-      // 检查ID是否已存在
-      if (storagePointsList.value.some(p => p.id === config.id)) {
-        throw new Error(t('endpoint.idExists'));
-      }
-      // 添加新存储点
-      storagePointsList.value.push(config);
+      showToastMessage(result.msg || '保存失败', 'error');
     }
-
-    // 保存并重置
-    saveStoragePoints();
-    showToastMessage(isEditMode.value ? t('endpoint.updateSuccess') : t('endpoint.saveSuccess'), 'success');
-    cancelEditing();
   } catch (error) {
+    console.error('保存配置失败:', error);
     showToastMessage(error.message, 'error');
   }
 };
 
-// 初始化加载存储点列表
-loadStoragePoints();
+// 删除存储点函数
+const handleDelete = (id) => {
+  confirmDialogCallback.value = async () => {
+    try {
+      const result = await delstorage({ storageID: id });
+      if (result.code === 0) {
+        // 重新加载列表以确保数据一致性
+        await loadStoragePoints();
+        showToastMessage(t('endpoint.deleteSuccess'), 'success');
+      } else {
+        showToastMessage(result.msg || '删除失败', 'error');
+      }
+    } catch (error) {
+      console.error('删除存储点失败:', error);
+      showToastMessage('删除存储点失败', 'error');
+    }
+  };
+  showConfirmDialog.value = true;
+};
+
+// 确认对话框函数
+const handleConfirmCancel = () => {
+  showConfirmDialog.value = false;
+  confirmDialogCallback.value = null;
+};
+
+const handleConfirmOk = () => {
+  if (typeof confirmDialogCallback.value === 'function') {
+    confirmDialogCallback.value();
+  }
+  showConfirmDialog.value = false;
+  confirmDialogCallback.value = null;
+};
+
+// 生命周期钩子
+onMounted(() => {
+  loadStoragePoints();
+});
 
 // 监听类型变化，自动更新存储点ID
 watch([storagePointClass, storageType], () => {

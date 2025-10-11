@@ -100,7 +100,7 @@ func (b *BlockCache) Add(storageID, blockID string, ver int32, data []byte) {
 				}
 			}
 		}
-		// 缓存大小未2GB
+		// 缓存大小为2GB
 		for totalSize > 1024*1024*1024*2 {
 			// 删除最老的一项（第一个）
 			oldestKey := keys[0]
@@ -190,6 +190,7 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 				curBlock.ChunkList = append(curBlock.ChunkList, meta.BlockChunk{Hash: chunk.Hash, Size: chunk.Size, Data: chunk.Data})
 				chunk.Data = nil
 				curBlock.TotalSize += int64(chunk.Size)
+				curBlock.RealSize = curBlock.TotalSize
 				curBlock.UpdatedAt = time.Now().UTC()
 				// 返回 chunk所属的block
 				clone = curBlock.Clone(false)
@@ -227,7 +228,11 @@ func (s *BlockService) PutChunk(chunk *meta.Chunk, obj *meta.BaseObject) (*meta.
 
 				logger.GetLogger("dedups3").Warnf("failed to flush block %s: %v", flushBlock.ID, err)
 				return fmt.Errorf("failed to flush block %s: %w", flushBlock.ID, err)
-			} else if flushBlock.Finally {
+			} else {
+				// 更新数据
+				clone = flushBlock.Clone(false)
+			}
+			if flushBlock.Finally {
 				// 成功的话， 把 flushBlock 摘出来
 				s.preBlocks[i] = nil
 			}
@@ -284,7 +289,7 @@ func (s *BlockService) doFlushBlock(ctx context.Context, block *meta.Block) erro
 		logger.GetLogger("dedups3").Errorf("flush block %s size mot match %d:%d:%d:%d", block.ID, size1, size2, blockData.RealSize, blockData.RealSize)
 		return fmt.Errorf("flush block %s size mot match %d:%d:%d:%d", block.ID, size1, size2, blockData.RealSize, blockData.RealSize)
 	}
-	logger.GetLogger("dedups3").Infof("flush block data %s total size %d real size %d data size %d",
+	logger.GetLogger("dedups3").Errorf("flush block data %s total size %d real size %d data size %d",
 		blockData.ID, blockData.TotalSize, blockData.RealSize, len(blockData.Data))
 
 	// 计算md5，数据校验
@@ -308,40 +313,6 @@ func (s *BlockService) doFlushBlock(ctx context.Context, block *meta.Block) erro
 }
 
 func (s *BlockService) WriteBlock(ctx context.Context, storageID string, blockData *meta.BlockData) error {
-	// 压缩Data
-	cfg := xconf.Get()
-	if cfg.Block.Compress {
-		if len(blockData.Data) > 1024 && utils.IsCompressible(blockData.Data, 4*1024, 0.9) {
-			compress, err := utils.Compress(blockData.Data)
-			if err == nil && compress != nil && float64(len(compress))/float64(len(blockData.Data)) < 0.9 {
-				blockData.Data = compress
-				blockData.Compressed = true
-				blockData.RealSize = int64(len(compress))
-			}
-		}
-	}
-
-	// 加密Data
-	if cfg.Block.Encrypt {
-		if len(blockData.Data) > 0 {
-			encrypt, err := utils.Encrypt(blockData.Data, blockData.ID)
-			if err == nil && encrypt != nil {
-				blockData.Data = encrypt
-				blockData.Encrypted = true
-				blockData.RealSize = int64(len(encrypt))
-			}
-		}
-	}
-
-	logger.GetLogger("dedups3").Infof("flush block data size %d:%d, compress rate %.2f%%",
-		blockData.TotalSize, blockData.RealSize, float64(100.0*blockData.RealSize)/float64(blockData.TotalSize))
-
-	data, err := msgpack.Marshal(&blockData)
-	if err != nil {
-		logger.GetLogger("dedups3").Debugf("msgpack marshal %s failed: %v", blockData.ID, err)
-		return fmt.Errorf("msgpack marshal %s failed: %w", blockData.ID, err)
-	}
-
 	ss := storage.GetStorageService()
 	if ss == nil {
 		logger.GetLogger("dedups3").Errorf("get nil storage service")
@@ -352,6 +323,40 @@ func (s *BlockService) WriteBlock(ctx context.Context, storageID string, blockDa
 	if err != nil || st == nil || st.Instance == nil {
 		logger.GetLogger("dedups3").Errorf("get nil storage instance id %s ", storageID)
 		return fmt.Errorf("get nil storage instance: %w", err)
+	}
+
+	// 压缩Data
+	if st.Conf.Compress {
+		if len(blockData.Data) > 1024 && utils.IsCompressible(blockData.Data, 4*1024, 0.9) {
+			compress, err := utils.Compress(blockData.Data)
+			if err == nil && compress != nil && float64(len(compress))/float64(len(blockData.Data)) < 0.9 {
+				blockData.Data = compress
+				blockData.Compressed = true
+			}
+		}
+	}
+	blockData.RealSize = int64(len(blockData.Data))
+
+	// 加密Data
+	if st.Conf.Encrypt {
+		if len(blockData.Data) > 0 {
+			encrypt, err := utils.Encrypt(blockData.Data, blockData.ID)
+			if err == nil && encrypt != nil {
+				blockData.Data = encrypt
+				blockData.Encrypted = true
+			}
+		}
+	}
+
+	blockData.RealSize = int64(len(blockData.Data))
+
+	logger.GetLogger("dedups3").Errorf("flush block data size %d:%d, compress rate %.2f%%",
+		blockData.TotalSize, blockData.RealSize, float64(100.0*blockData.RealSize)/float64(blockData.TotalSize))
+
+	data, err := msgpack.Marshal(&blockData)
+	if err != nil {
+		logger.GetLogger("dedups3").Debugf("msgpack marshal %s failed: %v", blockData.ID, err)
+		return fmt.Errorf("msgpack marshal %s failed: %w", blockData.ID, err)
 	}
 
 	err = st.Instance.WriteBlock(ctx, blockData.ID, data, blockData.Ver)

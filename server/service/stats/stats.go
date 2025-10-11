@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/mageg-x/dedups3/internal/queue"
-	"github.com/mageg-x/dedups3/internal/utils"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/mageg-x/dedups3/internal/queue"
+	"github.com/mageg-x/dedups3/internal/utils"
 
 	"github.com/mageg-x/dedups3/internal/logger"
 	"github.com/mageg-x/dedups3/internal/storage/kv"
@@ -435,6 +436,7 @@ func (s *StatsService) doStats4Account(accountID string) error {
 			if err := json.Unmarshal(blockData, &block); err != nil {
 				continue
 			}
+			logger.GetLogger("dedups3").Errorf("block info %#v", block)
 			SizeOfBlock1 += block.TotalSize
 			SizeOfBlock2 += block.RealSize
 		}
@@ -509,7 +511,7 @@ func (s *StatsService) doStats4Global() error {
 	// 遍历统计 全局account
 	allAccounts := make([]string, 0, 100)
 	{
-		acPrefix := "aws:iam:account:id:"
+		acPrefix := "dedups3:default:iam-account:"
 		nk := ""
 		for {
 			acs, nk, err := txn.Scan(acPrefix, nk, 1000)

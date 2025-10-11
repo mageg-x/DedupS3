@@ -53,6 +53,8 @@ type IamAccount struct {
 	Groups    map[string]*IamGroup  `json:"groups"`    // IAM 用户组 (key: 组名)
 	Roles     map[string]*IamRole   `json:"roles"`     // IAM 角色 (key: 角色名)
 	Policies  map[string]*IamPolicy `json:"policies"`  // IAM 策略 (key: 策略名)
+	Quota     *QuotaConfig          `json:"quota"`     // 配额限制
+	Chunk     *ChunkConfig          `json:"chunk"`     // 切片设置
 }
 
 // IamUser 表示 IAM 用户
@@ -131,7 +133,20 @@ type CanonicalUser struct {
 	DisplayName string `json:"displayName"` // 显示名称
 }
 
-// ============================== ARN 格式化函数 ==============================
+type QuotaConfig struct {
+	MaxSpaceSize   int  `json:"maxSpaceSize"`
+	MaxObjectCount int  `json:"maxObjectCount"`
+	Enable         bool `json:"enable"`
+}
+
+type ChunkConfig struct {
+	ChunkSize int32 `json:"chunkSize"`
+	FixSize   bool  `json:"fixSize"`
+	Encrypt   bool  `json:"encrypt"`
+	Compress  bool  `json:"compress"`
+}
+
+// ==================== ========== ARN 格式化函数 ==============================
 // arn:aws:iam::{accountID}:user/{username}
 func FormatUserARN(accountID, username string) string {
 	return "arn:aws:iam::" + accountID + ":user/" + username
@@ -165,6 +180,17 @@ func CreateAccount(name string) *IamAccount {
 		Groups:    make(map[string]*IamGroup),
 		Roles:     make(map[string]*IamRole),
 		Policies:  make(map[string]*IamPolicy),
+		Quota: &QuotaConfig{
+			MaxSpaceSize:   100 * 1024 * 1024, // 100GB,单位为 KB
+			MaxObjectCount: 100000,
+			Enable:         true,
+		},
+		Chunk: &ChunkConfig{
+			ChunkSize: 1024 * 1024,
+			FixSize:   false,
+			Encrypt:   true,
+			Compress:  true,
+		},
 	}
 }
 

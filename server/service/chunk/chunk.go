@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	xconf "github.com/mageg-x/dedups3/internal/config"
 	"io"
 	"reflect"
 	"sync"
@@ -61,9 +60,10 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.BaseObject, cb WriteObjCB)
 	chunkChan := make(chan *meta.Chunk, 100)
 
 	// 根据 cfg.Block.ChunkSize 设置 ChunkerOpts
-	cfg := xconf.Get()
+	//cfg := xconf.Get()
 	// 边界检查,默认 16KB
-	chunkSize := max(cfg.Block.ChunkSize, 16*1024)
+	//chunkSize := max(cfg.Block.ChunkSize, 16*1024)
+	chunkSize := 16 * 1024
 	opts := &fastcdc.ChunkerOpts{
 		MinSize:    chunkSize * 5 / 10, // 50% of S
 		NormalSize: chunkSize,          // 100% of S
@@ -159,13 +159,14 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.BaseObject, cb WriteObjCB)
 
 // Split DoChunk 简单的CDC分块函数
 func (c *ChunkService) Split(ctx context.Context, r io.Reader, outputChan chan *meta.Chunk, opt *fastcdc.ChunkerOpts, obj *meta.BaseObject) error {
-	cfg := xconf.Get()
+	//cfg := xconf.Get()
 	var prevChunk *meta.Chunk
 	objSize := 0 // 统计真实长度
 
-	if cfg.Block.FixChunk {
+	if false {
 		// 固定切片
-		chunkSize := max(cfg.Block.ChunkSize, 16*1024)
+		//chunkSize := max(cfg.Block.ChunkSize, 16*1024)
+		chunkSize := 16 * 1024
 		tempBuf := make([]byte, chunkSize)
 		chunkData := make([]byte, 0, chunkSize)
 		for {

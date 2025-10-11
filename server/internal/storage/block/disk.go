@@ -67,8 +67,8 @@ func (d *DiskStore) WriteBlock(ctx context.Context, blockID string, data []byte,
 
 	vfile, err := GetTieredFs()
 	if err != nil || vfile == nil {
-		logger.GetLogger("dedups3").Errorf("failed to get tiered fs: %v", err)
-		return fmt.Errorf("failed to get tiered fs: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to get tiered vfs: %v", err)
+		return fmt.Errorf("failed to get tiered vfs: %v", err)
 	}
 
 	oldVer := int32(-1)
@@ -141,8 +141,8 @@ func (d *DiskStore) ReadLocalBlock(blockID string, offset, length int64) ([]byte
 
 	vfile, err := GetTieredFs()
 	if err != nil || vfile == nil {
-		logger.GetLogger("dedups3").Errorf("failed to get tiered fs: %v", err)
-		return nil, fmt.Errorf("failed to get tiered fs: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to get tiered vfs: %v", err)
+		return nil, fmt.Errorf("failed to get tiered vfs: %v", err)
 	}
 
 	if !vfile.Exists(d.ID, blockID) {
@@ -167,8 +167,8 @@ func (d *DiskStore) DeleteBlock(blockID string) error {
 
 	vfile, err := GetTieredFs()
 	if err != nil || vfile == nil {
-		logger.GetLogger("dedups3").Errorf("failed to get tiered fs: %v", err)
-		return fmt.Errorf("failed to get tiered fs: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to get tiered vfs: %v", err)
+		return fmt.Errorf("failed to get tiered vfs: %v", err)
 	}
 
 	if err := vfile.Remove(d.ID, blockID); err != nil {
@@ -191,8 +191,8 @@ func (d *DiskStore) BlockExists(blockID string) (bool, error) {
 
 	vfile, err := GetTieredFs()
 	if err != nil || vfile == nil {
-		logger.GetLogger("dedups3").Errorf("failed to get tiered fs: %v", err)
-		return false, fmt.Errorf("failed to get tiered fs: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to get tiered vfs: %v", err)
+		return false, fmt.Errorf("failed to get tiered vfs: %v", err)
 	}
 
 	if !vfile.Exists(d.ID, blockID) {

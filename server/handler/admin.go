@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/mageg-x/dedups3/middleware"
+	"github.com/mageg-x/dedups3/internal/vfs"
 	"io"
 	"net/http"
 	"net/url"
@@ -15,6 +15,10 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/mageg-x/dedups3/internal/storage/block"
+	"github.com/mageg-x/dedups3/middleware"
+	"github.com/mageg-x/dedups3/service/storage"
 
 	xconf "github.com/mageg-x/dedups3/internal/config"
 	xhttp "github.com/mageg-x/dedups3/internal/http"
@@ -260,6 +264,7 @@ func AdminGetStatsHandler(w http.ResponseWriter, r *http.Request) {
 		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "internal server error", nil, http.StatusInternalServerError)
 		return
 	}
+	ss.RefreshAccountStats(pe.accountID)
 
 	xhttp.AdminWriteJSONError(w, r, 0, "success", _stats, http.StatusOK)
 }
@@ -1747,5 +1752,471 @@ func AdminDeleteAccessKeyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
+
+func AdminListQuotaHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("dedups3").Errorf("[call adminListQuotaHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+	logger.GetLogger("dedups3").Errorf("quota list  %#v", pe.ac.Quota)
+
+	type Resp struct {
+		AccountID      string `json:"accountID"`
+		MaxSpaceSize   int    `json:"maxSpaceSize"`
+		MaxObjectCount int    `json:"maxObjectCount"`
+		Enable         bool   `json:"enable"`
+	}
+
+	quotaList := make([]*Resp, 0)
+	if pe.ac.Quota != nil {
+		quotaList = append(quotaList, &Resp{
+			AccountID:      pe.ac.Name,
+			MaxSpaceSize:   pe.ac.Quota.MaxSpaceSize,
+			MaxObjectCount: pe.ac.Quota.MaxObjectCount,
+			Enable:         pe.ac.Quota.Enable,
+		})
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", quotaList, http.StatusOK)
+}
+
+func AdminCreateQuotaHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("dedups3").Errorf("[call adminCreateQuotaHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+
+	type Req struct {
+		AccountID      string `json:"accountID"`
+		MaxSpaceSize   int    `json:"maxSpaceSize"`
+		MaxObjectCount int    `json:"maxObjectCount"`
+		Enable         bool   `json:"enable"`
+	}
+
+	// 解析请求体
+	var req Req
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		logger.GetLogger("dedups3").Errorf("failed to decode request: %v", err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
+		return
+	}
+
+	if pe.accountID != meta.GenerateAccountID(req.AccountID) {
+		logger.GetLogger("dedups3").Errorf("invalid account id: %v", pe.accountID)
+		xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "invalid account id", nil, http.StatusForbidden)
+	}
+
+	if pe.ac.Quota != nil {
+		xhttp.AdminWriteJSONError(w, r, http.StatusConflict, "quota already exists", nil, http.StatusConflict)
+		return
+	}
+
+	err := pe.iam.SetQuota(pe.accountID, &meta.QuotaConfig{
+		MaxSpaceSize:   req.MaxSpaceSize,
+		MaxObjectCount: req.MaxObjectCount,
+		Enable:         req.Enable,
+	})
+
+	if err != nil {
+		logger.GetLogger("dedups3").Errorf("failed to set quota config: %v", err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "create quota config failed", nil, http.StatusBadRequest)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
+
+func AdminUpdateQuotaHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("dedups3").Errorf("[call adminUpdateQuotaHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+
+	type Req struct {
+		AccountID      string `json:"accountID"`
+		MaxSpaceSize   int    `json:"maxSpaceSize"`
+		MaxObjectCount int    `json:"maxObjectCount"`
+		Enable         bool   `json:"enable"`
+	}
+
+	// 解析请求体
+	var req Req
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		logger.GetLogger("dedups3").Errorf("failed to decode request: %v", err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
+		return
+	}
+
+	err := pe.iam.SetQuota(pe.accountID, &meta.QuotaConfig{
+		MaxSpaceSize:   req.MaxSpaceSize,
+		MaxObjectCount: req.MaxObjectCount,
+		Enable:         req.Enable,
+	})
+
+	if err != nil {
+		logger.GetLogger("dedups3").Errorf("failed to update quota config: %v", err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "update quota config failed", nil, http.StatusBadRequest)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
+
+func AdminDeleteQuotaHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("dedups3").Errorf("[call AdminDeleteQuotaHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+
+	err := pe.iam.DeleteQuota(pe.accountID)
+	if err != nil {
+		logger.GetLogger("dedups3").Errorf("failed to delete quota config: %v", err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+
+		if errors.Is(err, xhttp.ToError(xhttp.ErrNoSuchKey)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "quota not exists", nil, http.StatusNotFound)
+			return
+		}
+
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "delete quota config failed", nil, http.StatusBadRequest)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
+
+func AdminGetChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("dedups3").Errorf("[call adminGetChunkConfigHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+	defaultChunkConfig := &meta.ChunkConfig{
+		ChunkSize: 1024 * 1024,
+		FixSize:   false,
+		Encrypt:   true,
+		Compress:  true,
+	}
+	if pe.ac.Chunk == nil {
+		pe.ac.Chunk = defaultChunkConfig
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", pe.ac.Chunk, http.StatusOK)
+}
+
+func AdminSetChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("dedups3").Errorf("[call adminSetChunkConfigHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+	type Req struct {
+		ChunkSize int32 `json:"chunkSize"`
+		FixSize   bool  `json:"fixSize"`
+		Encrypt   bool  `json:"encrypt"`
+		Compress  bool  `json:"compress"`
+	}
+	// 解析请求体
+	var req Req
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		logger.GetLogger("dedups3").Errorf("failed to decode request: %v", err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
+		return
+	}
+
+	err := pe.iam.SetChunkConfig(pe.accountID, &meta.ChunkConfig{
+		ChunkSize: req.ChunkSize,
+		FixSize:   req.FixSize,
+		Encrypt:   req.Encrypt,
+		Compress:  req.Compress,
+	})
+
+	if err != nil {
+		logger.GetLogger("dedups3").Errorf("failed to update chunk config: %v", err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "update chunk config failed", nil, http.StatusBadRequest)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
+
+func AdminListStorageHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("dedups3").Errorf("[call adminListStorageHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+	bs := storage.GetStorageService()
+	if bs == nil {
+		logger.GetLogger("dedups3").Errorf("storage service not initial")
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "storage service not initial", nil, http.StatusInternalServerError)
+		return
+
+	}
+	storages := bs.ListStorages()
+	type Resp struct {
+		StorageID    string            `json:"storageID"`
+		StorageClass string            `json:"storageClass"`
+		StorageType  string            `json:"storageType"`
+		S3           *xconf.S3Config   `json:"s3,omitempty"`
+		Disk         *xconf.DiskConfig `json:"disk,omitempty"`
+	}
+
+	resp := make([]*Resp, 0, len(storages))
+	for _, s := range storages {
+		if s == nil {
+			continue
+		}
+		_s := &Resp{
+			StorageID:    s.ID,
+			StorageClass: s.Class,
+			StorageType:  s.Type,
+		}
+		if strings.ToLower(s.Type) == meta.S3_TYPE_STORAGE && s.Conf.S3 != nil {
+			_s.S3 = s.Conf.S3
+			resp = append(resp, _s)
+		} else if strings.ToLower(s.Type) == meta.DISK_TYPE_STORAGE && s.Conf.Disk != nil {
+			_s.Disk = s.Conf.Disk
+			resp = append(resp, _s)
+		}
+	}
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", &resp, http.StatusOK)
+}
+
+func AdminCreateStorageHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("dedups3").Errorf("[call adminCreateStorageHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+	bs := storage.GetStorageService()
+	if bs == nil {
+		logger.GetLogger("dedups3").Errorf("storage service not initial")
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "storage service not initial", nil, http.StatusInternalServerError)
+		return
+	}
+
+	type Req struct {
+		StorageID    string            `json:"storageID"`
+		StorageClass string            `json:"storageClass"`
+		StorageType  string            `json:"storageType"`
+		S3           *xconf.S3Config   `json:"s3,omitempty"`
+		Disk         *xconf.DiskConfig `json:"disk,omitempty"`
+	}
+
+	// 解析请求体
+	var req Req
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		logger.GetLogger("dedups3").Errorf("failed to decode request: %v", err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
+		return
+	}
+
+	req.StorageType = strings.ToLower(req.StorageType)
+	req.StorageClass = strings.ToUpper(req.StorageClass)
+	req.StorageID = strings.TrimSpace(req.StorageID)
+	req.StorageType = strings.TrimSpace(req.StorageType)
+	req.StorageClass = strings.TrimSpace(req.StorageClass)
+
+	if !meta.IsValidIAMName(req.StorageID) ||
+		(req.StorageClass != meta.STANDARD_CLASS_STORAGE && req.StorageClass != meta.STANDARD_IA_CLASS_STORAGE && req.StorageClass != meta.GLACIER_IR_CLASS_STORAGE) ||
+		(req.StorageType != meta.DISK_TYPE_STORAGE && req.StorageType != meta.S3_TYPE_STORAGE) {
+		logger.GetLogger("dedups3").Errorf("invalid request params %#v", req)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request params", nil, http.StatusBadRequest)
+		return
+	}
+
+	var err error
+	var _storage *meta.Storage
+
+	switch strings.ToLower(req.StorageType) {
+	case meta.S3_TYPE_STORAGE:
+		if req.S3 == nil {
+			logger.GetLogger("dedups3").Errorf("miss s3 config detail")
+			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "miss s3 config detail", nil, http.StatusBadRequest)
+			return
+		}
+		_storage, err = bs.AddStorage(meta.S3_TYPE_STORAGE, strings.ToUpper(req.StorageClass), xconf.StorageConfig{
+			ID:    req.StorageID,
+			Class: req.StorageClass,
+			S3:    req.S3,
+		})
+		if err != nil {
+			logger.GetLogger("dedups3").Errorf("failed to add s3 config: %v", err)
+			xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "failed to add s3 config", nil, http.StatusInternalServerError)
+			return
+		}
+	case meta.DISK_TYPE_STORAGE:
+		if req.Disk == nil {
+			logger.GetLogger("dedups3").Errorf("miss disk config detail")
+			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "miss disk config detail", nil, http.StatusBadRequest)
+			return
+		}
+		if !path.IsAbs(req.Disk.Path) {
+			logger.GetLogger("dedups3").Errorf("invalid disk path: %s", req.Disk.Path)
+			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid disk path", nil, http.StatusBadRequest)
+			return
+		}
+		req.Disk.Path += "/block"
+		_storage, err = bs.AddStorage(meta.DISK_TYPE_STORAGE, strings.ToUpper(req.StorageClass), xconf.StorageConfig{
+			ID:    req.StorageID,
+			Class: req.StorageClass,
+			Disk:  req.Disk,
+		})
+		if err != nil {
+			logger.GetLogger("dedups3").Errorf("failed to add disk config: %v", err)
+			xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "failed to add disk config", nil, http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if _storage == nil {
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "failed to add _storage", nil, http.StatusInternalServerError)
+		return
+	}
+
+	// 关键：检查 inst 是否也实现了 vfs.SyncTarget
+	syncTargetor, ok := _storage.Instance.(vfs.SyncTargetor) // 类型断言
+	if !ok {
+		logger.GetLogger("dedups3").Errorf("storage instance for id %#v does not implement SyncTarget", _storage)
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "failed to add _storage", nil, http.StatusInternalServerError)
+		return
+	}
+
+	vfile, err := block.GetTieredFs()
+	if err == nil && vfile != nil {
+		_ = vfile.AddSyncTargetor(_storage.ID, syncTargetor)
+	} else {
+		logger.GetLogger("dedups3").Errorf("failed to get tiered vfs for storage %#v", _storage)
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "failed to add _storage", nil, http.StatusInternalServerError)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
+
+func AdminTestStorageHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("dedups3").Errorf("[call adminTestStorageHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+
+	type Req struct {
+		StorageID    string            `json:"storageID"`
+		StorageClass string            `json:"storageClass"`
+		StorageType  string            `json:"storageType"`
+		S3           *xconf.S3Config   `json:"s3,omitempty"`
+		Disk         *xconf.DiskConfig `json:"disk,omitempty"`
+	}
+
+	// 解析请求体
+	var req Req
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		logger.GetLogger("dedups3").Errorf("failed to decode request: %v", err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
+		return
+	}
+	req.StorageType = strings.ToLower(req.StorageType)
+	req.StorageClass = strings.ToUpper(req.StorageClass)
+	req.StorageID = strings.TrimSpace(req.StorageID)
+	req.StorageType = strings.TrimSpace(req.StorageType)
+	req.StorageClass = strings.TrimSpace(req.StorageClass)
+
+	if !meta.IsValidIAMName(req.StorageID) ||
+		(req.StorageClass != meta.STANDARD_CLASS_STORAGE && req.StorageClass != meta.STANDARD_IA_CLASS_STORAGE && req.StorageClass != meta.GLACIER_IR_CLASS_STORAGE) ||
+		(req.StorageType != meta.DISK_TYPE_STORAGE && req.StorageType != meta.S3_TYPE_STORAGE) {
+		logger.GetLogger("dedups3").Errorf("invalid request params %#v", req)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request params", nil, http.StatusBadRequest)
+		return
+	}
+
+	switch strings.ToLower(req.StorageType) {
+	case meta.S3_TYPE_STORAGE:
+		if req.S3 == nil {
+			logger.GetLogger("dedups3").Errorf("miss s3 config detail")
+			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "miss s3 config detail", nil, http.StatusBadRequest)
+			return
+		}
+		err := block.TestS3AccessPermissions(req.S3)
+		if err != nil {
+			logger.GetLogger("dedups3").Errorf("s3 storage test failed: %v", err)
+			xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "s3 storage test failed", map[string]interface{}{"error": err.Error()}, http.StatusInternalServerError)
+			return
+		}
+
+	case meta.DISK_TYPE_STORAGE:
+		if req.Disk == nil {
+			logger.GetLogger("dedups3").Errorf("miss disk config detail")
+			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "miss disk config detail", nil, http.StatusBadRequest)
+			return
+		}
+		err := block.TestDiskAccessPermissions(req.Disk)
+		if err != nil {
+			logger.GetLogger("dedups3").Errorf("disk storage test failed: %v", err)
+			xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "disk storage test failed", map[string]interface{}{"error": err.Error()}, http.StatusInternalServerError)
+			return
+		}
+	default:
+		logger.GetLogger("dedups3").Errorf("unsupported storage type: %s", req.StorageType)
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "unsupported storage type", nil, http.StatusBadRequest)
+		return
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "storage test passed", nil, http.StatusOK)
+}
+
+func AdminDeleteStorageHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("dedups3").Errorf("[call adminDeleteStorageHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+
+	query := utils.DecodeQuerys(r.URL.Query())
+	storageID := query.Get("storageID")
+
+	bs := storage.GetStorageService()
+	if bs == nil {
+		logger.GetLogger("dedups3").Errorf("storage service not initial")
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "storage service not initial", nil, http.StatusInternalServerError)
+		return
+	}
+
+	bs.RemoveStorage(storageID)
+
 	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
 }

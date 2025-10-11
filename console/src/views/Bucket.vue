@@ -161,11 +161,6 @@
           </div>
           <h3 class="text-xl font-semibold text-gray-800 mb-2">{{ t('bucket.noBuckets') }}</h3>
           <p class="text-gray-500 mb-6 max-w-md mx-auto">{{ t('bucket.noBucketsHint') }}</p>
-          <button
-            class="create-bucket-btn bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium flex items-center justify-center transition-all duration-300 mx-auto transform hover:scale-105 hover:shadow-md">
-            <i class="fas fa-plus-circle mr-2"></i>
-            {{ t('bucket.createFirstBucket') }}
-          </button>
         </div>
       </div>
 

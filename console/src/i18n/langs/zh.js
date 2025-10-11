@@ -637,8 +637,8 @@ const zh = {
     cancelEditing: "取消编辑",
     noQuotas: "没有找到配额配置",
     accountId: "账号ID",
-    storageLimit: "存储限制",
-    objectLimit: "对象限制",
+    storageLimit: "存储空间限制",
+    objectLimit: "对象个数限制",
     status: "状态",
     operation: "操作",
     enabled: "已启用",
@@ -958,6 +958,7 @@ const zh = {
     confirmDelete: "确认删除",
     enterDiskPath: "请输入磁盘绝对路径",
     enterValidWindowsPath: "请输入有效的Windows绝对路径",
+    enterValidLinuxPath: "请输入有效的Linux绝对路径",
     enterAccessKeys: "请输入访问密钥和密钥",
     enterRegionOrEndpoint: "请输入区域或端点",
     enterCompleteS3Config: "请完成所有S3配置信息",
@@ -1014,7 +1015,8 @@ const zh = {
     failedToLoadObjects: "加载对象失败",
     deleteSuccess: "成功删除{count}个对象",
     deleteFailed: "删除失败",
-    downloadFailed: "下载失败"
+    downloadFailed: "下载失败",
+    uploadFailed: "上传失败"
   },
 };
 

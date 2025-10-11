@@ -1,4 +1,4 @@
-package fs
+package vfs
 
 import (
 	"context"
@@ -278,7 +278,7 @@ func (fs *TieredFs) loadMetadata() error {
 		fs.freeManager.AllocAt(fileMeta.Start, fileMeta.End)
 	}
 
-	// 重建 fs.syncManager 同步任务
+	// 重建 vfs.syncManager 同步任务
 	for _, file := range fs.files {
 		logger.GetLogger("dedups3").Debugf("restore file %s meta form mmap", file.BlockID)
 		fs.syncManager.Submit(file, 0, nil)

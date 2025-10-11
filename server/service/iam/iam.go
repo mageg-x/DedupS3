@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	xhttp "github.com/mageg-x/dedups3/internal/http"
 
 	"sync"
@@ -80,7 +81,7 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IamAccount,
 	}
 
 	accountID := meta.GenerateAccountID(username)
-	key := "aws:iam:account:id:" + accountID
+	key := "dedups3:default:iam-account:" + accountID
 
 	txn, err := s.iam.BeginTxn(context.Background(), nil)
 	if err != nil {
@@ -139,7 +140,7 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IamAccount,
 
 // GetAccount 获取IAM账户
 func (s *IamService) GetAccount(accountID string) (*meta.IamAccount, error) {
-	key := "aws:iam:account:id:" + accountID
+	key := "dedups3:default:iam-account:" + accountID
 	if cache, err := xcache.GetCache(); err == nil && cache != nil {
 		account, ok, e := xcache.Get[meta.IamAccount](cache, context.Background(), key)
 		if e == nil && ok {
@@ -184,7 +185,7 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IamAc
 		}
 	}()
 
-	key := "aws:iam:account:id:" + accountID
+	key := "dedups3:default:iam-account:" + accountID
 	var account meta.IamAccount
 	exists, err := txn.Get(key, &account)
 	if err != nil || !exists {
@@ -216,7 +217,7 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IamAc
 
 	var changeKeys []string
 	for _, accessKey := range del {
-		k := "aws:iam:account:ak:" + accessKey.AccessKeyID
+		k := "dedups3:default:iam-ak:" + accessKey.AccessKeyID
 		changeKeys = append(changeKeys, k)
 		// 删除 access key
 		e := txn.Delete(k)
@@ -227,7 +228,7 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IamAc
 	}
 
 	for _, accessKey := range add {
-		k := "aws:iam:account:ak:" + accessKey.AccessKeyID
+		k := "dedups3:default:iam-ak:" + accessKey.AccessKeyID
 		changeKeys = append(changeKeys, k)
 		// 添加 access key
 		e := txn.Set(k, accessKey)
@@ -252,7 +253,7 @@ func (s *IamService) UpdateAccount(accountID string, updateFunc func(*meta.IamAc
 
 // DeleteAccount 删除IAM账户
 func (s *IamService) DeleteAccount(accountID string) error {
-	key := "aws:iam:account:id:" + accountID
+	key := "dedups3:default:iam-account:" + accountID
 
 	if cache, err := xcache.GetCache(); err == nil && cache != nil {
 		cache.Del(context.Background(), key)
@@ -281,7 +282,7 @@ func (s *IamService) DeleteAccount(accountID string) error {
 	allDel := make([]string, 0, len(allAccessKeys))
 	for _, accessKey := range allAccessKeys {
 		if accessKey != nil {
-			k := "aws:iam:account:ak:" + accessKey.AccessKeyID
+			k := "dedups3:default:iam-ak:" + accessKey.AccessKeyID
 			err = txn.Delete(k)
 			if err != nil {
 				logger.GetLogger("dedups3").Errorf("failed to delete account %s access key: %v", accountID, err)
@@ -476,7 +477,7 @@ func (s *IamService) GetAccessKey(accessKeyID string) (*meta.AccessKey, error) {
 		return nil, errors.New("access key id is empty")
 	}
 
-	key := "aws:iam:account:ak:" + accessKeyID
+	key := "dedups3:default:iam-ak:" + accessKeyID
 	if cache, err := xcache.GetCache(); err == nil && cache != nil {
 		ak, ok, e := xcache.Get[meta.AccessKey](cache, context.Background(), key)
 		if e == nil && ok {
@@ -661,6 +662,73 @@ func (s *IamService) DeleteGroup(accountID, username, groupname string) error {
 		}
 		err = a.DeleteGroup(user, groupname)
 		return err
+	})
+
+	if err != nil || !ok {
+		return err
+	}
+	return nil
+}
+
+func (s *IamService) SetQuota(accountID string, quota *meta.QuotaConfig) error {
+	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
+		if a == nil {
+			return fmt.Errorf("account %s not found", accountID)
+		}
+		a.Quota = quota
+		logger.GetLogger("dedups3").Errorf("SetQuota quota %#v for account %s", quota, accountID)
+		return nil
+	})
+
+	if err != nil || !ok {
+		return err
+	}
+	return nil
+}
+
+func (s *IamService) DeleteQuota(accountID string) error {
+	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
+		if a == nil {
+			return fmt.Errorf("account %s not found", accountID)
+		}
+		if a.Quota == nil {
+			return xhttp.ToError(xhttp.ErrNoSuchKey)
+		}
+		a.Quota = nil
+		return nil
+	})
+
+	if err != nil || !ok {
+		return err
+	}
+	return nil
+}
+
+func (s *IamService) SetChunkConfig(accountID string, chunkConfig *meta.ChunkConfig) error {
+	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
+		if a == nil {
+			return fmt.Errorf("account %s not found", accountID)
+		}
+		a.Chunk = chunkConfig
+		return nil
+	})
+
+	if err != nil || !ok {
+		return err
+	}
+	return nil
+}
+
+func (s *IamService) DeleteChunkConfig(accountID string) error {
+	ok, err := s.UpdateAccount(accountID, func(a *meta.IamAccount) error {
+		if a == nil {
+			return fmt.Errorf("account %s not found", accountID)
+		}
+		if a.Quota == nil {
+			return xhttp.ToError(xhttp.ErrNoSuchKey)
+		}
+		a.Chunk = nil
+		return nil
 	})
 
 	if err != nil || !ok {

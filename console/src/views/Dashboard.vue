@@ -183,7 +183,7 @@ const statCards = computed(() => [
     iconWrapperClass: 'w-8 h-8 bg-gradient-to-br from-pink-500 to-pink-600 rounded-xl flex items-center justify-center shadow-pink',
     iconClass: 'fas fa-copy',
     footerType: 'reuse',
-    reuseText: t('dashboard.reusedChunks') + ': ' + formatNumber(stats.value.reusedChunkCount) + ' ' + t('dashboard.pieces') + '，' + t('dashboard.total') + ' ' + formatSize(stats.value.reusedSize)
+    reuseText: t('dashboard.reusedChunks') + ': ' + formatNumber(stats.value.reusedChunkCount) + ' ' + t('dashboard.pieces') 
   }
 ]);
 

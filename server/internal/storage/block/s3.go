@@ -122,8 +122,8 @@ func (s *S3Store) WriteBlock(ctx context.Context, blockID string, data []byte, v
 
 	vfile, err := GetTieredFs()
 	if err != nil || vfile == nil {
-		logger.GetLogger("dedups3").Errorf("failed to get tiered fs: %v", err)
-		return fmt.Errorf("failed to get tiered fs: %v", err)
+		logger.GetLogger("dedups3").Errorf("failed to get tiered vfs: %v", err)
+		return fmt.Errorf("failed to get tiered vfs: %v", err)
 	}
 
 	oldVer := int32(-1)

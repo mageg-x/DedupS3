@@ -85,9 +85,6 @@
       </div>
       <!-- 空状态 -->
       <div v-if="filteredGroups.length === 0" class="py-12 text-center">
-        <div class="text-gray-400 mb-4">
-          <i class="fas fa-users-slash text-4xl"></i>
-        </div>
         <h3 class="text-lg font-medium text-gray-900 mb-2">{{ t('group.noUserGroups') }}</h3>
         <p class="text-gray-500 mb-6">{{ t('group.clickAddUserGroup') }}</p>
       </div>

@@ -6,15 +6,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm/logger"
-	"gorm.io/gorm/schema"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/mageg-x/dedups3/internal/utils"
+	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+	"gorm.io/gorm/schema"
+
+	"github.com/mageg-x/dedups3/internal/utils"
 )
 
 // EventModel 用于gorm存储事件数据的模型

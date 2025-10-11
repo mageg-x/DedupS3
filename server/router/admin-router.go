@@ -102,6 +102,16 @@ func registerAdminRouter(mr *mux.Router) {
 	api_router.Methods(http.MethodPost).Path("/accesskey/create").HandlerFunc(handler.AdminCreateAccessKeyHandler)
 	api_router.Methods(http.MethodPost).Path("/accesskey/update").HandlerFunc(handler.AdminUpdateAccessKeyHandler)
 	api_router.Methods(http.MethodDelete).Path("/accesskey/delete").HandlerFunc(handler.AdminDeleteAccessKeyHandler)
+	api_router.Methods(http.MethodGet).Path("/config/listquota").HandlerFunc(handler.AdminListQuotaHandler)
+	api_router.Methods(http.MethodPost).Path("/config/createquota").HandlerFunc(handler.AdminCreateQuotaHandler)
+	api_router.Methods(http.MethodPost).Path("/config/updatequota").HandlerFunc(handler.AdminUpdateQuotaHandler)
+	api_router.Methods(http.MethodDelete).Path("/config/deletequota").HandlerFunc(handler.AdminDeleteQuotaHandler)
+	api_router.Methods(http.MethodGet).Path("/config/getchunkcfg").HandlerFunc(handler.AdminGetChunkConfigHandler)
+	api_router.Methods(http.MethodPost).Path("/config/updatechunkcfg").HandlerFunc(handler.AdminSetChunkConfigHandler)
+	api_router.Methods(http.MethodGet).Path("/config/liststorage").HandlerFunc(handler.AdminListStorageHandler)
+	api_router.Methods(http.MethodPost).Path("/config/createstorage").HandlerFunc(handler.AdminCreateStorageHandler)
+	api_router.Methods(http.MethodPost).Path("/config/teststorage").HandlerFunc(handler.AdminTestStorageHandler)
+	api_router.Methods(http.MethodDelete).Path("/config/deletestorage").HandlerFunc(handler.AdminDeleteStorageHandler)
 
 	// 处理静态资源路由
 	ar.Methods(http.MethodGet).Path("/{path:.*}").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

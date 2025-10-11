@@ -35,12 +35,12 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/mageg-x/dedups3/internal/config"
-	"github.com/mageg-x/dedups3/internal/fs"
 	xhttp "github.com/mageg-x/dedups3/internal/http"
 	"github.com/mageg-x/dedups3/internal/logger"
 	"github.com/mageg-x/dedups3/internal/storage/block"
 	"github.com/mageg-x/dedups3/internal/storage/cache"
 	"github.com/mageg-x/dedups3/internal/storage/kv"
+	"github.com/mageg-x/dedups3/internal/vfs"
 	"github.com/mageg-x/dedups3/router"
 	gc2 "github.com/mageg-x/dedups3/service/gc"
 	"github.com/mageg-x/dedups3/service/iam"
@@ -165,8 +165,6 @@ func startS3Server() ([]*xhttp.Server, error) {
 }
 
 func initStorage() error {
-	cfg := config.Get()
-
 	// 初始kv， 初始meta数据地方
 	_, err := kv.GetKvStore()
 	if err != nil {
@@ -184,19 +182,16 @@ func initStorage() error {
 	// 初始化 block存储
 	bs := storage.GetStorageService()
 	// 先把本地配置，加入到云配置中
-	for _, s := range cfg.Storages {
-		if s.Disk != nil {
-			bs.AddStorage("disk", s.Class, config.StorageConfig{Disk: s.Disk})
-		} else if s.S3 != nil {
-			bs.AddStorage("s3", s.Class, config.StorageConfig{S3: s.S3})
-		}
-	}
+	//cfg := config.Get()
+	//for _, s := range cfg.Storages {
+	//	if s.Disk != nil {
+	//		bs.AddStorage("disk", s.Class, config.StorageConfig{Disk: s.Disk})
+	//	} else if s.S3 != nil {
+	//		bs.AddStorage("s3", s.Class, config.StorageConfig{S3: s.S3})
+	//	}
+	//}
 	// 拉取所有云配置
 	storages := bs.ListStorages()
-	if storages == nil {
-		logger.GetLogger("dedups3").Error("no storages configure valid")
-		os.Exit(1)
-	}
 	for i, s := range storages {
 		logger.GetLogger("dedups3").Warnf("storage %d %#v", i, s)
 		_storage, err := bs.GetStorage(s.ID)
@@ -204,8 +199,8 @@ func initStorage() error {
 			logger.GetLogger("dedups3").Error("failed to init storage", zap.Error(err))
 			os.Exit(1)
 		}
-		// 关键：检查 inst 是否也实现了 fs.SyncTarget
-		syncTargetor, ok := _storage.Instance.(fs.SyncTargetor) // 类型断言
+		// 关键：检查 inst 是否也实现了 vfs.SyncTarget
+		syncTargetor, ok := _storage.Instance.(vfs.SyncTargetor) // 类型断言
 		if !ok {
 			logger.GetLogger("dedups3").Errorf("storage instance for id %#v does not implement SyncTarget", _storage)
 			os.Exit(1)
@@ -214,7 +209,7 @@ func initStorage() error {
 		if err == nil && vfile != nil {
 			_ = vfile.AddSyncTargetor(s.ID, syncTargetor)
 		} else {
-			logger.GetLogger("dedups3").Errorf("failed to get tiered fs for storage %#v", _storage)
+			logger.GetLogger("dedups3").Errorf("failed to get tiered vfs for storage %#v", _storage)
 			os.Exit(1)
 		}
 	}
@@ -239,10 +234,6 @@ func main() {
 	confPath := cli.ConfigPath
 	_ = config.Load(confPath)
 	cfg := config.Get()
-	if err := cfg.Validate(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
 
 	logger.Init(&logger.Config{
 		LogDir:     cfg.Log.Dir,
