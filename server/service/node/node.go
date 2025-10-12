@@ -2,13 +2,13 @@ package node
 
 import (
 	"fmt"
+	"github.com/mageg-x/dedups3/plugs/block"
+	"github.com/mageg-x/dedups3/plugs/kv"
 	"github.com/mageg-x/dedups3/service/storage"
 	"sync"
 
 	"github.com/mageg-x/dedups3/internal/config"
 	"github.com/mageg-x/dedups3/internal/logger"
-	"github.com/mageg-x/dedups3/internal/storage/block"
-	"github.com/mageg-x/dedups3/internal/storage/kv"
 )
 
 type NodeService struct {

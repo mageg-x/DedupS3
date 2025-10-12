@@ -21,15 +21,14 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	xcache "github.com/mageg-x/dedups3/plugs/cache"
+	"github.com/mageg-x/dedups3/plugs/kv"
 	"github.com/mageg-x/dedups3/service/stats"
 	"sync"
 	"time"
 
 	xhttp "github.com/mageg-x/dedups3/internal/http"
-	xcache "github.com/mageg-x/dedups3/internal/storage/cache"
-
 	"github.com/mageg-x/dedups3/internal/logger"
-	"github.com/mageg-x/dedups3/internal/storage/kv"
 	"github.com/mageg-x/dedups3/meta"
 	"github.com/mageg-x/dedups3/service/iam"
 )
@@ -122,12 +121,6 @@ func (b *BucketService) CreateBucket(params *BaseBucketParams) error {
 	if err != nil || ac == nil {
 		logger.GetLogger("dedups3").Errorf("failed to get account %s", ak.AccountID)
 		return xhttp.ToError(xhttp.ErrAccessDenied)
-	}
-
-	u, err := ac.GetUser(ak.Username)
-	if err != nil || u == nil {
-		logger.GetLogger("dedups3").Errorf("failed to get user %s", ak.Username)
-		return fmt.Errorf("failed to get user %s", ak.Username)
 	}
 
 	txn, err := b.kvstore.BeginTxn(context.Background(), nil)

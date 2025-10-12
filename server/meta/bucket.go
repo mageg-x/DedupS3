@@ -40,6 +40,10 @@ type BucketMetadata struct {
 	Targets      *BucketTargets                  `json:"targets,omitempty" xml:"Targets"`
 }
 
+func FormatBucketARN(accountID, bucketName string) string {
+	return "arn:aws:s3::" + bucketName
+}
+
 func GenBucketKey(accountID, bucketID string) string {
 	return "aws:bucket:" + accountID + ":" + bucketID
 }

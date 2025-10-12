@@ -19,9 +19,9 @@ package meta
 
 import (
 	"fmt"
+	"github.com/mageg-x/dedups3/plugs/block"
 
 	"github.com/mageg-x/dedups3/internal/config"
-	"github.com/mageg-x/dedups3/internal/storage/block"
 )
 
 const (
@@ -108,6 +108,13 @@ type Storage struct {
 	Type     string               `json:"type" msgpack:"type"`   // 存储类别 (s3, disk, etc.)
 	Conf     config.StorageConfig `json:"conf" msgpack:"conf"`   // 存储配置
 	Instance block.BlockStore     `json:"-" msgpack:"-"`         // 实际读写实例
+}
+
+type ChunkConfig struct {
+	ChunkSize int32 `json:"chunkSize"`
+	FixSize   bool  `json:"fixSize"`
+	Encrypt   bool  `json:"encrypt"`
+	Compress  bool  `json:"compress"`
 }
 
 func (s *Storage) String() string {

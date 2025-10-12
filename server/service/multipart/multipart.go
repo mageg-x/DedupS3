@@ -24,6 +24,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"github.com/mageg-x/dedups3/plugs/kv"
 	"io"
 	"net/http"
 	"sort"
@@ -40,7 +41,6 @@ import (
 
 	xhttp "github.com/mageg-x/dedups3/internal/http"
 	"github.com/mageg-x/dedups3/internal/logger"
-	"github.com/mageg-x/dedups3/internal/storage/kv"
 	"github.com/mageg-x/dedups3/internal/utils"
 	"github.com/mageg-x/dedups3/meta"
 	"github.com/mageg-x/dedups3/service/iam"

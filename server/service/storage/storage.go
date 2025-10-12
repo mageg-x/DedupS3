@@ -22,14 +22,14 @@ import (
 	"errors"
 	"fmt"
 	"github.com/mageg-x/dedups3/internal/utils"
+	block2 "github.com/mageg-x/dedups3/plugs/block"
+	"github.com/mageg-x/dedups3/plugs/kv"
 	"path/filepath"
 	"strings"
 	"sync"
 
 	"github.com/mageg-x/dedups3/internal/config"
 	"github.com/mageg-x/dedups3/internal/logger"
-	"github.com/mageg-x/dedups3/internal/storage/block"
-	"github.com/mageg-x/dedups3/internal/storage/kv"
 	"github.com/mageg-x/dedups3/meta"
 )
 
@@ -116,12 +116,12 @@ func (s *StorageService) AddStorage(strType, strClass string, conf config.Storag
 	if strType == meta.DISK_TYPE_STORAGE || strType == meta.S3_TYPE_STORAGE {
 		if strType == meta.S3_TYPE_STORAGE {
 			// 测试读写权限
-			if err = block.TestS3AccessPermissions(conf.S3); err != nil {
+			if err = block2.TestS3AccessPermissions(conf.S3); err != nil {
 				logger.GetLogger("dedups3").Errorf("test s3 access permissions failed: %v", err)
 				return nil, fmt.Errorf("test s3 access permissions failed: %v", err)
 			}
 		} else {
-			if err = block.TestDiskAccessPermissions(conf.Disk); err != nil {
+			if err = block2.TestDiskAccessPermissions(conf.Disk); err != nil {
 				logger.GetLogger("dedups3").Errorf("test disk access permissions failed: %v", err)
 				return nil, fmt.Errorf("test disk access permissions failed: %v", err)
 			}
@@ -201,7 +201,7 @@ func (s *StorageService) GetStorage(id string) (*meta.Storage, error) {
 	}
 
 	// 根据存储类别创建对应的存储实例
-	var inst block.BlockStore
+	var inst block2.BlockStore
 
 	switch storage.Type {
 	case meta.S3_TYPE_STORAGE:
@@ -210,14 +210,14 @@ func (s *StorageService) GetStorage(id string) (*meta.Storage, error) {
 			return nil, errors.New("s3 storage not configured")
 		}
 		logger.GetLogger("dedups3").Debugf("creating s3 block store for bucket: %s", storage.Conf.S3.Bucket)
-		inst, err = block.NewS3Store(id, storage.Class, storage.Conf.S3)
+		inst, err = block2.NewS3Store(id, storage.Class, storage.Conf.S3)
 	case meta.DISK_TYPE_STORAGE:
 		if storage.Conf.Disk == nil {
 			logger.GetLogger("dedups3").Error("disk storage not configured")
 			return nil, errors.New("disk storage not configured")
 		}
 		logger.GetLogger("dedups3").Debugf("creating disk block store at path: %s", storage.Conf.Disk.Path)
-		inst, err = block.NewDiskStore(id, storage.Class, storage.Conf.Disk)
+		inst, err = block2.NewDiskStore(id, storage.Class, storage.Conf.Disk)
 	default:
 		logger.GetLogger("dedups3").Errorf("unknown storage type: %s", storage.Type)
 		return nil, errors.New("unknown storage type")

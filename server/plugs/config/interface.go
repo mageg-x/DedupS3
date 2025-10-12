@@ -18,16 +18,18 @@
 
 package config
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/mageg-x/dedups3/internal/logger"
+)
 
 type Args struct {
 	Driver    string `json:"driver"` // "sqlite" 或 "http"
 	DSN       string `json:"dsn"`    // SQLite文件路径 或 HTTP服务URL
 	AuthToken string `json:"auth_token,omitempty"`
-	Timeout   int    `json:"timeout,omitempty"`
 }
 
-type kvconfig interface {
+type KVConfigClient interface {
 	Open(args *Args) error
 	Close() error
 
@@ -50,11 +52,11 @@ type kvconfig interface {
 }
 
 // 创建 kvconfig 实例
-func NewKVConfig(args *Args) (kvconfig, error) {
+func NewKVConfig(args *Args) (KVConfigClient, error) {
 	if args == nil {
 		return nil, fmt.Errorf("args is nil")
 	}
-	var impl kvconfig
+	var impl KVConfigClient
 	switch args.Driver {
 	case "sqlite":
 		impl = NewSQLiteClient()
@@ -69,6 +71,7 @@ func NewKVConfig(args *Args) (kvconfig, error) {
 	}
 
 	if err := impl.Open(args); err != nil {
+		logger.GetLogger("dedups3").Errorf("failed opening config %#v: %v", args, err)
 		return nil, err
 	}
 

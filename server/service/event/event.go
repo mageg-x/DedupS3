@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/mageg-x/dedups3/internal/event/target"
-	"github.com/mageg-x/dedups3/internal/storage/kv"
+	"github.com/mageg-x/dedups3/plugs/kv"
 	"path/filepath"
 	"sync"
 	"time"

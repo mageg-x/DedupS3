@@ -6,19 +6,19 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	xcache "github.com/mageg-x/dedups3/plugs/cache"
+	"github.com/mageg-x/dedups3/plugs/kv"
 	"io"
 	"reflect"
 	"sync"
 	"time"
 
-	xcache "github.com/mageg-x/dedups3/internal/storage/cache"
 	"github.com/mageg-x/dedups3/service/gc"
 
 	fastcdc "github.com/PlakarKorp/go-cdc-chunkers"
 	_ "github.com/PlakarKorp/go-cdc-chunkers/chunkers/fastcdc"
 
 	"github.com/mageg-x/dedups3/internal/logger"
-	"github.com/mageg-x/dedups3/internal/storage/kv"
 	"github.com/mageg-x/dedups3/internal/utils"
 	"github.com/mageg-x/dedups3/meta"
 	"github.com/mageg-x/dedups3/service/block"

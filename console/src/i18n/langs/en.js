@@ -505,6 +505,7 @@ const en = {
     edit: "Edit",
     operation: "Actions",
     noDescription: "No Description",
+    noAvailablePolicies: "No available policies",
   },
   // 角色管理页面
   role: {

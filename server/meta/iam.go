@@ -22,16 +22,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	xhttp "github.com/mageg-x/dedups3/internal/http"
-	"github.com/twmb/murmur3"
+	Rand "math/rand"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/twmb/murmur3"
+
+	xhttp "github.com/mageg-x/dedups3/internal/http"
 	"github.com/mageg-x/dedups3/internal/logger"
-	Rand "math/rand"
 )
 
 const (
@@ -39,6 +40,12 @@ const (
 	AccountOn = "on"
 	// AccountOff indicates that credentials are disabled
 	AccountOff = "off"
+
+	MaxUserNum      = 100 // 每个账号最多创建 100个子用户
+	MaxGroupNum     = 100 // 每个账号最多创建 100个group
+	MaxRoleNum      = 100 // 每个账号最多创建 100个role
+	MaxPolicyNum    = 100 // 每个账号最多创建 100个policy
+	MaxAccessKeyNum = 100 // 每个用户最多创建 100个 access key
 )
 
 var (
@@ -47,78 +54,70 @@ var (
 
 // IamAccount 表示完整的 IAM 系统
 type IamAccount struct {
-	AccountID string                `json:"accountId"` // AWS 账户ID
-	Name      string                `json:"name"`      // AWS 账户名
-	Users     map[string]*IamUser   `json:"users"`     // IAM 用户 (key: 用户名)
-	Groups    map[string]*IamGroup  `json:"groups"`    // IAM 用户组 (key: 组名)
-	Roles     map[string]*IamRole   `json:"roles"`     // IAM 角色 (key: 角色名)
-	Policies  map[string]*IamPolicy `json:"policies"`  // IAM 策略 (key: 策略名)
-	Quota     *QuotaConfig          `json:"quota"`     // 配额限制
-	Chunk     *ChunkConfig          `json:"chunk"`     // 切片设置
+	AccountID string              `json:"accountId"` // AWS 账户ID
+	Name      string              `json:"name"`      // AWS 账户名
+	Users     map[string]struct{} `json:"users"`     // IAM 用户 (key: 用户名)
+	Groups    map[string]struct{} `json:"groups"`    // IAM 用户组 (key: 组名)
+	Roles     map[string]struct{} `json:"roles"`     // IAM 角色 (key: 角色名)
+	Policies  map[string]struct{} `json:"policies"`  // IAM 策略 (key: 策略名)
+	Quota     *QuotaConfig        `json:"quota"`     // 配额限制
 }
 
 // IamUser 表示 IAM 用户
 type IamUser struct {
-	ID                  string            `json:"id"`                  // 用户唯一ID
-	ARN                 string            `json:"arn"`                 // 用户ARN
-	Username            string            `json:"username"`            // 用户名
-	Password            string            `json:"password"`            // 登录密码
-	AccessKeys          []AccessKey       `json:"accessKeys"`          // 访问密钥
-	MFADevices          []MFADevice       `json:"mfaDevices"`          // MFA设备
-	Groups              []string          `json:"groups"`              // 所属用户组
-	Roles               []string          `json:"roles"`               // 用户可以担任的角色
-	AttachedPolicies    []string          `json:"attachedPolicies"`    // 附加策略
-	PermissionsBoundary string            `json:"permissionsBoundary"` // 权限边界
-	Tags                map[string]string `json:"tags"`                // 用户标签
-	IsRoot              bool              `json:"isRoot"`              // 是否是根用户
-	Enabled             bool              `json:"enabled"`             // 是否启用
-	CreatedAt           time.Time         `json:"createdAt"`           // 创建时间
+	ID                  string              `json:"id"`                  // 用户唯一ID
+	ARN                 string              `json:"arn"`                 // 用户ARN
+	Username            string              `json:"username"`            // 用户名
+	Password            string              `json:"password"`            // 登录密码
+	AccessKeys          map[string]struct{} `json:"accessKeys"`          // 访问密钥
+	Groups              map[string]struct{} `json:"groups"`              // 所属用户组
+	Roles               map[string]struct{} `json:"roles"`               // 用户可以担任的角色
+	AttachedPolicies    map[string]struct{} `json:"attachedPolicies"`    // 附加策略
+	PermissionsBoundary string              `json:"permissionsBoundary"` // 权限边界
+	Tags                map[string]string   `json:"tags"`                // 用户标签
+	IsRoot              bool                `json:"isRoot"`              // 是否是根用户
+	Enabled             bool                `json:"enabled"`             // 是否启用
+	CreatedAt           time.Time           `json:"createdAt"`           // 创建时间
 }
 
 // AccessKey 表示访问密钥
 type AccessKey struct {
 	AccessKeyID     string    `json:"accessKeyId"`
 	SecretAccessKey string    `json:"secretAccessKey"`
-	Status          string    `json:"status"` // Active | Inactive
+	Status          bool      `json:"status"` // Active | Inactive
 	CreatedAt       time.Time `json:"createdAt"`
 	ExpiredAt       time.Time `json:"expiredAt"`
 	AccountID       string    `json:"accountId"`
 	Username        string    `json:"username"` // 创建者
 }
 
-// MFADevice 表示 MFA 设备
-type MFADevice struct {
-	DeviceName string `json:"deviceName"`
-	Type       string `json:"type"` // Virtual | Hardware
-	Enabled    bool   `json:"enabled"`
-}
-
 // IamGroup 表示 IAM 用户组
 type IamGroup struct {
-	ARN              string    `json:"arn"`
-	Name             string    `json:"name"`
-	Description      string    `json:"description"`
-	Users            []string  `json:"users"`            // 组成员
-	AttachedPolicies []string  `json:"attachedPolicies"` // 附加策略名称列表
-	CreateAt         time.Time `json:"createAt"`
+	ARN              string              `json:"arn"`
+	Name             string              `json:"name"`
+	Description      string              `json:"description"`
+	Users            map[string]struct{} `json:"users"`            // 组成员
+	AttachedPolicies map[string]struct{} `json:"attachedPolicies"` // 附加策略名称列表
+	CreateAt         time.Time           `json:"createAt"`
 }
 
 // IamRole 表示 IAM 角色
 type IamRole struct {
-	ARN              string    `json:"arn"`
-	Name             string    `json:"name"`
-	Description      string    `json:"description"`
-	AssumeRolePolicy string    `json:"assumeRolePolicy,omitempty"` // 信任策略JSON字符串
-	AttachedPolicies []string  `json:"attachedPolicies"`           // 附加策略名称列表
-	CreateAt         time.Time `json:"createAt"`
+	ARN              string              `json:"arn"`
+	Name             string              `json:"name"`
+	Description      string              `json:"description"`
+	AssumeRolePolicy string              `json:"assumeRolePolicy,omitempty"` // 信任策略JSON字符串
+	AttachedPolicies map[string]struct{} `json:"attachedPolicies"`           // 附加策略名称列表
+	CreateAt         time.Time           `json:"createAt"`
 }
 
 // IamPolicy 表示 IAM 策略
 type IamPolicy struct {
-	ARN         string `json:"arn"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Document    string `json:"document"` // JSON 策略文档字符串
+	ARN         string    `json:"arn"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Document    string    `json:"document"` // JSON 策略文档字符串
+	CreateAt    time.Time `json:"createAt"`
 }
 
 // PolicyDocument 表示解析后的策略文档结构
@@ -137,13 +136,6 @@ type QuotaConfig struct {
 	MaxSpaceSize   int  `json:"maxSpaceSize"`
 	MaxObjectCount int  `json:"maxObjectCount"`
 	Enable         bool `json:"enable"`
-}
-
-type ChunkConfig struct {
-	ChunkSize int32 `json:"chunkSize"`
-	FixSize   bool  `json:"fixSize"`
-	Encrypt   bool  `json:"encrypt"`
-	Compress  bool  `json:"compress"`
 }
 
 // ==================== ========== ARN 格式化函数 ==============================
@@ -176,37 +168,21 @@ func CreateAccount(name string) *IamAccount {
 	return &IamAccount{
 		AccountID: GenerateAccountID(name),
 		Name:      name,
-		Users:     make(map[string]*IamUser),
-		Groups:    make(map[string]*IamGroup),
-		Roles:     make(map[string]*IamRole),
-		Policies:  make(map[string]*IamPolicy),
+		Users:     make(map[string]struct{}, 0),
+		Groups:    make(map[string]struct{}, 0),
+		Roles:     make(map[string]struct{}, 0),
+		Policies:  make(map[string]struct{}, 0),
 		Quota: &QuotaConfig{
 			MaxSpaceSize:   100 * 1024 * 1024, // 100GB,单位为 KB
 			MaxObjectCount: 100000,
 			Enable:         true,
 		},
-		Chunk: &ChunkConfig{
-			ChunkSize: 1024 * 1024,
-			FixSize:   false,
-			Encrypt:   true,
-			Compress:  true,
-		},
 	}
-}
-
-// ============================== 用户操作 ==============================
-func (a *IamAccount) IsRootUser(username string) bool {
-	root, exists := a.Users["root"]
-	if !exists || root == nil {
-		logger.GetLogger("dedups3").Errorf("root user not exists")
-		return false
-	}
-	return root.Username == username
 }
 
 // CreateUser 创建新用户
 func (a *IamAccount) CreateUser(username, password string, groups, roles, policies []string, enable bool) (*IamUser, error) {
-	if u, _ := a.GetUser(username); u != nil {
+	if _, exists := a.Users[username]; exists {
 		logger.GetLogger("dedups3").Errorf("user %s already exists", username)
 		return nil, xhttp.ToError(xhttp.ErrUserAlreadyExists)
 	}
@@ -221,962 +197,40 @@ func (a *IamAccount) CreateUser(username, password string, groups, roles, polici
 	}
 
 	user := &IamUser{
-		ID:         generateCanonicalUserID(),
-		ARN:        FormatUserARN(a.AccountID, username),
-		Username:   username,
-		Password:   password,
-		CreatedAt:  time.Now().UTC(),
-		AccessKeys: make([]AccessKey, 0),
-		Groups:     make([]string, 0),
-		Roles:      make([]string, 0),
-		Tags:       make(map[string]string, 0),
-		Enabled:    enable,
+		ID:               generateCanonicalUserID(),
+		ARN:              FormatUserARN(a.AccountID, username),
+		Username:         username,
+		Password:         password,
+		CreatedAt:        time.Now().UTC(),
+		AccessKeys:       make(map[string]struct{}),
+		Groups:           make(map[string]struct{}),
+		Roles:            make(map[string]struct{}),
+		AttachedPolicies: make(map[string]struct{}),
+		Tags:             make(map[string]string),
+		Enabled:          enable,
 	}
 	for _, group := range groups {
-		if a.Groups[group] != nil {
-			user.Groups = append(user.Groups, group)
+		if _, exists := a.Groups[group]; exists {
+			user.Groups[group] = struct{}{}
 		}
 	}
 	for _, role := range roles {
-		if a.Roles[role] != nil {
-			user.Roles = append(user.Roles, role)
+		if _, exists := a.Roles[role]; exists {
+			user.Roles[role] = struct{}{}
 		}
 	}
 	for _, policy := range policies {
-		if a.Policies[policy] != nil {
-			user.AttachedPolicies = append(user.AttachedPolicies, policy)
+		if _, exists := a.Policies[policy]; exists {
+			user.AttachedPolicies[policy] = struct{}{}
 		}
 	}
-	a.Users[username] = user
 	return user, nil
-}
-
-// CreateUser 创建新用户
-func (a *IamAccount) UpdateUser(username, password string, groups, roles, policies []string, enable bool) (*IamUser, error) {
-	u, err := a.GetUser(username)
-	if err != nil || u == nil {
-		logger.GetLogger("dedups3").Errorf("user %s not exists", username)
-		return nil, xhttp.ToError(xhttp.ErrAdminNoSuchUser)
-	}
-	if err := ValidateUsername(username); err != nil {
-		logger.GetLogger("dedups3").Errorf("username %s is invalid format", username)
-		return nil, xhttp.ToError(xhttp.ErrInvalidName)
-	}
-
-	if password != "" {
-		if err := ValidatePassword(password, username); err != nil {
-			logger.GetLogger("dedups3").Errorf("password for user %s is invalid: %v", username, err)
-			return nil, xhttp.ToError(xhttp.ErrInvalidRequest)
-		}
-		u.Password = password
-	}
-
-	u.Enabled = enable
-	u.AttachedPolicies = make([]string, 0)
-	u.Groups = make([]string, 0)
-	u.Roles = make([]string, 0)
-
-	for _, group := range groups {
-		if a.Groups[group] != nil {
-			u.Groups = append(u.Groups, group)
-		}
-	}
-	for _, role := range roles {
-		if a.Roles[role] != nil {
-			u.Roles = append(u.Roles, role)
-		}
-	}
-	for _, policy := range policies {
-		if a.Policies[policy] != nil {
-			u.AttachedPolicies = append(u.AttachedPolicies, policy)
-		}
-	}
-	a.Users[username] = u
-	return u, nil
-}
-
-// GetUser 根据用户名获取用户信息，包括root用户
-func (a *IamAccount) GetUser(username string) (*IamUser, error) {
-	user, uExists := a.Users[username]
-	if uExists {
-		return user, nil
-	}
-	rootUser, uExists := a.Users["root"]
-	if uExists && rootUser != nil && rootUser.Username == username {
-		return rootUser, nil
-	}
-	return nil, xhttp.ToError(xhttp.ErrAdminNoSuchUser)
-}
-
-func (a *IamAccount) GetAllUsers() []*IamUser {
-	users := make([]*IamUser, 0, len(a.Users))
-	for _, user := range a.Users {
-		users = append(users, user)
-	}
-	return users
-}
-
-func (a *IamAccount) GetAllAccessKeys() []*AccessKey {
-	keys := make([]*AccessKey, 0)
-	for _, user := range a.Users {
-		for i := range user.AccessKeys {
-			keys = append(keys, &user.AccessKeys[i])
-		}
-	}
-	return keys
-}
-
-// AddRoleToUser 让用户可以担任某个角色
-func (a *IamAccount) AddRoleToUser(username, roleName string) error {
-	user, uExists := a.Users[username]
-	_, rExists := a.Roles[roleName]
-
-	if !uExists || !rExists {
-		return errors.New("user or role not found")
-	}
-	if user.IsRoot {
-		return errors.New("root user cannot be added to a role")
-	}
-
-	// 检查用户是否已担任该角色
-	for _, r := range user.Roles {
-		if r == roleName {
-			return errors.New("user already has this role")
-		}
-	}
-
-	user.Roles = append(user.Roles, roleName)
-	return nil
-}
-
-// DeleteUser 删除用户
-func (a *IamAccount) DeleteUser(username string) error {
-	// 检查用户是否存在
-	user, exists := a.Users[username]
-	if !exists {
-		return xhttp.ToError(xhttp.ErrAdminNoSuchUser)
-	}
-
-	// 检查是否是根用户
-	if user.IsRoot {
-		return errors.New("cannot delete root user")
-	}
-
-	// 从所有组中移除该用户
-	for _, groupName := range user.Groups {
-		group, gExists := a.Groups[groupName]
-		if gExists {
-			// 从组中移除用户
-			newUsers := make([]string, 0, len(group.Users)-1)
-			for _, u := range group.Users {
-				if u != username {
-					newUsers = append(newUsers, u)
-				}
-			}
-			group.Users = newUsers
-		}
-	}
-
-	// 删除用户
-	delete(a.Users, username)
-	return nil
-}
-
-// CreateAccessKey 为用户创建访问密钥
-func (a *IamAccount) CreateAccessKey(username string, ak, sk string, expiredAt time.Time, enable bool) (*AccessKey, error) {
-	user, exists := a.Users[username]
-	if a.Users["root"] != nil && a.Users["root"].Username == username {
-		user = a.Users["root"]
-		exists = true
-	}
-	if !exists {
-		return nil, xhttp.ToError(xhttp.ErrAdminNoSuchUser)
-	}
-
-	if expiredAt.Before(time.Now()) {
-		return nil, errors.New("expired time cannot be before current time")
-	}
-	if ak == "" {
-		ak = GenerateAccessKeyID()
-	}
-	if sk == "" {
-		sk = GenerateSecretAccessKey()
-	}
-
-	// 是否已经存在， ak是全局唯一
-	for _, u := range a.Users {
-		if u == nil {
-			continue
-		}
-		for _, _ak := range u.AccessKeys {
-			if _ak.AccessKeyID == ak {
-				return nil, xhttp.ToError(xhttp.ErrAdminConfigDuplicateKeys)
-			}
-		}
-	}
-
-	accessKey := AccessKey{
-		AccessKeyID:     ak,
-		SecretAccessKey: sk,
-		CreatedAt:       time.Now().UTC(),
-		ExpiredAt:       expiredAt,
-		Username:        username,
-		AccountID:       a.AccountID,
-		Status:          "Inactive",
-	}
-	if enable {
-		accessKey.Status = "Active"
-	}
-
-	user.AccessKeys = append(user.AccessKeys, accessKey)
-	return &accessKey, nil
-}
-
-// UpdateAccessKey 更新访问密钥
-func (a *IamAccount) UpdateAccessKey(ak, sk string, expiredAt time.Time, enable bool) (*AccessKey, error) {
-	if expiredAt.Before(time.Now()) {
-		return nil, errors.New("expired time cannot be before current time")
-	}
-
-	var _ak *AccessKey
-	for _, u := range a.Users {
-		if u == nil {
-			continue
-		}
-		for i, _ := range u.AccessKeys {
-			_key := &u.AccessKeys[i]
-			if _key.AccessKeyID == ak {
-				_ak = _key
-				break
-			}
-		}
-	}
-
-	if _ak == nil {
-		return nil, xhttp.ToError(xhttp.ErrAdminNoSuchAccessKey)
-	}
-
-	_ak.SecretAccessKey = sk
-	_ak.ExpiredAt = expiredAt
-	if enable {
-		_ak.Status = "Active"
-	} else {
-		_ak.Status = "Inactive"
-	}
-
-	return _ak, nil
-}
-
-func (a *IamAccount) DeleteAccessKey(ak string) error {
-	founded := false
-	for _, u := range a.Users {
-		if u == nil {
-			continue
-		}
-		j := 0
-		for _, _ak := range u.AccessKeys {
-			if _ak.AccessKeyID != ak {
-				founded = true
-				u.AccessKeys[j] = _ak
-				j++
-			}
-		}
-		u.AccessKeys = u.AccessKeys[:j]
-	}
-	if !founded {
-		return xhttp.ToError(xhttp.ErrAdminNoSuchAccessKey)
-	}
-	return nil
-}
-
-// ============================== 组操作 ==============================
-
-// CreateGroup 创建新用户组
-func (a *IamAccount) CreateGroup(caller *IamUser, name, desc string, users, policies []string) (*IamGroup, error) {
-	//if !a.canManageIAM(caller) {
-	//	return nil, xhttp.ToError(xhttp.ErrAccessDenied)
-	//}
-
-	if _, exists := a.Groups[name]; exists {
-		return nil, xhttp.ToError(xhttp.ErrPolicyAlreadyExists)
-	}
-	if !IsValidIAMName(name) {
-		return nil, xhttp.ToError(xhttp.ErrInvalidName)
-	}
-
-	group := &IamGroup{
-		ARN:         FormatGroupARN(a.AccountID, name),
-		Name:        name,
-		Description: desc,
-		CreateAt:    time.Now().UTC(),
-	}
-	for _, user := range users {
-		if _, ok := a.Users[user]; ok && user != "root" {
-			group.Users = append(group.Users, user)
-		}
-	}
-	for _, policy := range policies {
-		if _, ok := a.Policies[policy]; ok {
-			group.AttachedPolicies = append(group.AttachedPolicies, policy)
-		}
-	}
-	a.Groups[name] = group
-	return group, nil
-}
-
-func (a *IamAccount) UpdateGroup(caller *IamUser, name, desc string, users, policies []string) (*IamGroup, error) {
-	//if !a.canManageIAM(caller) {
-	//	return nil, xhttp.ToError(xhttp.ErrAccessDenied)
-	//}
-	oldGroup, exists := a.Groups[name]
-	if !exists {
-		return nil, xhttp.ToError(xhttp.ErrNoSuchGroup)
-	}
-
-	group := &IamGroup{
-		ARN:         FormatGroupARN(a.AccountID, name),
-		Name:        name,
-		Description: desc,
-	}
-	if oldGroup != nil {
-		group.CreateAt = oldGroup.CreateAt
-	}
-	for _, user := range users {
-		if _, ok := a.Users[user]; ok && user != "root" {
-			group.Users = append(group.Users, user)
-		}
-	}
-	for _, policy := range policies {
-		if _, ok := a.Policies[policy]; ok {
-			group.AttachedPolicies = append(group.AttachedPolicies, policy)
-		}
-	}
-
-	a.Groups[name] = group
-	return group, nil
-}
-
-// DeleteGroup 删除用户组
-func (a *IamAccount) DeleteGroup(caller *IamUser, groupName string) error {
-	//if !a.canManageIAM(caller) {
-	//	return nil, xhttp.ToError(xhttp.ErrAccessDenied)
-	//}
-
-	// 检查组是否存在
-	group, exists := a.Groups[groupName]
-	if !exists {
-		return xhttp.ToError(xhttp.ErrNoSuchGroup)
-	}
-
-	// 从组成员的用户中移除该组
-	for _, username := range group.Users {
-		user, uExists := a.Users[username]
-		if uExists {
-			newGroups := make([]string, 0, len(user.Groups)-1)
-			for _, g := range user.Groups {
-				if g != groupName {
-					newGroups = append(newGroups, g)
-				}
-			}
-			user.Groups = newGroups
-		}
-	}
-
-	// 删除组
-	delete(a.Groups, groupName)
-	return nil
-}
-
-// AddUserToGroup 添加用户到组
-func (a *IamAccount) AddUserToGroup(username, groupName string) error {
-	user, uExists := a.Users[username]
-	group, gExists := a.Groups[groupName]
-
-	if !uExists || !gExists {
-		return errors.New("user or group not found")
-	}
-
-	if user.IsRoot {
-		return errors.New("root user cannot be added to a group")
-	}
-
-	// 检查用户是否已在组中
-	for _, g := range user.Groups {
-		if g == groupName {
-			return errors.New("user already in group")
-		}
-	}
-
-	user.Groups = append(user.Groups, groupName)
-	group.Users = append(group.Users, username)
-	return nil
-}
-
-// ============================== 策略操作 ==============================
-
-// CreatePolicy 创建新策略
-func (a *IamAccount) CreatePolicy(caller *IamUser, name, description, document string) (*IamPolicy, error) {
-	// 检查调用者是否有创建策略的权限
-	//if !a.canManageIAM(caller) {
-	//	return nil, xhttp.ToError(xhttp.ErrAccessDenied)
-	//}
-	if !IsValidIAMName(name) {
-		return nil, xhttp.ToError(xhttp.ErrInvalidName)
-	}
-
-	if _, exists := a.Policies[name]; exists {
-		return nil, xhttp.ToError(xhttp.ErrPolicyAlreadyExists)
-	}
-
-	// 验证策略文档
-	if err := ValidatePolicyDocument(document); err != nil {
-		return nil, xhttp.ToError(xhttp.ErrInvalidPolicyDocument)
-	}
-
-	policy := &IamPolicy{
-		ARN:         FormatPolicyARN(a.AccountID, name),
-		Name:        name,
-		Description: description,
-		Document:    document,
-	}
-
-	a.Policies[name] = policy
-	return policy, nil
-}
-
-// UpdatePolicy 更新策略
-func (a *IamAccount) UpdatePolicy(caller *IamUser, name, description, document string) (*IamPolicy, error) {
-	// 检查调用者是否有创建策略的权限
-	//if !a.canManageIAM(caller) {
-	//	return nil, xhttp.ToError(xhttp.ErrAccessDenied)
-	//}
-
-	if p, exists := a.Policies[name]; !exists || p == nil {
-		return nil, xhttp.ToError(xhttp.ErrNoSuchIamPolicy)
-	}
-
-	// 验证策略文档
-	if err := ValidatePolicyDocument(document); err != nil {
-		return nil, xhttp.ToError(xhttp.ErrInvalidPolicyDocument)
-	}
-
-	policy := &IamPolicy{
-		ARN:         FormatPolicyARN(a.AccountID, name),
-		Name:        name,
-		Description: description,
-		Document:    document,
-	}
-
-	a.Policies[name] = policy
-	return policy, nil
-}
-
-// DeletePolicy 删除策略
-func (a *IamAccount) DeletePolicy(caller *IamUser, policyName string) error {
-	// 检查调用者是否有创建策略的权限
-	//if !a.canManageIAM(caller) {
-	//	return xhttp.ToError(xhttp.ErrAccessDenied)
-	//}
-
-	// 检查策略是否存在
-	_, exists := a.Policies[policyName]
-	if !exists {
-		return xhttp.ToError(xhttp.ErrNoSuchIamPolicy)
-	}
-
-	// 从所有用户中移除该策略
-	for _, user := range a.Users {
-		newPolicies := make([]string, 0, len(user.AttachedPolicies))
-		for _, p := range user.AttachedPolicies {
-			if p != policyName {
-				newPolicies = append(newPolicies, p)
-			}
-		}
-		user.AttachedPolicies = newPolicies
-	}
-
-	// 从所有组中移除该策略
-	for _, group := range a.Groups {
-		newPolicies := make([]string, 0, len(group.AttachedPolicies))
-		for _, p := range group.AttachedPolicies {
-			if p != policyName {
-				newPolicies = append(newPolicies, p)
-			}
-		}
-		group.AttachedPolicies = newPolicies
-	}
-
-	// 从所有角色中移除该策略
-	for _, role := range a.Roles {
-		newPolicies := make([]string, 0, len(role.AttachedPolicies))
-		for _, p := range role.AttachedPolicies {
-			if p != policyName {
-				newPolicies = append(newPolicies, p)
-			}
-		}
-		role.AttachedPolicies = newPolicies
-	}
-
-	// 删除策略
-	delete(a.Policies, policyName)
-	return nil
-}
-
-// AttachPolicyToUser 附加策略到用户
-func (a *IamAccount) AttachPolicyToUser(caller *IamUser, username, policyName string) error {
-	// 检查特定 IAM 权限
-	//allowed, _ := a.CheckPermission(caller.Username, "iam:AttachUserPolicy", "*")
-	//if !allowed {
-	//	return xhttp.ToError(xhttp.ErrAccessDenied)
-	//}
-
-	user, exists := a.Users[username]
-	if !exists {
-		return xhttp.ToError(xhttp.ErrAdminNoSuchUser)
-	}
-
-	if user.IsRoot {
-		return errors.New("cannot attach policies to root user")
-	}
-
-	// 检查策略是否存在
-	if _, pExists := a.Policies[policyName]; !pExists {
-		return xhttp.ToError(xhttp.ErrNoSuchBucketPolicy)
-	}
-
-	// 检查是否已附加
-	for _, p := range user.AttachedPolicies {
-		if p == policyName {
-			return xhttp.ToError(xhttp.ErrPolicyAlreadyAttached)
-		}
-	}
-
-	user.AttachedPolicies = append(user.AttachedPolicies, policyName)
-	return nil
-}
-
-// canManageIAM 检查用户是否有 IAM 管理权限
-func (a *IamAccount) canManageIAM(user *IamUser) bool {
-	// 根用户总是有权限
-	if user.IsRoot {
-		return true
-	}
-
-	// 检查用户是否有 IAM 管理策略
-	allowed, _ := a.CheckPermission(user.Username, "iam:*", "*")
-	return allowed
-}
-
-// ============================== 角色操作 ==============================
-
-// CreateRole 创建新角色
-func (a *IamAccount) CreateRole(caller *IamUser, name, desc, assumeRolePolicy string, attachPolicies []string) (*IamRole, error) {
-	//if !a.canManageIAM(caller) {
-	//	return nil, xhttp.ToError(xhttp.ErrAccessDenied)
-	//}
-	if !IsValidIAMName(name) {
-		return nil, xhttp.ToError(xhttp.ErrInvalidName)
-	}
-	if _, exists := a.Roles[name]; exists {
-		return nil, xhttp.ToError(xhttp.ErrRoleAlreadyExists)
-	}
-
-	// 验证信任策略是否是有效的 JSON
-	if assumeRolePolicy != "" && !isValidJSON(assumeRolePolicy) {
-		return nil, xhttp.ToError(xhttp.ErrInvalidPolicyDocument)
-	}
-
-	role := &IamRole{
-		ARN:              FormatRoleARN(a.AccountID, name),
-		Name:             name,
-		Description:      desc,
-		AssumeRolePolicy: assumeRolePolicy,
-		CreateAt:         time.Now().UTC(),
-	}
-
-	a.Roles[name] = role
-	for _, policyName := range attachPolicies {
-		if err := a.AttachPolicyToRole(name, policyName); err != nil {
-			return nil, err
-		}
-	}
-	return role, nil
-}
-
-// UpdateRole 创建新角色
-func (a *IamAccount) UpdateRole(caller *IamUser, name, desc, assumeRolePolicy string, attachPolicies []string) (*IamRole, error) {
-	//if !a.canManageIAM(caller) {
-	//	return nil, xhttp.ToError(xhttp.ErrAccessDenied)
-	//}
-	oldrole, exists := a.Roles[name]
-	if !exists || oldrole == nil {
-		return nil, xhttp.ToError(xhttp.ErrNoSuchRole)
-	}
-
-	// 验证信任策略是否是有效的 JSON
-	if assumeRolePolicy != "" && !isValidJSON(assumeRolePolicy) {
-		return nil, xhttp.ToError(xhttp.ErrInvalidPolicyDocument)
-	}
-
-	role := &IamRole{
-		ARN:              FormatRoleARN(a.AccountID, name),
-		Name:             name,
-		Description:      desc,
-		AssumeRolePolicy: assumeRolePolicy,
-		CreateAt:         time.Now().UTC(),
-	}
-
-	if oldrole != nil {
-		role.CreateAt = oldrole.CreateAt
-	}
-
-	a.Roles[name] = role
-	for _, policyName := range attachPolicies {
-		if err := a.AttachPolicyToRole(name, policyName); err != nil {
-			return nil, err
-		}
-	}
-	return role, nil
-}
-
-// AttachPolicyToRole 附加策略到角色
-func (a *IamAccount) AttachPolicyToRole(roleName, policyName string) error {
-	role, exists := a.Roles[roleName]
-	if !exists {
-		return xhttp.ToError(xhttp.ErrNoSuchRole)
-	}
-
-	// 检查策略是否存在
-	if _, pExists := a.Policies[policyName]; !pExists {
-		return xhttp.ToError(xhttp.ErrNoSuchIamPolicy)
-	}
-
-	role.AttachedPolicies = append(role.AttachedPolicies, policyName)
-	return nil
-}
-
-// UpdateAssumeRolePolicy 更新角色的信任策略
-func (a *IamAccount) UpdateAssumeRolePolicy(roleName, assumeRolePolicy string) error {
-	role, exists := a.Roles[roleName]
-	if !exists {
-		return xhttp.ToError(xhttp.ErrNoSuchRole)
-	}
-
-	// 验证新的信任策略
-	if !isValidJSON(assumeRolePolicy) {
-		return xhttp.ToError(xhttp.ErrInvalidPolicyDocument)
-	}
-
-	role.AssumeRolePolicy = assumeRolePolicy
-	return nil
-}
-
-// ListAttachedRolePolicies 列出角色附加的策略
-func (a *IamAccount) ListAttachedRolePolicies(roleName string) ([]string, error) {
-	role, exists := a.Roles[roleName]
-	if !exists {
-		return nil, xhttp.ToError(xhttp.ErrNoSuchRole)
-	}
-	return role.AttachedPolicies, nil
-}
-
-// DeleteRole 删除角色
-func (a *IamAccount) DeleteRole(caller *IamUser, roleName string) error {
-	//if !a.canManageIAM(caller) {
-	//	return nil, xhttp.ToError(xhttp.ErrAccessDenied)
-	//}
-
-	// 检查角色是否存在
-	_, exists := a.Roles[roleName]
-	if !exists {
-		return xhttp.ToError(xhttp.ErrNoSuchRole)
-	}
-
-	// 从所有用户中移除该角色
-	for _, user := range a.Users {
-		newRoles := make([]string, 0, len(user.Roles))
-		for _, r := range user.Roles {
-			if r != roleName {
-				newRoles = append(newRoles, r)
-			}
-		}
-		user.Roles = newRoles
-	}
-
-	// 删除角色
-	delete(a.Roles, roleName)
-	return nil
-}
-
-// DetachPolicyFromRole 从角色分离策略
-func (a *IamAccount) DetachPolicyFromRole(roleName, policyName string) error {
-	role, exists := a.Roles[roleName]
-	if !exists {
-		return xhttp.ToError(xhttp.ErrNoSuchRole)
-	}
-
-	newPolicies := make([]string, 0, len(role.AttachedPolicies))
-	found := false
-
-	for _, p := range role.AttachedPolicies {
-		if p == policyName {
-			found = true
-		} else {
-			newPolicies = append(newPolicies, p)
-		}
-	}
-
-	if !found {
-		return xhttp.ToError(xhttp.ErrPolicyAlreadyAttached)
-	}
-
-	role.AttachedPolicies = newPolicies
-	return nil
-}
-
-// GetRole 获取角色信息
-func (a *IamAccount) GetRole(roleName string) (*IamRole, error) {
-	role, exists := a.Roles[roleName]
-	if !exists {
-		return nil, xhttp.ToError(xhttp.ErrNoSuchRole)
-	}
-	return role, nil
-}
-
-// ============================== 权限检查方法 ==============================
-
-// CheckPermission 检查用户是否有权限执行指定操作
-func (a *IamAccount) CheckPermission(username, action, resource string) (bool, error) {
-	user, exists := a.Users[username]
-	if !exists {
-		// 检查是否是root用户
-		rootUser, rootExists := a.Users["root"]
-		if rootExists && rootUser.Username == username {
-			user = rootUser
-		} else {
-			return false, xhttp.ToError(xhttp.ErrAdminNoSuchUser)
-		}
-	}
-
-	// 1. 根用户拥有所有权限
-	if user.IsRoot {
-		return true, nil
-	}
-
-	// 2. 收集用户所有策略（直接附加+通过组附加+通过角色附加）
-	allPolicies := a.GetUserAllPolicies(user)
-
-	// 3. 检查权限边界（如果设置了）
-	if user.PermissionsBoundary != "" {
-		if boundaryPolicy, exists := a.Policies[user.PermissionsBoundary]; exists {
-			allowedByBoundary, explicitDeny, err := evaluatePolicy(boundaryPolicy.Document, action, resource)
-			if err != nil {
-				return false, fmt.Errorf("error evaluating permissions boundary: %w", err)
-			}
-			if explicitDeny {
-				return false, nil // 权限边界明确拒绝
-			}
-			if !allowedByBoundary {
-				return false, nil // 权限边界未允许此操作
-			}
-		}
-	}
-
-	// 4. 检查所有策略
-	explicitDenyFound := false
-	allowFound := false
-
-	for _, policy := range allPolicies {
-		allowed, explicitDeny, err := evaluatePolicy(policy.Document, action, resource)
-		if err != nil {
-			return false, fmt.Errorf("error evaluating policy %s: %w", policy.Name, err)
-		}
-
-		if explicitDeny {
-			explicitDenyFound = true
-		}
-		if allowed {
-			allowFound = true
-		}
-	}
-
-	// 显式拒绝优先于任何允许
-	if explicitDenyFound {
-		return false, nil
-	}
-
-	return allowFound, nil
-}
-
-// IsAllow 简化版的权限检查方法，直接返回布尔值
-func (a *IamAccount) IsAllow(username, action, resource string) bool {
-	allowed, err := a.CheckPermission(username, action, resource)
-	if err != nil {
-		logger.GetLogger("dedups3").Errorf("CheckPermission error for user %s: %v", username, err)
-		return false
-	}
-	return allowed
-}
-
-// 获取用户所有策略（直接附加+通过组附加+通过角色附加）
-func (a *IamAccount) GetUserAllPolicies(user *IamUser) []*IamPolicy {
-	var policies []*IamPolicy
-
-	// 直接附加的策略
-	for _, policyName := range user.AttachedPolicies {
-		if policy, exists := a.Policies[policyName]; exists {
-			policies = append(policies, policy)
-		}
-	}
-
-	// 通过组附加的策略
-	for _, groupName := range user.Groups {
-		if group, exists := a.Groups[groupName]; exists {
-			for _, policyName := range group.AttachedPolicies {
-				if policy, exists := a.Policies[policyName]; exists {
-					policies = append(policies, policy)
-				}
-			}
-		}
-	}
-
-	// 通过角色附加的策略
-	for _, roleName := range user.Roles {
-		if role, exists := a.Roles[roleName]; exists {
-			for _, policyName := range role.AttachedPolicies {
-				if policy, exists := a.Policies[policyName]; exists {
-					policies = append(policies, policy)
-				}
-			}
-		}
-	}
-
-	return policies
-}
-
-// 评估单个策略
-func evaluatePolicy(policyDoc, action, resource string) (allowed, explicitDeny bool, err error) {
-	var doc PolicyDocument
-	if err := json.Unmarshal([]byte(policyDoc), &doc); err != nil {
-		return false, false, fmt.Errorf("invalid policy document: %w", err)
-	}
-
-	for _, stmt := range doc.Statement {
-		// 检查操作匹配
-		actionMatch := false
-		for _, a := range stmt.Action {
-			if matchPattern(a, action) {
-				actionMatch = true
-				break
-			}
-		}
-		if !actionMatch {
-			continue
-		}
-
-		// 检查资源匹配（如果策略指定了资源）
-		if len(stmt.Resource) > 0 {
-			resourceMatch := false
-			for _, r := range stmt.Resource {
-				if matchPattern(r, resource) {
-					resourceMatch = true
-					break
-				}
-			}
-			if !resourceMatch {
-				continue
-			}
-		}
-
-		// 匹配的语句
-		switch stmt.Effect {
-		case "Allow":
-			allowed = true
-		case "Deny":
-			explicitDeny = true
-			return false, true, nil // 遇到显式拒绝立即返回
-		}
-	}
-
-	return allowed, explicitDeny, nil
-}
-
-// ============================== 辅助权限方法 ==============================
-
-// CanUserPerformAction 检查用户是否能执行操作（简化版）
-func (a *IamAccount) CanUserPerformAction(username, action string) bool {
-	// 对于不关心具体资源的情况，使用通配符资源
-	allowed, _ := a.CheckPermission(username, action, "*")
-	return allowed
-}
-
-// ListUserPermissions 列出用户所有允许的操作
-func (a *IamAccount) ListUserPermissions(username string) ([]string, error) {
-	user, exists := a.Users[username]
-	if !exists {
-		return nil, errors.New("user not found")
-	}
-
-	permissions := make(map[string]struct{})
-	allPolicies := a.GetUserAllPolicies(user)
-
-	for _, policy := range allPolicies {
-		var doc PolicyDocument
-		if err := json.Unmarshal([]byte(policy.Document), &doc); err != nil {
-			continue // 跳过无效策略
-		}
-
-		for _, stmt := range doc.Statement {
-			if stmt.Effect == "Allow" {
-				for _, action := range stmt.Action {
-					permissions[action] = struct{}{}
-				}
-			}
-		}
-	}
-
-	// 转换为切片
-	result := make([]string, 0, len(permissions))
-	for perm := range permissions {
-		result = append(result, perm)
-	}
-	return result, nil
-}
-
-// ============================== 认证操作 ==============================
-
-// Authenticate 认证用户
-func (a *IamAccount) Authenticate(accessKeyID, secretAccessKey string) (*IamUser, error) {
-	for _, user := range a.Users {
-		for _, key := range user.AccessKeys {
-			if key.AccessKeyID == accessKeyID &&
-				key.SecretAccessKey == secretAccessKey &&
-				key.Status == "Active" &&
-				!key.IsExpired() {
-				return user, nil
-			}
-		}
-	}
-
-	return nil, errors.New("authentication failed")
-}
-
-// GetUserByAccessKeyID 通过访问密钥ID查找用户
-func (a *IamAccount) GetUserByAccessKeyID(accessKeyID string) (*IamUser, error) {
-	for _, user := range a.Users {
-		for _, key := range user.AccessKeys {
-			if key.AccessKeyID == accessKeyID {
-				return user, nil
-			}
-		}
-	}
-	return nil, errors.New("access key not found")
 }
 
 // ============================== 辅助函数 ==============================
 
 // 验证JSON格式
-func isValidJSON(str string) bool {
+func IsValidJSON(str string) bool {
 	var js json.RawMessage
 	return json.Unmarshal([]byte(str), &js) == nil
 }
@@ -1410,4 +464,51 @@ func ValidateSecretAccessKey(sk string) bool {
 		}
 	}
 	return true
+}
+
+// EvaluatePolicy 评估单个策略
+func EvaluatePolicy(policyDoc, action, resource string) (allowed, explicitDeny bool, err error) {
+	var doc PolicyDocument
+	if err := json.Unmarshal([]byte(policyDoc), &doc); err != nil {
+		return false, false, fmt.Errorf("invalid policy document: %w", err)
+	}
+
+	for _, stmt := range doc.Statement {
+		// 检查操作匹配
+		actionMatch := false
+		for _, a := range stmt.Action {
+			if matchPattern(a, action) {
+				actionMatch = true
+				break
+			}
+		}
+		if !actionMatch {
+			continue
+		}
+
+		// 检查资源匹配（如果策略指定了资源）
+		if len(stmt.Resource) > 0 {
+			resourceMatch := false
+			for _, r := range stmt.Resource {
+				if matchPattern(r, resource) {
+					resourceMatch = true
+					break
+				}
+			}
+			if !resourceMatch {
+				continue
+			}
+		}
+
+		// 匹配的语句
+		switch stmt.Effect {
+		case "Allow":
+			allowed = true
+		case "Deny":
+			explicitDeny = true
+			return false, true, nil // 遇到显式拒绝立即返回
+		}
+	}
+
+	return allowed, explicitDeny, nil
 }

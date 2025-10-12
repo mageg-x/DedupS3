@@ -100,6 +100,10 @@ type Owner struct {
 	DisplayName string `json:"displayName" xml:"DisplayName,omitempty"` // 显示名称
 }
 
+func FormatObjectARN(accountID, bucketName, ObjKey string) string {
+	return "arn:aws:s3:::" + bucketName + "/" + ObjKey
+}
+
 func ObjectToBaseObject(obj *Object) *BaseObject {
 	return (*BaseObject)(unsafe.Pointer(obj))
 }

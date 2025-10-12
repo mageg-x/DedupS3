@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"os"
+	"path"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -13,6 +16,9 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	gormloger "gorm.io/gorm/logger"
+
+	"github.com/mageg-x/dedups3/internal/logger"
 )
 
 // KVData GORM模型结构，包含cluster、namespace和version字段
@@ -30,7 +36,6 @@ type KVData struct {
 type TransactionSession struct {
 	Tx      *gorm.DB
 	Created time.Time
-	AppName string // 记录所属app
 }
 
 // SQLiteClient 实现 kvconfig 接口
@@ -67,9 +72,23 @@ func (s *SQLiteClient) Open(args *Args) error {
 	if args.Driver != "sqlite" {
 		return fmt.Errorf("driver must be 'sqlite'")
 	}
+	if abspath, err := filepath.Abs(args.DSN); err != nil {
+		logger.GetLogger("dedups3").Errorf("invalid dsn %s", args.DSN)
+		return fmt.Errorf("invalid dsn %s", args.DSN)
+	} else {
+		args.DSN = abspath
+		dir := path.Dir(args.DSN)
+		if err = os.MkdirAll(dir, 0755); err != nil {
+			logger.GetLogger("dedups3").Errorf("failed permission to create dir %s", args.DSN)
+			return fmt.Errorf("failed permission to create dir %s", args.DSN)
+		}
+	}
 
-	db, err := gorm.Open(sqlite.Open(args.DSN), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(args.DSN), &gorm.Config{
+		Logger: gormloger.Default.LogMode(gormloger.Silent), // 完全关闭 GORM 内部日志
+	})
 	if err != nil {
+		logger.GetLogger("dedups3").Errorf("failed to open database %s", args.DSN)
 		return err
 	}
 
@@ -79,7 +98,7 @@ func (s *SQLiteClient) Open(args *Args) error {
 	}
 
 	// 设置 SQLite 连接参数
-	sqlDB.SetMaxOpenConns(1) // SQLite 建议单连接
+	sqlDB.SetMaxOpenConns(10) // SQLite 建议单连接
 	s.db = db
 
 	return nil
@@ -119,7 +138,7 @@ func (s *SQLiteClient) Get(key string, tpl interface{}) (interface{}, error) {
 
 	appName, _, _, err := s.extractKeyParts(key)
 	if err != nil {
-		return nil, fmt.Errorf("invalid key: %v", err)
+		return nil, fmt.Errorf("invalid key: %w", err)
 	}
 	tableName := appName
 
@@ -130,20 +149,17 @@ func (s *SQLiteClient) Get(key string, tpl interface{}) (interface{}, error) {
 	s.cacheMu.RUnlock()
 
 	if found {
-		clone := tpl
-		if err := json.Unmarshal([]byte(cachedValue), &clone); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal cached value: %v", err)
+		clone := reflect.New(tplType).Interface() // 类型是 *YourType
+		if err := json.Unmarshal([]byte(cachedValue), clone); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal cached value: %w", err)
 		}
-		return &clone, nil
+		return clone, nil
 	}
 
 	// 2. 缓存未命中，从数据库查询
 	var kv KVData
 
 	if err := s.db.Table(tableName).Where("key = ?", key).First(&kv).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("key not found")
-		}
 		return nil, err
 	}
 
@@ -156,14 +172,15 @@ func (s *SQLiteClient) Get(key string, tpl interface{}) (interface{}, error) {
 	}
 	s.cacheMu.Unlock()
 
-	clone := tpl
-	if err := json.Unmarshal([]byte(kv.Value), &clone); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal value: %v", err)
+	clone := reflect.New(tplType).Interface() // 类型是 *YourType
+	if err := json.Unmarshal([]byte(kv.Value), clone); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal value: %w", err)
 	}
-	return &clone, nil
+	return clone, nil
 }
 
 func (s *SQLiteClient) Set(key string, value interface{}) error {
+	logger.GetLogger("dedups3").Errorf("set key %s value  %#v", key, value)
 	valueJSON, err := json.Marshal(value)
 	if err != nil {
 		return err
@@ -278,7 +295,7 @@ func (s *SQLiteClient) Create(key string, value interface{}) error {
 		if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
 			return fmt.Errorf("key already exists")
 		}
-		return fmt.Errorf("insert failed: %v", result.Error)
+		return fmt.Errorf("insert failed: %w", result.Error)
 	}
 
 	// 添加到缓存
@@ -308,13 +325,13 @@ func (s *SQLiteClient) List(prefix, marker string, limit int, tpl interface{}) (
 		var err error
 		appName, _, _, err = s.extractKeyParts(prefix)
 		if err != nil {
-			return nil, "", fmt.Errorf("invalid prefix: %v", err)
+			return nil, "", fmt.Errorf("invalid prefix: %w", err)
 		}
 	} else if marker != "" {
 		var err error
 		appName, _, _, err = s.extractKeyParts(marker)
 		if err != nil {
-			return nil, "", fmt.Errorf("invalid marker: %v", err)
+			return nil, "", fmt.Errorf("invalid marker: %w", err)
 		}
 	} else {
 		// 如果没有prefix和marker，无法确定要查询哪个表，返回默认app
@@ -360,12 +377,12 @@ func (s *SQLiteClient) List(prefix, marker string, limit int, tpl interface{}) (
 			break
 		}
 
-		clone := tpl
-		if err := json.Unmarshal([]byte(kv.Value), &clone); err != nil {
+		clone := reflect.New(tplType).Interface() // 类型是 *YourType
+		if err := json.Unmarshal([]byte(kv.Value), clone); err != nil {
 			// 解析失败时
 			return nil, "", fmt.Errorf("failed to unmarshal value: %v", err)
 		} else {
-			result[kv.Key] = &clone
+			result[kv.Key] = clone
 		}
 	}
 
@@ -374,7 +391,6 @@ func (s *SQLiteClient) List(prefix, marker string, limit int, tpl interface{}) (
 
 // TxnBegin 事务数据操作接口
 func (s *SQLiteClient) TxnBegin() (string, error) {
-	// 事务现在需要支持跨多个app表的操作，这里简化处理，实际应用中可能需要更复杂的逻辑
 	tx := s.db.Begin()
 	if tx.Error != nil {
 		return "", tx.Error
@@ -386,7 +402,6 @@ func (s *SQLiteClient) TxnBegin() (string, error) {
 	s.txns[sessionID] = &TransactionSession{
 		Tx:      tx,
 		Created: time.Now().UTC(),
-		AppName: "", // 初始时不确定app，由具体操作确定
 	}
 	s.mu.Unlock()
 
@@ -438,11 +453,6 @@ func (s *SQLiteClient) TxnGetKv(sessionID string, key string, tpl interface{}) (
 		return nil, fmt.Errorf("tpl must be non-pointer type, got %s", tplType.Kind())
 	}
 
-	session, err := s.getTransaction(sessionID)
-	if err != nil {
-		return nil, err
-	}
-
 	appName, _, _, err := s.extractKeyParts(key)
 	if err != nil {
 		return nil, fmt.Errorf("invalid key: %v", err)
@@ -454,28 +464,28 @@ func (s *SQLiteClient) TxnGetKv(sessionID string, key string, tpl interface{}) (
 		return nil, err
 	}
 
-	var kv KVData
+	session, err := s.getTransaction(sessionID)
+	if err != nil {
+		return nil, err
+	}
 
+	var kv KVData
 	if err := session.Tx.Table(tableName).Where("key = ?", key).First(&kv).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("key not found")
+			return nil, fmt.Errorf("key not found %w", err)
 		}
 		return nil, err
 	}
 
-	clone := tpl
-	if err := json.Unmarshal([]byte(kv.Value), &clone); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal value: %v", err)
+	// 创建 tplType 的新实例指针
+	clone := reflect.New(tplType).Interface() // 类型是 *YourType
+	if err := json.Unmarshal([]byte(kv.Value), clone); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal value: %w", err)
 	}
-	return &clone, nil
+	return clone, nil
 }
 
 func (s *SQLiteClient) TxnSetKv(sessionID string, key string, value interface{}) error {
-	session, err := s.getTransaction(sessionID)
-	if err != nil {
-		return err
-	}
-
 	valueJSON, err := json.Marshal(value)
 	if err != nil {
 		return err
@@ -489,6 +499,11 @@ func (s *SQLiteClient) TxnSetKv(sessionID string, key string, value interface{})
 
 	// 确保表存在
 	if err := s.createTableForApp(appName); err != nil {
+		return err
+	}
+
+	session, err := s.getTransaction(sessionID)
+	if err != nil {
 		return err
 	}
 
@@ -560,11 +575,6 @@ func (s *SQLiteClient) TxnDelKv(sessionID string, key string) error {
 }
 
 func (s *SQLiteClient) TxnCreateKv(sessionID string, key string, value interface{}) error {
-	session, err := s.getTransaction(sessionID)
-	if err != nil {
-		return err
-	}
-
 	valueJSON, err := json.Marshal(value)
 	if err != nil {
 		return err
@@ -581,6 +591,10 @@ func (s *SQLiteClient) TxnCreateKv(sessionID string, key string, value interface
 		return err
 	}
 
+	session, err := s.getTransaction(sessionID)
+	if err != nil {
+		return err
+	}
 	kv := KVData{
 		Key:       key,
 		Value:     string(valueJSON),
@@ -596,7 +610,7 @@ func (s *SQLiteClient) TxnCreateKv(sessionID string, key string, value interface
 		if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
 			return fmt.Errorf("key already exists")
 		}
-		return fmt.Errorf("insert failed: %v", result.Error)
+		return fmt.Errorf("insert failed: %w", result.Error)
 	}
 
 	// 事务中的创建也需要更新或移除缓存
@@ -620,24 +634,19 @@ func (s *SQLiteClient) TxnListKv(sessionID string, prefix, marker string, limit 
 		return nil, "", fmt.Errorf("tpl must be non-pointer type, got %s", tplType.Kind())
 	}
 
-	session, err := s.getTransaction(sessionID)
-	if err != nil {
-		return nil, "", err
-	}
-
 	// 从prefix中提取app名称来确定要查询的表
 	var appName string
 	if prefix != "" {
 		var err error
 		appName, _, _, err = s.extractKeyParts(prefix)
 		if err != nil {
-			return nil, "", fmt.Errorf("invalid prefix: %v", err)
+			return nil, "", fmt.Errorf("invalid prefix: %w", err)
 		}
 	} else if marker != "" {
 		var err error
 		appName, _, _, err = s.extractKeyParts(marker)
 		if err != nil {
-			return nil, "", fmt.Errorf("invalid marker: %v", err)
+			return nil, "", fmt.Errorf("invalid marker: %w", err)
 		}
 	} else {
 		// 如果没有prefix和marker，使用默认app
@@ -648,6 +657,11 @@ func (s *SQLiteClient) TxnListKv(sessionID string, prefix, marker string, limit 
 
 	// 确保表存在
 	if err := s.createTableForApp(appName); err != nil {
+		return nil, "", err
+	}
+
+	session, err := s.getTransaction(sessionID)
+	if err != nil {
 		return nil, "", err
 	}
 
@@ -683,12 +697,12 @@ func (s *SQLiteClient) TxnListKv(sessionID string, prefix, marker string, limit 
 			break
 		}
 
-		clone := tpl
-		if err := json.Unmarshal([]byte(kv.Value), &clone); err != nil {
+		clone := reflect.New(tplType).Interface() // 类型是 *YourType
+		if err := json.Unmarshal([]byte(kv.Value), clone); err != nil {
 			// 解析失败时
 			return nil, "", fmt.Errorf("failed to unmarshal value: %v", err)
 		} else {
-			result[kv.Key] = &clone
+			result[kv.Key] = clone
 		}
 	}
 
@@ -697,28 +711,29 @@ func (s *SQLiteClient) TxnListKv(sessionID string, prefix, marker string, limit 
 
 // 辅助方法
 func (s *SQLiteClient) createTableForApp(appName string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	tableName := appName
 
-	// 检查表是否存在
 	var count int64
-	s.db.Raw("SELECT count(*) FROM sqlite_master WHERE type='table' AND name = ?", tableName).Scan(&count)
+	// 使用新连接，绕过被占用的连接池
+	err := s.db.Session(&gorm.Session{NewDB: true}).Raw(
+		"SELECT count(*) FROM sqlite_master WHERE type='table' AND name = ?", tableName,
+	).Scan(&count).Error
+	if err != nil {
+		return err
+	}
 
 	if count == 0 {
-		// 表不存在，创建新表
-		stmt := &gorm.Statement{DB: s.db}
-		stmt.Table = tableName
-		stmt.Parse(&KVData{})
-
-		// 创建表结构
-		if err := s.db.Migrator().CreateTable(&KVData{}, stmt); err != nil {
+		db := s.db.Session(&gorm.Session{NewDB: true})
+		if err := db.Table(tableName).AutoMigrate(&KVData{}); err != nil {
 			return err
 		}
-
-		// 为新表创建索引
-		if err := s.db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_cluster_namespace ON %s(cluster, namespace)", tableName, tableName)).Error; err != nil {
+		if err := db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_cluster_namespace ON %s(cluster, namespace)", tableName, tableName)).Error; err != nil {
 			return err
 		}
-		if err := s.db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_updated ON %s(updated_at)", tableName, tableName)).Error; err != nil {
+		if err := db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_updated ON %s(updated_at)", tableName, tableName)).Error; err != nil {
 			return err
 		}
 	}

@@ -494,6 +494,7 @@ const zh = {
     edit: "编辑",
     operation: "操作",
     noDescription: "无描述",
+    noAvailablePolicies: "无可用策略",
   },
   // 角色管理页面
   role: {

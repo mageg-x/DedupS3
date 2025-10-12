@@ -270,14 +270,21 @@ type NodeConfig struct {
 	Region    string `mapstructure:"region" json:"region" env:"DEDUPS3_REGION" default:"us-east-1"`
 }
 
+type DataBaseConfig struct {
+	Driver    string `mapstructure:"driver" json:"driver" env:"DEDUPS3_DATABASE_DRIVER" default:"sqlite"`
+	DSN       string `mapstructure:"dsn" json:"dsn" env:"DEDUPS3_DSN" default:"./data/sqlite/dedups3.db"`
+	AuthToken string `mapstructure:"auth_token" json:"authToken" env:"DEDUPS3_AUTH_TOKEN" default:""`
+}
+
 type Config struct {
-	Server ServerConfig `mapstructure:"server" json:"server"`
-	Log    LogConfig    `mapstructure:"log" json:"log"`
-	KV     KVConfig     `mapstructure:"kv" json:"kv"`
-	Cache  CacheConfig  `mapstructure:"cache" json:"cache"`
-	Iam    IAMConfig    `mapstructure:"iam" json:"iam"`
-	Block  BlockConfig  `mapstructure:"block" json:"block"`
-	Node   NodeConfig   `mapstructure:"node" json:"node"`
+	Server   ServerConfig   `mapstructure:"server" json:"server"`
+	Log      LogConfig      `mapstructure:"log" json:"log"`
+	KV       KVConfig       `mapstructure:"kv" json:"kv"`
+	Cache    CacheConfig    `mapstructure:"cache" json:"cache"`
+	Iam      IAMConfig      `mapstructure:"iam" json:"iam"`
+	Block    BlockConfig    `mapstructure:"block" json:"block"`
+	Node     NodeConfig     `mapstructure:"node" json:"node"`
+	Database DataBaseConfig `mapstructure:"database" json:"database"`
 }
 
 // DefaultConfig 创建带默认值的配置实例

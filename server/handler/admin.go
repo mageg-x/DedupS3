@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/mageg-x/dedups3/internal/vfs"
+	block2 "github.com/mageg-x/dedups3/plugs/block"
 	"io"
 	"net/http"
 	"net/url"
@@ -16,7 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mageg-x/dedups3/internal/storage/block"
 	"github.com/mageg-x/dedups3/middleware"
 	"github.com/mageg-x/dedups3/service/storage"
 
@@ -85,19 +85,19 @@ func Prepare4Iam(w http.ResponseWriter, r *http.Request) *PrepareEnv {
 		return nil
 	}
 
-	user, err := ac.GetUser(username)
+	user, err := iamService.GetUser(accountID, username)
 	if err != nil || user == nil || len(user.AccessKeys) == 0 {
 		logger.GetLogger("dedups3").Errorf("failed to get root user for account %s", accountID)
 		xhttp.AdminWriteJSONError(w, r, http.StatusServiceUnavailable, "service unavailable", nil, http.StatusServiceUnavailable)
 		return nil
 	}
 
-	accessKeyID := user.AccessKeys[0].AccessKeyID
-	logger.GetLogger("dedups3").Errorf("account %s  user %s has access key %s", accountID, username, accessKeyID)
+	accessKeyIDs := utils.MapKeys(user.AccessKeys)
+	logger.GetLogger("dedups3").Errorf("account %s  user %s has access key %s", accountID, username, accessKeyIDs[0])
 	return &PrepareEnv{
 		username:  username,
 		accountID: accountID,
-		accessKey: accessKeyID,
+		accessKey: accessKeyIDs[0],
 		ac:        ac,
 		user:      user,
 		iam:       iamService,
@@ -175,14 +175,14 @@ func AdminLoginHandler(w http.ResponseWriter, r *http.Request) {
 	accountID := meta.GenerateAccountID(account)
 
 	iam := iam2.GetIamService()
-	ac, err := iam.GetAccount(accountID)
+	_, err := iam.GetAccount(accountID)
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to get account %s", req.Username)
 		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "failed to get account", nil, http.StatusBadRequest)
 		return
 	}
 	// 验证用户名密码
-	user, err := ac.GetUser(username)
+	user, err := iam.GetUser(accountID, username)
 	if user == nil || err != nil {
 		logger.GetLogger("dedups3").Errorf("user %s not found", username)
 		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "user not found", nil, http.StatusBadRequest)
@@ -920,16 +920,21 @@ func AdminListUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	userList := make([]*IamUserInfo, 0)
 
-	for _, u := range pe.ac.Users {
+	for uname, _ := range pe.ac.Users {
+		u, err := pe.iam.GetUser(pe.accountID, uname)
+		if err != nil || u == nil {
+			logger.GetLogger("dedups3").Errorf("failed to get user %s: %v", uname, err)
+			continue
+		}
 		if u.IsRoot {
 			continue
 		}
 		ui := &IamUserInfo{
 			Username:       u.Username,
 			Account:        pe.ac.Name,
-			Group:          utils.StringSlice(u.Groups),
-			Role:           utils.StringSlice(u.Roles),
-			AttachPolicies: utils.StringSlice(u.AttachedPolicies),
+			Group:          utils.StringSlice(utils.MapKeys(u.Groups)),
+			Role:           utils.StringSlice(utils.MapKeys(u.Roles)),
+			AttachPolicies: utils.StringSlice(utils.MapKeys(u.AttachedPolicies)),
 			AllPolicies:    make([]meta.Statement, 0),
 			Enabled:        u.Enabled,
 			CreatedAt:      u.CreatedAt,
@@ -950,15 +955,15 @@ func AdminGetUserHandler(w http.ResponseWriter, r *http.Request) {
 	userInfo := &IamUserInfo{
 		Username:       pe.username,
 		Account:        pe.ac.Name,
-		Group:          utils.StringSlice(pe.user.Groups),
-		Role:           utils.StringSlice(pe.user.Roles),
-		AttachPolicies: utils.StringSlice(pe.user.AttachedPolicies),
+		Group:          utils.StringSlice(utils.MapKeys(pe.user.Groups)),
+		Role:           utils.StringSlice(utils.MapKeys(pe.user.Roles)),
+		AttachPolicies: utils.StringSlice(utils.MapKeys(pe.user.AttachedPolicies)),
 		AllPolicies:    make([]meta.Statement, 0),
 		Enabled:        pe.user.Enabled,
 		CreatedAt:      pe.user.CreatedAt,
 	}
 
-	allPolices := pe.ac.GetUserAllPolicies(pe.user)
+	allPolices, _ := pe.iam.ListUserAllPolicies(pe.accountID, pe.username)
 	policyFilter := make(map[string]bool)
 	for _, policy := range allPolices {
 		if policy == nil {
@@ -1133,7 +1138,13 @@ func AdminListPolicyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	policies := make([]*meta.IamPolicy, 0)
 	if pe.ac.Policies != nil {
-		for _, policy := range pe.ac.Policies {
+		for pname, _ := range pe.ac.Policies {
+			policy, err := pe.iam.GetPolicy(pe.accountID, pe.username, pname)
+			if err != nil || policy == nil {
+				logger.GetLogger("dedups3").Errorf("failed to get policy: %v", err)
+				xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "failed to get policy", nil, http.StatusInternalServerError)
+				return
+			}
 			if policy.Name != "root-policy" {
 				policies = append(policies, policy)
 			}
@@ -1157,7 +1168,7 @@ func AdminGetPolicyHandler(w http.ResponseWriter, r *http.Request) {
 	name := query.Get("name")
 	name = strings.TrimSpace(name)
 
-	if p, exists := pe.ac.Policies[name]; !exists || p == nil {
+	if _, exists := pe.ac.Policies[name]; !exists {
 		logger.GetLogger("dedups3").Errorf("policy %s does not exist", name)
 		xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "policy name does not exist", nil, http.StatusNotFound)
 		return
@@ -1192,7 +1203,7 @@ func AdminUpdatePolicyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := pe.iam.UpdatePolicy(pe.accountID, pe.username, req.Name, req.Desc, req.Doc)
+	_, err := pe.iam.UpdatePolicy(pe.accountID, pe.username, req.Name, req.Desc, req.Doc)
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to update policy: %v", err)
 		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
@@ -1235,7 +1246,7 @@ func AdminCreatePolicyHandler(w http.ResponseWriter, r *http.Request) {
 		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
 		return
 	}
-	err := pe.iam.CreatePolicy(pe.accountID, pe.username, req.Name, req.Desc, req.Doc)
+	_, err := pe.iam.CreatePolicy(pe.accountID, pe.username, req.Name, req.Desc, req.Doc)
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to create policy: %v", err)
 		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
@@ -1298,8 +1309,8 @@ func AdminListRoleHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	roles := make([]*meta.IamRole, 0)
-	if pe.ac.Policies != nil {
-		for _, role := range pe.ac.Roles {
+	for rolename, _ := range pe.ac.Roles {
+		if role, err := pe.iam.GetRole(pe.accountID, pe.username, rolename); err == nil && role != nil {
 			roles = append(roles, role)
 		}
 	}
@@ -1316,14 +1327,15 @@ func AdminGetRoleHandler(w http.ResponseWriter, r *http.Request) {
 	query := utils.DecodeQuerys(r.URL.Query())
 	name := query.Get("name")
 	name = strings.TrimSpace(name)
-	if p, exists := pe.ac.Roles[name]; !exists || p == nil {
+	role, err := pe.iam.GetRole(pe.accountID, pe.username, name)
+	if role == nil || err != nil {
 		logger.GetLogger("dedups3").Errorf("role %s does not exist", name)
 		xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "role name does not exist", nil, http.StatusNotFound)
 		return
 	}
 
 	// 返回成功响应
-	xhttp.AdminWriteJSONError(w, r, 0, "success", pe.ac.Roles[name], http.StatusOK)
+	xhttp.AdminWriteJSONError(w, r, 0, "success", role, http.StatusOK)
 }
 
 func AdminCreateRoleHandler(w http.ResponseWriter, r *http.Request) {
@@ -1347,7 +1359,7 @@ func AdminCreateRoleHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := pe.iam.CreateRole(pe.accountID, pe.username, req.Name, req.Desc, "", req.AttachPolicies)
+	_, err := pe.iam.CreateRole(pe.accountID, pe.username, req.Name, req.Desc, "", req.AttachPolicies)
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to create role: %v", err)
 		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
@@ -1395,7 +1407,7 @@ func AdminUpdateRoleHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := pe.iam.UpdateRole(pe.accountID, pe.username, req.Name, req.Desc, "", req.AttachPolicies)
+	_, err := pe.iam.UpdateRole(pe.accountID, pe.username, req.Name, req.Desc, "", req.AttachPolicies)
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to update role: %v", err)
 		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
@@ -1453,7 +1465,13 @@ func AdminListGroupHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	groups := make([]*meta.IamGroup, 0)
 	if pe.ac.Groups != nil {
-		for _, group := range pe.ac.Groups {
+		for groupname, _ := range pe.ac.Groups {
+			group, err := pe.iam.GetGroup(pe.accountID, pe.username, groupname)
+			if err != nil || group == nil {
+				logger.GetLogger("dedups3").Errorf("failed to list group: %v", err)
+				xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "failed to list group", nil, http.StatusInternalServerError)
+				return
+			}
 			groups = append(groups, group)
 		}
 	}
@@ -1470,14 +1488,16 @@ func AdminGetGroupHandler(w http.ResponseWriter, r *http.Request) {
 	query := utils.DecodeQuerys(r.URL.Query())
 	name := query.Get("name")
 	name = strings.TrimSpace(name)
-	if p, exists := pe.ac.Groups[name]; !exists || p == nil {
+
+	group, err := pe.iam.GetGroup(pe.accountID, pe.username, name)
+	if err != nil || group == nil {
 		logger.GetLogger("dedups3").Errorf("group %s does not exist", name)
 		xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "group name does not exist", nil, http.StatusNotFound)
 		return
 	}
 
 	// 返回成功响应
-	xhttp.AdminWriteJSONError(w, r, 0, "success", pe.ac.Groups[name], http.StatusOK)
+	xhttp.AdminWriteJSONError(w, r, 0, "success", group, http.StatusOK)
 }
 
 func AdminCreateGroupHandler(w http.ResponseWriter, r *http.Request) {
@@ -1502,7 +1522,7 @@ func AdminCreateGroupHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := pe.iam.CreateGroup(pe.accountID, pe.username, req.Name, req.Desc, req.Users, req.AttachPolicies)
+	_, err := pe.iam.CreateGroup(pe.accountID, pe.username, req.Name, req.Desc, req.Users, req.AttachPolicies)
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to create group: %v", err)
 		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
@@ -1547,7 +1567,7 @@ func AdminUpdateGroupHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := pe.iam.UpdateGroup(pe.accountID, pe.username, req.Name, req.Desc, req.Users, req.AttachPolicies)
+	_, err := pe.iam.UpdateGroup(pe.accountID, pe.username, req.Name, req.Desc, req.Users, req.AttachPolicies)
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to create group: %v", err)
 		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
@@ -1609,19 +1629,23 @@ func AdminListAccessKeyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	akList := make([]AkItem, 0)
-	for _, user := range pe.ac.Users {
-		if user == nil {
+	for username, _ := range pe.ac.Users {
+		user, err := pe.iam.GetUser(pe.accountID, username)
+		if user == nil || err != nil {
 			continue
 		}
-		for _, ak := range user.AccessKeys {
-			enable := false
-			if ak.Status == "Active" {
-				enable = true
+		for accessKeyID, _ := range user.AccessKeys {
+			ak, err := pe.iam.GetAccessKey(accessKeyID)
+			if ak == nil || err != nil {
+				logger.GetLogger("dedups3").Errorf("failed to get access key: %v", err)
+				xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "failed to get access key", nil, http.StatusInternalServerError)
+				return
 			}
+
 			akList = append(akList, AkItem{
 				AccessKeyID:     ak.AccessKeyID,
 				SecretAccessKey: ak.SecretAccessKey,
-				Enable:          enable,
+				Enable:          ak.Status,
 				ExpiredAt:       ak.ExpiredAt,
 				Creater:         user.Username,
 			})
@@ -1914,18 +1938,18 @@ func AdminGetChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
 	if pe == nil || pe.ac == nil {
 		return
 	}
-	defaultChunkConfig := &meta.ChunkConfig{
-		ChunkSize: 1024 * 1024,
-		FixSize:   false,
-		Encrypt:   true,
-		Compress:  true,
-	}
-	if pe.ac.Chunk == nil {
-		pe.ac.Chunk = defaultChunkConfig
-	}
-
-	// 返回成功响应
-	xhttp.AdminWriteJSONError(w, r, 0, "success", pe.ac.Chunk, http.StatusOK)
+	//defaultChunkConfig := &meta.ChunkConfig{
+	//	ChunkSize: 1024 * 1024,
+	//	FixSize:   false,
+	//	Encrypt:   true,
+	//	Compress:  true,
+	//}
+	//if pe.ac.Chunk == nil {
+	//	pe.ac.Chunk = defaultChunkConfig
+	//}
+	//
+	//// 返回成功响应
+	//xhttp.AdminWriteJSONError(w, r, 0, "success", pe.ac.Chunk, http.StatusOK)
 }
 
 func AdminSetChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
@@ -1948,23 +1972,23 @@ func AdminSetChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := pe.iam.SetChunkConfig(pe.accountID, &meta.ChunkConfig{
-		ChunkSize: req.ChunkSize,
-		FixSize:   req.FixSize,
-		Encrypt:   req.Encrypt,
-		Compress:  req.Compress,
-	})
+	//err := pe.iam.SetChunkConfig(pe.accountID, &meta.ChunkConfig{
+	//	ChunkSize: req.ChunkSize,
+	//	FixSize:   req.FixSize,
+	//	Encrypt:   req.Encrypt,
+	//	Compress:  req.Compress,
+	//})
 
-	if err != nil {
-		logger.GetLogger("dedups3").Errorf("failed to update chunk config: %v", err)
-		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
-			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
-			return
-		}
-
-		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "update chunk config failed", nil, http.StatusBadRequest)
-		return
-	}
+	//if err != nil {
+	//	logger.GetLogger("dedups3").Errorf("failed to update chunk config: %v", err)
+	//	if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+	//		xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+	//		return
+	//	}
+	//
+	//	xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "update chunk config failed", nil, http.StatusBadRequest)
+	//	return
+	//}
 
 	// 返回成功响应
 	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
@@ -2114,7 +2138,7 @@ func AdminCreateStorageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vfile, err := block.GetTieredFs()
+	vfile, err := block2.GetTieredFs()
 	if err == nil && vfile != nil {
 		_ = vfile.AddSyncTargetor(_storage.ID, syncTargetor)
 	} else {
@@ -2170,7 +2194,7 @@ func AdminTestStorageHandler(w http.ResponseWriter, r *http.Request) {
 			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "miss s3 config detail", nil, http.StatusBadRequest)
 			return
 		}
-		err := block.TestS3AccessPermissions(req.S3)
+		err := block2.TestS3AccessPermissions(req.S3)
 		if err != nil {
 			logger.GetLogger("dedups3").Errorf("s3 storage test failed: %v", err)
 			xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "s3 storage test failed", map[string]interface{}{"error": err.Error()}, http.StatusInternalServerError)
@@ -2183,7 +2207,7 @@ func AdminTestStorageHandler(w http.ResponseWriter, r *http.Request) {
 			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "miss disk config detail", nil, http.StatusBadRequest)
 			return
 		}
-		err := block.TestDiskAccessPermissions(req.Disk)
+		err := block2.TestDiskAccessPermissions(req.Disk)
 		if err != nil {
 			logger.GetLogger("dedups3").Errorf("disk storage test failed: %v", err)
 			xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "disk storage test failed", map[string]interface{}{"error": err.Error()}, http.StatusInternalServerError)

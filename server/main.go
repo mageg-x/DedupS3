@@ -21,6 +21,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/mageg-x/dedups3/plugs/block"
+	"github.com/mageg-x/dedups3/plugs/cache"
+	"github.com/mageg-x/dedups3/plugs/kv"
 	stats2 "github.com/mageg-x/dedups3/service/stats"
 	"math/rand"
 	"net/http"
@@ -37,9 +40,6 @@ import (
 	"github.com/mageg-x/dedups3/internal/config"
 	xhttp "github.com/mageg-x/dedups3/internal/http"
 	"github.com/mageg-x/dedups3/internal/logger"
-	"github.com/mageg-x/dedups3/internal/storage/block"
-	"github.com/mageg-x/dedups3/internal/storage/cache"
-	"github.com/mageg-x/dedups3/internal/storage/kv"
 	"github.com/mageg-x/dedups3/internal/vfs"
 	"github.com/mageg-x/dedups3/router"
 	gc2 "github.com/mageg-x/dedups3/service/gc"
@@ -261,11 +261,13 @@ func main() {
 			logger.GetLogger("dedups3").Fatal("failed to create account", zap.Error(err))
 		}
 	}
-	ak, err := iamService.CreateAccessKey(account.AccountID, account.Name, cfg.Iam.AK, cfg.Iam.SK, time.Now().Add(time.Hour*24*365), true)
-	logger.GetLogger("dedups3").Warnf("create account %v ak %v ", account, ak)
+	if account != nil {
+		ak, _ := iamService.CreateAccessKey(account.AccountID, account.Name, cfg.Iam.AK, cfg.Iam.SK, time.Now().Add(time.Hour*24*365), true)
+		logger.GetLogger("dedups3").Warnf("create account %v ak %v ", account, ak)
 
-	iamService.CreateUser(account.AccountID, "admin", "Abcd@1234", nil, nil, nil, true)
-	iamService.CreateAccessKey(account.AccountID, "admin", "D"+cfg.Iam.AK, "D"+cfg.Iam.SK, time.Now().Add(time.Hour*24*365), true)
+		iamService.CreateUser(account.AccountID, "admin", "Abcd@1234", nil, nil, nil, true)
+		iamService.CreateAccessKey(account.AccountID, "admin", "D"+cfg.Iam.AK, "D"+cfg.Iam.SK, time.Now().Add(time.Hour*24*365), true)
+	}
 	// 启动 admin server
 	if err := startAdminSvr(); err != nil {
 		logger.GetLogger("dedups3").Error("failed to start admin server", zap.Error(err))

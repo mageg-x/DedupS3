@@ -26,6 +26,8 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	xcache "github.com/mageg-x/dedups3/plugs/cache"
+	"github.com/mageg-x/dedups3/plugs/kv"
 	"github.com/mageg-x/dedups3/service/stats"
 	"io"
 	"net/http"
@@ -40,8 +42,6 @@ import (
 
 	xhttp "github.com/mageg-x/dedups3/internal/http"
 	"github.com/mageg-x/dedups3/internal/logger"
-	xcache "github.com/mageg-x/dedups3/internal/storage/cache"
-	"github.com/mageg-x/dedups3/internal/storage/kv"
 	"github.com/mageg-x/dedups3/meta"
 	"github.com/mageg-x/dedups3/service/iam"
 	"github.com/mageg-x/dedups3/service/storage"

@@ -46,8 +46,8 @@ func S3AuthorizationMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if ak.Status == meta.AccountOff {
-			logger.GetLogger("dedups3").Errorf("access key offline")
+		if !ak.Status {
+			logger.GetLogger("dedups3").Errorf("access key disable")
 			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessKeyDisabled)
 			return
 		}
@@ -117,7 +117,7 @@ func IsAllowed(accessKeyID, accountID, userName, bucketName, objKey, s3Action st
 	// 1. 账户级别操作特殊处理
 	if s3Action == "s3:ListBuckets" || s3Action == "s3:CreateBucket" {
 		// 这些操作不依赖于特定bucket，只检查IAM策略
-		if ac.IsAllow(userName, s3Action, "*") {
+		if iamService.IsAllow(accountID, userName, s3Action, "*") {
 			return true, xhttp.ErrNone
 		}
 		return false, xhttp.ErrAccessDenied
@@ -157,13 +157,13 @@ func IsAllowed(accessKeyID, accountID, userName, bucketName, objKey, s3Action st
 	}
 
 	// 5、根据S3标准，桶所有者对桶和其中的对象有完全控制权
-	if bucketInfo.Owner.ID == accountID && ac.IsRootUser(userName) {
+	if bucketInfo.Owner.ID == accountID && iamService.IsRootUser(accountID, userName) {
 		logger.GetLogger("dedups3").Debugf("access allowed: user %s is bucket owner", userName)
 		return true, xhttp.ErrNone
 	}
 
 	// 6. 检查IAM策略（同一账户内，IAM策略优先于基于资源的策略）
-	if bucketInfo.Owner.ID == accountID && ac.IsAllow(userName, s3Action, resourceARN) {
+	if bucketInfo.Owner.ID == accountID && iamService.IsAllow(accountID, userName, s3Action, resourceARN) {
 		logger.GetLogger("dedups3").Debugf("allowed by IAM policy")
 		return true, xhttp.ErrNone
 	}
@@ -173,14 +173,14 @@ func IsAllowed(accessKeyID, accountID, userName, bucketName, objKey, s3Action st
 		arnList := make([]string, 0)
 		userARN := meta.FormatUserARN(accountID, userName)
 		arnList = append(arnList, userARN)
-		if user, err := ac.GetUser(userName); err == nil && user != nil {
+		if user, err := iamService.GetUser(accountID, userName); err == nil && user != nil {
 			// 添加用户所属组的ARN
-			for _, groupName := range user.Groups {
+			for groupName, _ := range user.Groups {
 				groupARN := meta.FormatGroupARN(ac.AccountID, groupName)
 				arnList = append(arnList, groupARN)
 			}
 			// 添加用户所属角色的ARN
-			for _, roleName := range user.Roles {
+			for roleName, _ := range user.Roles {
 				roleARN := meta.FormatRoleARN(ac.AccountID, roleName)
 				arnList = append(arnList, roleARN)
 			}

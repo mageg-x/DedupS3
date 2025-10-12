@@ -164,7 +164,7 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if ak.Status != "Active" || ak.ExpiredAt.Before(time.Now().UTC()) {
+		if !ak.Status || ak.ExpiredAt.Before(time.Now().UTC()) {
 			logger.GetLogger("dedups3").Errorf("access key is inactive: %v", err)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessKeyDisabled)
 			return
