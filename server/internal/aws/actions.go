@@ -101,7 +101,7 @@ const (
 )
 
 // 各类别支持的动作集合（set）
-var supportedS3Actions = map[Action]struct{}{
+var SupportedS3Actions = map[Action]struct{}{
 	GetObject:                   {},
 	HeadObject:                  {},
 	PutObject:                   {},
@@ -158,7 +158,7 @@ var supportedS3Actions = map[Action]struct{}{
 	SelectObjectContent:         {},
 }
 
-var supportedIamActions = map[Action]struct{}{
+var SupportedIamActions = map[Action]struct{}{
 	CreateAccount:   {},
 	GetAccount:      {},
 	UpdateAccount:   {},
@@ -175,7 +175,7 @@ var supportedIamActions = map[Action]struct{}{
 	ListPolicy:      {},
 }
 
-var supportedAdminActions = map[Action]struct{}{
+var SupportedAdminActions = map[Action]struct{}{
 	AdminLogin:      {},
 	AdminStats:      {},
 	AdminBucket:     {},
@@ -207,17 +207,17 @@ func init() {
 	SupportedActions = make(map[Action]struct{})
 
 	// 合并 S3 动作
-	for action := range supportedS3Actions {
+	for action := range SupportedS3Actions {
 		SupportedActions[action] = struct{}{}
 	}
 
 	// 合并 IAM 动作
-	for action := range supportedIamActions {
+	for action := range SupportedIamActions {
 		SupportedActions[action] = struct{}{}
 	}
 
 	// 合并 Admin 动作
-	for action := range supportedAdminActions {
+	for action := range SupportedAdminActions {
 		SupportedActions[action] = struct{}{}
 	}
 }

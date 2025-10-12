@@ -60,11 +60,15 @@
                   <i class="fas fa-eye mr-1"></i>{{ t('policy.view') }}
                 </button>
                 <button @click="showEditPolicyDialog(policy)"
-                  class="text-blue-600 hover:text-blue-900 transition-colors mr-3">
+                  :disabled="['FullIamPolicy', 'FullS3Policy', 'FullConsolePolicy'].includes(policy.name)"
+                  class="text-blue-600 hover:text-blue-900 transition-colors mr-3"
+                  :class="{ 'opacity-50 cursor-not-allowed': ['FullIamPolicy', 'FullS3Policy', 'FullConsolePolicy'].includes(policy.name) }">
                   <i class="fas fa-edit mr-1"></i>{{ t('policy.edit') }}
                 </button>
                 <button @click="handleDeletePolicy(policy.id)"
-                  class="text-red-600 hover:text-red-900 transition-colors">
+                  :disabled="['FullIamPolicy', 'FullS3Policy', 'FullConsolePolicy'].includes(policy.name)"
+                  class="text-red-600 hover:text-red-900 transition-colors"
+                  :class="{ 'opacity-50 cursor-not-allowed': ['FullIamPolicy', 'FullS3Policy', 'FullConsolePolicy'].includes(policy.name) }">
                   <i class="fas fa-trash-alt mr-1"></i>{{ t('policy.delete') }}
                 </button>
               </td>
@@ -267,13 +271,18 @@ const defaultPolicyDocument = {
 
 // ==================== 计算属性 ====================
 const filteredPolicies = computed(() => {
-  if (!searchKeyword.value) {
-    return policiesList.value;
+  let filtered = policiesList.value;
+  
+  // 应用搜索过滤
+  if (searchKeyword.value) {
+    filtered = filtered.filter(policy =>
+      policy.name.toLowerCase().includes(searchKeyword.value.toLowerCase()) ||
+      (policy.description && policy.description.toLowerCase().includes(searchKeyword.value.toLowerCase()))
+    );
   }
-  return policiesList.value.filter(policy =>
-    policy.name.toLowerCase().includes(searchKeyword.value.toLowerCase()) ||
-    (policy.description && policy.description.toLowerCase().includes(searchKeyword.value.toLowerCase()))
-  );
+  
+  // 按创建时间倒序排列（最新的在前）
+  return filtered.sort((a, b) => b.createdAt - a.createdAt);
 });
 
 // ==================== 格式化函数 ====================
@@ -498,7 +507,7 @@ const loadPolicies = async () => {
           description: apiPolicy.description || '',
           document: documentObj,
           arn: apiPolicy.arn,
-          createdAt: new Date() // API没有提供创建时间，使用当前时间
+          createdAt: new Date(apiPolicy.createAt) // 使用服务器返回的创建时间
         });
       });
     }

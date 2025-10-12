@@ -301,6 +301,7 @@ export const listquota = apicall.get("/config/listquota", "Failed to list quota 
 export const createquota = apicall.post("/config/createquota", "Failed to create quota info");
 export const setquota = apicall.post("/config/updatequota", "Failed to update quota info");
 export const delquota= apicall.delete("/config/deletequota", "Failed to delete quota info");
+export const listchunkcfg = apicall.get("/config/listchunkcfg", "Failed to list chunk config info");
 export const getchunkcfg = apicall.get("/config/getchunkcfg", "Failed to get chunk config info");
 export const setchunkcfg = apicall.post("/config/updatechunkcfg", "Failed to update chunk config info");
 export const liststorage = apicall.get("/config/liststorage", "Failed to list storage info");

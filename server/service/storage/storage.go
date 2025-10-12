@@ -17,28 +17,31 @@
 package storage
 
 import (
-	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/mageg-x/dedups3/internal/utils"
-	block2 "github.com/mageg-x/dedups3/plugs/block"
-	"github.com/mageg-x/dedups3/plugs/kv"
 	"path/filepath"
 	"strings"
 	"sync"
 
-	"github.com/mageg-x/dedups3/internal/config"
+	xconf "github.com/mageg-x/dedups3/internal/config"
 	"github.com/mageg-x/dedups3/internal/logger"
+	"github.com/mageg-x/dedups3/internal/utils"
 	"github.com/mageg-x/dedups3/meta"
+	block2 "github.com/mageg-x/dedups3/plugs/block"
+	pconf "github.com/mageg-x/dedups3/plugs/config"
 )
 
 // StorageService 管理多个存储实例
 type StorageService struct {
-	mutex   sync.RWMutex
-	kvStore kv.KVStore
-	stores  map[string]*meta.Storage
+	mutex  sync.RWMutex
+	conf   pconf.KVConfigClient
+	stores map[string]*meta.Storage
 }
+
+const (
+	STORAGE_PREFIX = "dedups3:default:storage-endpoint:"
+)
 
 var (
 	// 全局存储管理器实例
@@ -50,22 +53,28 @@ var (
 func GetStorageService() *StorageService {
 	mu.Lock()
 	defer mu.Unlock()
-	if instance == nil || instance.kvStore == nil {
+	if instance == nil || instance.conf == nil {
 		logger.GetLogger("dedups3").Infof("initializing storage service")
-		kvStore, err := kv.GetKvStore()
-		if err != nil {
-			logger.GetLogger("dedups3").Errorf("failed to get kv store: %v", err)
+		cfg := xconf.Get()
+		c, err := pconf.NewKVConfig(&pconf.Args{
+			Driver:    cfg.Database.Driver,
+			DSN:       cfg.Database.DSN,
+			AuthToken: cfg.Database.AuthToken,
+		})
+		if err != nil || c == nil {
+			logger.GetLogger("dedups3").Errorf("failed to get kv config : %v", err)
 			return nil
 		}
+
 		instance = &StorageService{
-			kvStore: kvStore,
-			mutex:   sync.RWMutex{},
-			stores:  make(map[string]*meta.Storage),
+			conf:   c,
+			mutex:  sync.RWMutex{},
+			stores: make(map[string]*meta.Storage),
 		}
 		logger.GetLogger("dedups3").Infof("storage service initialized successfully")
 	}
 
-	if instance == nil || instance.kvStore == nil {
+	if instance == nil || instance.conf == nil {
 		logger.GetLogger("dedups3").Error("storage service instance is nil or kvstore is nil")
 		return nil
 	}
@@ -73,7 +82,7 @@ func GetStorageService() *StorageService {
 }
 
 // AddStorage 注册新的存储实例
-func (s *StorageService) AddStorage(strType, strClass string, conf config.StorageConfig) (*meta.Storage, error) {
+func (s *StorageService) AddStorage(strType, strClass string, conf xconf.StorageConfig) (*meta.Storage, error) {
 	// 每种class 只能有一个存储
 	err := utils.WrapFunction(func() error {
 		sl := s.GetStoragesByClass(strClass)
@@ -118,12 +127,12 @@ func (s *StorageService) AddStorage(strType, strClass string, conf config.Storag
 			// 测试读写权限
 			if err = block2.TestS3AccessPermissions(conf.S3); err != nil {
 				logger.GetLogger("dedups3").Errorf("test s3 access permissions failed: %v", err)
-				return nil, fmt.Errorf("test s3 access permissions failed: %v", err)
+				return nil, fmt.Errorf("test s3 access permissions failed: %w", err)
 			}
 		} else {
 			if err = block2.TestDiskAccessPermissions(conf.Disk); err != nil {
 				logger.GetLogger("dedups3").Errorf("test disk access permissions failed: %v", err)
-				return nil, fmt.Errorf("test disk access permissions failed: %v", err)
+				return nil, fmt.Errorf("test disk access permissions failed: %w", err)
 			}
 		}
 	} else {
@@ -131,48 +140,49 @@ func (s *StorageService) AddStorage(strType, strClass string, conf config.Storag
 		return nil, fmt.Errorf("unknown storage type: %s", strType)
 	}
 
-	txn, err := s.kvStore.BeginTxn(context.Background(), nil)
-	if err != nil {
+	txn, err := s.conf.TxnBegin()
+	if err != nil || txn == "" {
 		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to initialize kvstore txn: %w", err)
 	}
 	defer func() {
-		if txn != nil {
-			_ = txn.Rollback()
+		if txn != "" {
+			_ = s.conf.TxnRollback(txn)
 		}
 	}()
 
-	key := "aws:storage:" + id
-	var oldStorage meta.Storage
-	ok, err := txn.Get(key, &oldStorage)
-	if err != nil {
-		logger.GetLogger("dedups3").Errorf("failed to get  storage %s : %v", key, err)
-		return nil, fmt.Errorf("failed to get  storage %s : %w", key, err)
+	// 先查询是否已经存在
+	sKey := STORAGE_PREFIX + id
+	var _st meta.Storage
+	st, err := s.conf.TxnGetKv(txn, sKey, _st)
+	if err == nil && st != nil {
+		logger.GetLogger("dedups3").Errorf("storage %s  already exists: %v", sKey, err)
+		return nil, fmt.Errorf("storage %s  already exists: %w", sKey, err)
 	}
-
-	if ok && !conf.Equal(&oldStorage.Conf) {
-		logger.GetLogger("dedups3").Warnf("storage with id %s already exists, old config be overwrite", id)
-		//return nil, errors.New("storage with this id already exists")
+	defaultChunkConfig := &meta.ChunkConfig{
+		ChunkSize: 1024,
+		FixSize:   false,
+		Encrypt:   true,
+		Compress:  true,
 	}
-
 	// 创建并存储新的 Storage 对象
 	storage := &meta.Storage{
 		ID:    id,
 		Type:  strType,
 		Class: strClass,
 		Conf:  conf,
+		Chunk: defaultChunkConfig,
 	}
 
-	if err := txn.Set(key, storage); err != nil {
+	if err := s.conf.TxnSetKv(txn, sKey, storage); err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to store storage id %s: %v", id, err)
-		return nil, err
+		return nil, fmt.Errorf("failed to store storage id %s: %w", id, err)
 	}
-	err = txn.Commit()
-	if err != nil {
+	if err := s.conf.TxnCommit(txn); err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
-	txn = nil
+	txn = ""
 
 	logger.GetLogger("dedups3").Infof("successfully added storage with id: %s, type: %s", id, strType)
 	return s.GetStorage(id)
@@ -192,34 +202,38 @@ func (s *StorageService) GetStorage(id string) (*meta.Storage, error) {
 		return s.stores[id], nil
 	}
 
-	key := "aws:storage:" + id
-	var storage meta.Storage
-	found, err := s.kvStore.Get(key, &storage)
-	if err != nil || !found {
+	sKey := STORAGE_PREFIX + id
+	var _ss meta.Storage
+	ss, err := s.conf.Get(sKey, _ss)
+	if err != nil || ss == nil {
 		logger.GetLogger("dedups3").Errorf("storage with id %s does not exist", id)
-		return nil, errors.New("storage with this id does not exist")
+		return nil, fmt.Errorf("storage with id %s does not exist", id)
+	}
+	_storage, ok := ss.(*meta.Storage)
+	if !ok || _storage == nil {
+		logger.GetLogger("dedups3").Errorf("storage  %s unmarshal failed", id)
+		return nil, fmt.Errorf("storage  %s unmarshal failed", id)
 	}
 
 	// 根据存储类别创建对应的存储实例
 	var inst block2.BlockStore
-
-	switch storage.Type {
+	switch _storage.Type {
 	case meta.S3_TYPE_STORAGE:
-		if storage.Conf.S3 == nil {
+		if _storage.Conf.S3 == nil {
 			logger.GetLogger("dedups3").Error("s3 storage not configured")
 			return nil, errors.New("s3 storage not configured")
 		}
-		logger.GetLogger("dedups3").Debugf("creating s3 block store for bucket: %s", storage.Conf.S3.Bucket)
-		inst, err = block2.NewS3Store(id, storage.Class, storage.Conf.S3)
+		logger.GetLogger("dedups3").Debugf("creating s3 block store for bucket: %s", _storage.Conf.S3.Bucket)
+		inst, err = block2.NewS3Store(id, _storage.Class, _storage.Conf.S3)
 	case meta.DISK_TYPE_STORAGE:
-		if storage.Conf.Disk == nil {
+		if _storage.Conf.Disk == nil {
 			logger.GetLogger("dedups3").Error("disk storage not configured")
 			return nil, errors.New("disk storage not configured")
 		}
-		logger.GetLogger("dedups3").Debugf("creating disk block store at path: %s", storage.Conf.Disk.Path)
-		inst, err = block2.NewDiskStore(id, storage.Class, storage.Conf.Disk)
+		logger.GetLogger("dedups3").Debugf("creating disk block store at path: %s", _storage.Conf.Disk.Path)
+		inst, err = block2.NewDiskStore(id, _storage.Class, _storage.Conf.Disk)
 	default:
-		logger.GetLogger("dedups3").Errorf("unknown storage type: %s", storage.Type)
+		logger.GetLogger("dedups3").Errorf("unknown storage type: %s", _storage.Type)
 		return nil, errors.New("unknown storage type")
 	}
 
@@ -228,36 +242,29 @@ func (s *StorageService) GetStorage(id string) (*meta.Storage, error) {
 		return nil, fmt.Errorf("error creating block store: %w", err)
 	}
 
-	storage.Instance = inst
+	_storage.Instance = inst
 
-	s.stores[id] = &storage
+	s.stores[id] = _storage
 	logger.GetLogger("dedups3").Infof("successfully retrieved storage with id: %s", id)
-	return &storage, nil
+	return _storage, nil
 }
 
 // ListStorages 返回所有已注册的存储实例
 func (s *StorageService) ListStorages() []*meta.Storage {
-	txn, err := s.kvStore.BeginTxn(context.Background(), nil)
-	if err != nil {
-		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
-		return nil
-	}
-	defer txn.Rollback()
-	// 从KV存储中获取所有存储实例
-	keys, _, err := txn.Scan("aws:storage:", "", 1000)
-	if err != nil {
+	var _ss meta.Storage
+	sl, _, err := s.conf.List(STORAGE_PREFIX, "", 1000, _ss)
+	if err != nil || sl == nil {
 		logger.GetLogger("dedups3").Errorf("failed to scan storages: %v", err)
 		return []*meta.Storage{}
 	}
-
 	var storages []*meta.Storage
-	for _, key := range keys {
-		var storage meta.Storage
-		if _, err := txn.Get(key, &storage); err == nil {
-			storages = append(storages, &storage)
-		} else {
-			logger.GetLogger("dedups3").Warnf("failed to get storage from key %s: %v", key, err)
+	for k, ss := range sl {
+		_storage, ok := ss.(*meta.Storage)
+		if !ok || _storage == nil {
+			logger.GetLogger("dedups3").Errorf("failed unmarshal %s storage", k)
+			continue
 		}
+		storages = append(storages, _storage)
 	}
 
 	logger.GetLogger("dedups3").Infof("found %d storages", len(storages))
@@ -267,26 +274,12 @@ func (s *StorageService) ListStorages() []*meta.Storage {
 // GetStoragesByClass 根据类别获取存储实例
 func (s *StorageService) GetStoragesByClass(class string) []*meta.Storage {
 	logger.GetLogger("dedups3").Debugf("listing storages by class: %s", class)
-	txn, err := s.kvStore.BeginTxn(context.Background(), nil)
-	if err != nil {
-		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
-		return nil
-	}
-	defer txn.Rollback()
-	// 从KV存储中获取所有存储实例并筛选
-	keys, _, err := txn.Scan("aws:storage:", "", 1000)
-	if err != nil {
-		logger.GetLogger("dedups3").Errorf("failed to scan storages: %v", err)
-		return []*meta.Storage{}
-	}
 
+	storages := s.ListStorages()
 	var result []*meta.Storage
-	for _, key := range keys {
-		var storage meta.Storage
-		if _, err := s.kvStore.Get(key, &storage); err == nil && storage.Class == class {
-			result = append(result, &storage)
-		} else if err != nil {
-			logger.GetLogger("dedups3").Warnf("failed to get storage from key %s: %v", key, err)
+	for _, storage := range storages {
+		if storage.Class == class {
+			result = append(result, storage)
 		}
 	}
 
@@ -297,28 +290,11 @@ func (s *StorageService) GetStoragesByClass(class string) []*meta.Storage {
 // GetStoragesByType 根据类型获取存储实例
 func (s *StorageService) GetStoragesByType(strType string) []*meta.Storage {
 	logger.GetLogger("dedups3").Debugf("listing storages by type: %s", strType)
-
-	txn, err := s.kvStore.BeginTxn(context.Background(), nil)
-	if err != nil {
-		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
-		return nil
-	}
-	defer txn.Rollback()
-
-	// 从KV存储中获取所有存储实例并筛选
-	keys, _, err := txn.Scan("aws:storage:", "", 1000)
-	if err != nil {
-		logger.GetLogger("dedups3").Errorf("failed to scan storages: %v", err)
-		return []*meta.Storage{}
-	}
-
+	storages := s.ListStorages()
 	var result []*meta.Storage
-	for _, key := range keys {
-		var storage meta.Storage
-		if _, err := s.kvStore.Get(key, &storage); err == nil && storage.Type == strType {
-			result = append(result, &storage)
-		} else if err != nil {
-			logger.GetLogger("dedups3").Warnf("failed to get storage from key %s: %v", key, err)
+	for _, storage := range storages {
+		if strType == storage.Type {
+			result = append(result, storage)
 		}
 	}
 
@@ -329,35 +305,99 @@ func (s *StorageService) GetStoragesByType(strType string) []*meta.Storage {
 // RemoveStorage 删除指定 ID 的存储实例
 func (s *StorageService) RemoveStorage(id string) bool {
 	logger.GetLogger("dedups3").Debugf("removing storage with id: %s", id)
-	txn, err := s.kvStore.BeginTxn(context.Background(), nil)
-	if err != nil {
+	txn, err := s.conf.TxnBegin()
+	if err != nil || txn == "" {
 		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
 		return false
 	}
 	defer func() {
-		if txn != nil {
-			_ = txn.Rollback()
+		if txn != "" {
+			_ = s.conf.TxnRollback(txn)
 		}
 	}()
 
-	key := "aws:storage:" + id
-	if err := txn.Delete(key); err != nil {
+	sKey := STORAGE_PREFIX + id
+	if err = s.conf.TxnDelKv(txn, sKey); err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to delete storage with id %s: %v", id, err)
 		return false
 	}
-	if err = txn.Commit(); err == nil {
-		txn = nil
 
-		s.mutex.Lock()
-		defer s.mutex.Unlock()
-
-		if s.stores != nil {
-			delete(s.stores, id)
-			logger.GetLogger("dedups3").Debugf("removed storage id %s from local cache", id)
-		}
-
-		logger.GetLogger("dedups3").Infof("successfully removed storage with id: %s", id)
-		return true
+	if err := s.conf.TxnCommit(txn); err != nil {
+		logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
+		return false
 	}
-	return false
+	txn = ""
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if s.stores != nil {
+		delete(s.stores, id)
+		logger.GetLogger("dedups3").Debugf("removed storage id %s from local cache", id)
+	}
+
+	logger.GetLogger("dedups3").Infof("successfully removed storage with id: %s", id)
+	return true
+}
+
+func (s *StorageService) ListChunkConfig(storageID string) (map[string]*meta.ChunkConfig, error) {
+	defaultChunkConfig := &meta.ChunkConfig{
+		ChunkSize: 1024 * 1024,
+		FixSize:   false,
+		Encrypt:   true,
+		Compress:  true,
+	}
+
+	storages := s.ListStorages()
+	result := make(map[string]*meta.ChunkConfig)
+	for _, _s := range storages {
+		if _s.Chunk != nil {
+			result[_s.ID] = _s.Chunk
+		} else {
+			result[_s.ID] = defaultChunkConfig
+		}
+	}
+	return result, nil
+}
+
+func (s *StorageService) SetChunkConfig(storageID string, chunk *meta.ChunkConfig) error {
+	if chunk == nil {
+		logger.GetLogger("dedups3").Debugf("chunk is nil for storage %s", storageID)
+		return errors.New("chunk is nil")
+	}
+
+	txn, err := s.conf.TxnBegin()
+	if err != nil || txn == "" {
+		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
+		return fmt.Errorf("failed to initialize kvstore txn: %w", err)
+	}
+	defer func() {
+		if txn != "" {
+			_ = s.conf.TxnRollback(txn)
+		}
+	}()
+
+	sKey := STORAGE_PREFIX + storageID
+	var _ss *meta.Storage
+	ss, err := s.conf.TxnGetKv(txn, sKey, _ss)
+	if err != nil || ss == nil {
+		logger.GetLogger("dedups3").Errorf("failed to get storage %s: %v", sKey, err)
+		return fmt.Errorf("failed to get storage %s: %w", sKey, err)
+	}
+	_storage, ok := ss.(*meta.Storage)
+	if !ok || _storage == nil {
+		logger.GetLogger("dedups3").Errorf("failed unmarshal %s storage", sKey)
+		return fmt.Errorf("failed unmarshal %s storage", sKey)
+	}
+	_storage.Chunk = chunk
+	if err := s.conf.TxnSetKv(txn, sKey, _storage); err != nil {
+		logger.GetLogger("dedups3").Errorf("failed to set storage %s: %v", sKey, err)
+		return fmt.Errorf("failed to set storage %s: %w", sKey, err)
+	}
+	if err := s.conf.TxnCommit(txn); err != nil {
+		logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	txn = ""
+	return nil
 }

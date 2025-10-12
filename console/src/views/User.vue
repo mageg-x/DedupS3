@@ -106,10 +106,7 @@
       </div>
       <!-- 空状态 -->
       <div v-if="filteredUsers.length === 0" class="py-12 text-center">
-        <div class="text-gray-400 mb-4">
-          <i class="fas fa-user-slash text-4xl"></i>
-        </div>
-        <h3 class="text-lg font-medium text-gray-900 mb-2">{{ t('user.noUsers') }}</h3>
+      <h3 class="text-lg font-medium text-gray-900 mb-2">{{ t('user.noUsers') }}</h3>
         <p class="text-gray-500 mb-6">{{ t('user.clickAddUser') }}</p>
       </div>
     </div>
@@ -137,7 +134,7 @@
               <label for="password" class="block text-sm font-medium text-gray-700 mb-1">{{ t('user.password')
               }}</label>
               <input type="password" id="password" v-model="formData.password"
-                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                class="w-full px-4 py-2 text-sm  border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 :placeholder="isEditMode ? t('user.keepEmptyPassword') : ''">
               <span v-if="isEditMode" class="text-xs text-gray-500">{{ t('user.keepEmptyPassword') }}</span>
             </div>

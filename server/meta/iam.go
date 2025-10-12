@@ -24,6 +24,7 @@ import (
 	"fmt"
 	Rand "math/rand"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -52,32 +53,64 @@ var (
 	TimeSentinel = time.Unix(0, 0).UTC()
 )
 
+type StringSet map[string]struct{}
+
+func (s StringSet) MarshalJSON() ([]byte, error) {
+	if s == nil {
+		return []byte("[]"), nil
+	}
+	keys := make([]string, 0, len(s))
+	for k := range s {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys) // 可选：保证输出顺序一致
+	return json.Marshal(keys)
+}
+
+func (s *StringSet) UnmarshalJSON(data []byte) error {
+	if *s == nil {
+		*s = make(StringSet)
+	}
+	for k := range *s {
+		delete(*s, k)
+	}
+
+	var list []string
+	if err := json.Unmarshal(data, &list); err != nil {
+		return err
+	}
+	for _, v := range list {
+		(*s)[v] = struct{}{}
+	}
+	return nil
+}
+
 // IamAccount 表示完整的 IAM 系统
 type IamAccount struct {
-	AccountID string              `json:"accountId"` // AWS 账户ID
-	Name      string              `json:"name"`      // AWS 账户名
-	Users     map[string]struct{} `json:"users"`     // IAM 用户 (key: 用户名)
-	Groups    map[string]struct{} `json:"groups"`    // IAM 用户组 (key: 组名)
-	Roles     map[string]struct{} `json:"roles"`     // IAM 角色 (key: 角色名)
-	Policies  map[string]struct{} `json:"policies"`  // IAM 策略 (key: 策略名)
-	Quota     *QuotaConfig        `json:"quota"`     // 配额限制
+	AccountID string       `json:"accountId"` // AWS 账户ID
+	Name      string       `json:"name"`      // AWS 账户名
+	Users     StringSet    `json:"users"`     // IAM 用户 (key: 用户名)
+	Groups    StringSet    `json:"groups"`    // IAM 用户组 (key: 组名)
+	Roles     StringSet    `json:"roles"`     // IAM 角色 (key: 角色名)
+	Policies  StringSet    `json:"policies"`  // IAM 策略 (key: 策略名)
+	Quota     *QuotaConfig `json:"quota"`     // 配额限制
 }
 
 // IamUser 表示 IAM 用户
 type IamUser struct {
-	ID                  string              `json:"id"`                  // 用户唯一ID
-	ARN                 string              `json:"arn"`                 // 用户ARN
-	Username            string              `json:"username"`            // 用户名
-	Password            string              `json:"password"`            // 登录密码
-	AccessKeys          map[string]struct{} `json:"accessKeys"`          // 访问密钥
-	Groups              map[string]struct{} `json:"groups"`              // 所属用户组
-	Roles               map[string]struct{} `json:"roles"`               // 用户可以担任的角色
-	AttachedPolicies    map[string]struct{} `json:"attachedPolicies"`    // 附加策略
-	PermissionsBoundary string              `json:"permissionsBoundary"` // 权限边界
-	Tags                map[string]string   `json:"tags"`                // 用户标签
-	IsRoot              bool                `json:"isRoot"`              // 是否是根用户
-	Enabled             bool                `json:"enabled"`             // 是否启用
-	CreatedAt           time.Time           `json:"createdAt"`           // 创建时间
+	ID                  string            `json:"id"`                  // 用户唯一ID
+	ARN                 string            `json:"arn"`                 // 用户ARN
+	Username            string            `json:"username"`            // 用户名
+	Password            string            `json:"password"`            // 登录密码
+	AccessKeys          StringSet         `json:"accessKeys"`          // 访问密钥
+	Groups              StringSet         `json:"groups"`              // 所属用户组
+	Roles               StringSet         `json:"roles"`               // 用户可以担任的角色
+	AttachedPolicies    StringSet         `json:"attachedPolicies"`    // 附加策略
+	PermissionsBoundary string            `json:"permissionsBoundary"` // 权限边界
+	Tags                map[string]string `json:"tags"`                // 用户标签
+	IsRoot              bool              `json:"isRoot"`              // 是否是根用户
+	Enabled             bool              `json:"enabled"`             // 是否启用
+	CreatedAt           time.Time         `json:"createdAt"`           // 创建时间
 }
 
 // AccessKey 表示访问密钥
@@ -93,22 +126,22 @@ type AccessKey struct {
 
 // IamGroup 表示 IAM 用户组
 type IamGroup struct {
-	ARN              string              `json:"arn"`
-	Name             string              `json:"name"`
-	Description      string              `json:"description"`
-	Users            map[string]struct{} `json:"users"`            // 组成员
-	AttachedPolicies map[string]struct{} `json:"attachedPolicies"` // 附加策略名称列表
-	CreateAt         time.Time           `json:"createAt"`
+	ARN              string    `json:"arn"`
+	Name             string    `json:"name"`
+	Description      string    `json:"description"`
+	Users            StringSet `json:"users"`            // 组成员
+	AttachedPolicies StringSet `json:"attachedPolicies"` // 附加策略名称列表
+	CreateAt         time.Time `json:"createAt"`
 }
 
 // IamRole 表示 IAM 角色
 type IamRole struct {
-	ARN              string              `json:"arn"`
-	Name             string              `json:"name"`
-	Description      string              `json:"description"`
-	AssumeRolePolicy string              `json:"assumeRolePolicy,omitempty"` // 信任策略JSON字符串
-	AttachedPolicies map[string]struct{} `json:"attachedPolicies"`           // 附加策略名称列表
-	CreateAt         time.Time           `json:"createAt"`
+	ARN              string    `json:"arn"`
+	Name             string    `json:"name"`
+	Description      string    `json:"description"`
+	AssumeRolePolicy string    `json:"assumeRolePolicy,omitempty"` // 信任策略JSON字符串
+	AttachedPolicies StringSet `json:"attachedPolicies"`           // 附加策略名称列表
+	CreateAt         time.Time `json:"createAt"`
 }
 
 // IamPolicy 表示 IAM 策略
@@ -168,10 +201,10 @@ func CreateAccount(name string) *IamAccount {
 	return &IamAccount{
 		AccountID: GenerateAccountID(name),
 		Name:      name,
-		Users:     make(map[string]struct{}, 0),
-		Groups:    make(map[string]struct{}, 0),
-		Roles:     make(map[string]struct{}, 0),
-		Policies:  make(map[string]struct{}, 0),
+		Users:     make(StringSet, 0),
+		Groups:    make(StringSet, 0),
+		Roles:     make(StringSet, 0),
+		Policies:  make(StringSet, 0),
 		Quota: &QuotaConfig{
 			MaxSpaceSize:   100 * 1024 * 1024, // 100GB,单位为 KB
 			MaxObjectCount: 100000,
@@ -202,10 +235,10 @@ func (a *IamAccount) CreateUser(username, password string, groups, roles, polici
 		Username:         username,
 		Password:         password,
 		CreatedAt:        time.Now().UTC(),
-		AccessKeys:       make(map[string]struct{}),
-		Groups:           make(map[string]struct{}),
-		Roles:            make(map[string]struct{}),
-		AttachedPolicies: make(map[string]struct{}),
+		AccessKeys:       make(StringSet),
+		Groups:           make(StringSet),
+		Roles:            make(StringSet),
+		AttachedPolicies: make(StringSet),
 		Tags:             make(map[string]string),
 		Enabled:          enable,
 	}

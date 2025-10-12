@@ -265,7 +265,7 @@ func main() {
 		ak, _ := iamService.CreateAccessKey(account.AccountID, account.Name, cfg.Iam.AK, cfg.Iam.SK, time.Now().Add(time.Hour*24*365), true)
 		logger.GetLogger("dedups3").Warnf("create account %v ak %v ", account, ak)
 
-		iamService.CreateUser(account.AccountID, "admin", "Abcd@1234", nil, nil, nil, true)
+		iamService.CreateUser(account.AccountID, "admin", "admin", "Abcd@1234", nil, nil, nil, true)
 		iamService.CreateAccessKey(account.AccountID, "admin", "D"+cfg.Iam.AK, "D"+cfg.Iam.SK, time.Now().Add(time.Hour*24*365), true)
 	}
 	// 启动 admin server

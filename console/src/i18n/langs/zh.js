@@ -502,6 +502,7 @@ const zh = {
     createRole: "创建角色",
     addRole: "添加角色",
     roleName: "角色名称",
+    name: "名称",
     description: "描述",
     assumeRolePolicy: "信任策略",
     policyCount: "策略数量",
@@ -894,6 +895,7 @@ const zh = {
   // 数据切片配置页面
   chunk: {
     pageTitle: "数据切片配置",
+    pageDescription: "管理不同存储点的数据切片配置",
     configPlaceholder: "配置数据切片参数...",
     basicConfiguration: "基础配置",
     chunkLength: "切片长度",
@@ -904,6 +906,17 @@ const zh = {
     enableDataCompression: "启用数据压缩",
     saveConfiguration: "保存配置",
     saveSuccess: "配置保存成功！",
+    noConfigs: "未找到切片配置",
+    storageID: "存储点ID",
+    fixedLength: "固定长度",
+    encryption: "加密",
+    compression: "压缩",
+    operation: "操作",
+    enabled: "已启用",
+    disabled: "已禁用",
+    edit: "编辑",
+    editConfig: "编辑切片配置",
+    cancel: "取消",
   },
   // 品牌相关
   brand: {

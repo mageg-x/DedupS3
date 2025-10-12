@@ -56,6 +56,9 @@
                 {{ point.storage === 'disk' ? point.path : point.bucket }}
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                <button @click="handleView(point)" class="text-blue-600 hover:text-blue-900 mr-4">
+                  {{ t('endpoint.view') }}
+                </button>
                 <button @click="handleDelete(point.id)" class="text-red-600 hover:text-red-900">
                   {{ t('endpoint.delete') }}
                 </button>
@@ -277,6 +280,82 @@
         </div>
       </div>
     </div>
+
+    <!-- 查看详情对话框 -->
+    <div v-if="showViewDialog" class="fixed inset-0 bg-[rgba(0,0,0,0.5)] flex items-center justify-center z-50 transition-opacity duration-300">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto transition-all duration-300 transform animate-slideUp">
+        <div class="p-5 border-b border-gray-100 flex items-center justify-between">
+          <h3 class="text-lg font-bold text-gray-800">{{ t('endpoint.viewStoragePoint') }}</h3>
+          <button @click="showViewDialog = false" class="text-gray-500 hover:text-gray-700 transition-colors" aria-label="关闭">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="p-5">
+          <div class="space-y-6">
+            <div>
+              <h4 class="font-semibold text-gray-700 mb-2">{{ t('endpoint.basicInfo') }}</h4>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="flex items-center">
+                  <span class="text-gray-500 w-24">{{ t('endpoint.id') }}:</span>
+                  <span class="font-medium">{{ currentViewPoint?.id }}</span>
+                </div>
+                <div class="flex items-center">
+                  <span class="text-gray-500 w-24">{{ t('endpoint.class') }}:</span>
+                  <span class="font-medium">{{ currentViewPoint?.type }}</span>
+                </div>
+                <div class="flex items-center">
+                  <span class="text-gray-500 w-24">{{ t('endpoint.type') }}:</span>
+                  <span class="font-medium">{{ currentViewPoint?.storage === 'disk' ? t('endpoint.diskStorage') : t('endpoint.s3CompatibleStorage') }}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div v-if="currentViewPoint?.storage === 'disk'">
+              <h4 class="font-semibold text-gray-700 mb-2">{{ t('endpoint.diskConfiguration') }}</h4>
+              <div class="flex items-center">
+                <span class="text-gray-500 w-24">{{ t('endpoint.absolutePath') }}:</span>
+                <span class="font-medium">{{ currentViewPoint?.path }}</span>
+              </div>
+            </div>
+            
+            <div v-if="currentViewPoint?.storage === 's3'">
+              <h4 class="font-semibold text-gray-700 mb-2">{{ t('endpoint.s3Configuration') }}</h4>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="flex items-center">
+                  <span class="text-gray-500 w-28">{{ t('endpoint.accessKey') }}:</span>
+                  <span class="font-medium">{{ currentViewPoint?.accessKey }}</span>
+                </div>
+                <div class="flex items-center">
+                  <span class="text-gray-500 w-28">{{ t('endpoint.secretKey') }}:</span>
+                  <span class="font-medium">{{ currentViewPoint?.secretKey ? '******' : '-' }}</span>
+                </div>
+                <div class="flex items-center">
+                  <span class="text-gray-500 w-28">{{ t('endpoint.region') }}:</span>
+                  <span class="font-medium">{{ currentViewPoint?.region }}</span>
+                </div>
+                <div class="flex items-center">
+                  <span class="text-gray-500 w-28">{{ t('endpoint.endpointLabel') }}:</span>
+                  <span class="font-medium">{{ currentViewPoint?.endpoint }}</span>
+                </div>
+                <div class="flex items-center">
+                  <span class="text-gray-500 w-28">{{ t('endpoint.bucket') }}:</span>
+                  <span class="font-medium">{{ currentViewPoint?.bucket }}</span>
+                </div>
+                <div class="flex items-center">
+                  <span class="text-gray-500 w-28">{{ t('endpoint.usePathStyle') }}:</span>
+                  <span class="font-medium">{{ currentViewPoint?.usePathStyle ? t('endpoint.enabled') : t('endpoint.disabled') }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="p-5 border-t border-gray-100 flex items-center justify-end">
+          <button @click="showViewDialog = false" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+            {{ t('endpoint.close') }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -308,6 +387,8 @@ const showConfirmDialog = ref(false);
 const confirmDialogCallback = ref(null);
 const storagePointsList = ref([]);
 const isFormVisible = ref(false);
+const showViewDialog = ref(false);
+const currentViewPoint = ref(null);
 
 // 工具函数
 const generateStoragePointId = () => {
@@ -413,6 +494,12 @@ const handleAddNew = () => {
 const cancelEditing = () => {
   resetForm();
   isFormVisible.value = false;
+};
+
+// 查看详情函数
+const handleView = (point) => {
+  currentViewPoint.value = point;
+  showViewDialog.value = true;
 };
 
 // 配置测试函数

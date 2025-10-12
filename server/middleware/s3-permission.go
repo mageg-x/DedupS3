@@ -173,7 +173,7 @@ func IsAllowed(accessKeyID, accountID, userName, bucketName, objKey, s3Action st
 		arnList := make([]string, 0)
 		userARN := meta.FormatUserARN(accountID, userName)
 		arnList = append(arnList, userARN)
-		if user, err := iamService.GetUser(accountID, userName); err == nil && user != nil {
+		if user, err := iamService.GetUser(accountID, userName, userName); err == nil && user != nil {
 			// 添加用户所属组的ARN
 			for groupName, _ := range user.Groups {
 				groupARN := meta.FormatGroupARN(ac.AccountID, groupName)

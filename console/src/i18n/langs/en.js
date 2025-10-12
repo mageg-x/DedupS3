@@ -103,6 +103,7 @@ const en = {
     download: "Download",
     preview: "Preview",
     delete: "Delete",
+    view: "View",
     createdAt: "Created At",
     lastModified: "Last Modified",
     tags: "Tags",
@@ -649,6 +650,9 @@ const en = {
     pageDescription: "Manage storage and object quotas for accounts",
     addQuota: "Add Quota",
     cancelEditing: "Cancel Editing",
+    viewStoragePoint: "View Storage Point Details",
+    basicInfo: "Basic Information",
+    close: "Close",
     noQuotas: "No quota configurations found",
     accountId: "Account ID",
     storageLimit: "Storage Space Limit",
@@ -916,6 +920,7 @@ const en = {
   // 数据切片配置页面
   chunk: {
     pageTitle: "Data Chunk Configuration",
+    pageDescription: "Manage chunk configurations for different storage points",
     configPlaceholder: "Configure data chunk parameters...",
     basicConfiguration: "Basic Configuration",
     chunkLength: "Chunk Length",
@@ -925,6 +930,18 @@ const en = {
     enableDataEncryption: "Enable Data Encryption",
     enableDataCompression: "Enable Data Compression",
     saveConfiguration: "Save Configuration",
+    saveSuccess: "Configuration saved successfully!",
+    noConfigs: "No chunk configurations found",
+    storageID: "Storage ID",
+    fixedLength: "Fixed Length",
+    encryption: "Encryption",
+    compression: "Compression",
+    operation: "Actions",
+    enabled: "Enabled",
+    disabled: "Disabled",
+    edit: "Edit",
+    editConfig: "Edit Chunk Configuration",
+    cancel: "Cancel",
     saveSuccess: "Configuration saved successfully!",
   },
   // 品牌相关
@@ -997,6 +1014,8 @@ const en = {
     updateSuccess: "Storage point configuration updated successfully!",
     deleteSuccess: "Storage point has been successfully deleted!",
     loadFailed: "Failed to load storage point list",
+    enabled: "Enabled",
+    disabled: "Disabled",
     storageType: {
       standard: {
         label: "Standard Storage",

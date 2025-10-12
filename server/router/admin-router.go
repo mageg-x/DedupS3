@@ -106,6 +106,7 @@ func registerAdminRouter(mr *mux.Router) {
 	api_router.Methods(http.MethodPost).Path("/config/createquota").HandlerFunc(handler.AdminCreateQuotaHandler)
 	api_router.Methods(http.MethodPost).Path("/config/updatequota").HandlerFunc(handler.AdminUpdateQuotaHandler)
 	api_router.Methods(http.MethodDelete).Path("/config/deletequota").HandlerFunc(handler.AdminDeleteQuotaHandler)
+	api_router.Methods(http.MethodGet).Path("/config/listchunkcfg").HandlerFunc(handler.AdminListChunkConfigHandler)
 	api_router.Methods(http.MethodGet).Path("/config/getchunkcfg").HandlerFunc(handler.AdminGetChunkConfigHandler)
 	api_router.Methods(http.MethodPost).Path("/config/updatechunkcfg").HandlerFunc(handler.AdminSetChunkConfigHandler)
 	api_router.Methods(http.MethodGet).Path("/config/liststorage").HandlerFunc(handler.AdminListStorageHandler)

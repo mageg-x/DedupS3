@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/mageg-x/dedups3/internal/aws"
 	"net"
 	"regexp"
 	"strings"
@@ -647,4 +648,52 @@ func (p *BucketPolicy) IsPolicyPublic() bool {
 	}
 
 	return false
+}
+
+func defaultFullPolicy(actions map[aws.Action]struct{}) string {
+	// 生成S3策略文档 - 列出所有具体的S3动作
+	as := make([]string, 0, len(actions))
+	for action := range actions {
+		as = append(as, string(action))
+	}
+
+	type Statement struct {
+		Effect   string      `json:"Effect"`
+		Action   interface{} `json:"Action"`
+		Resource []string    `json:"Resource"`
+	}
+
+	type Policy struct {
+		Version   string      `json:"Version"`
+		Statement []Statement `json:"Statement"`
+	}
+
+	policies := Policy{
+		Version: "2012-10-17",
+		Statement: []Statement{{
+			Effect:   "Allow",
+			Action:   as,
+			Resource: []string{"*"},
+		}},
+	}
+
+	policyDoc, _ := json.Marshal(policies)
+	return string(policyDoc)
+}
+
+func FullS3Policy() string {
+	return defaultFullPolicy(aws.SupportedS3Actions)
+}
+
+func FullIAMPolicy() string {
+	return defaultFullPolicy(aws.SupportedIamActions)
+}
+
+func FullAdminPolicy() string {
+	return defaultFullPolicy(aws.SupportedAdminActions)
+}
+
+func RootPolicy() string {
+	rootPolicy := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["*"],"Resource":["*"]}]}`
+	return rootPolicy
 }

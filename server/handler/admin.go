@@ -85,7 +85,7 @@ func Prepare4Iam(w http.ResponseWriter, r *http.Request) *PrepareEnv {
 		return nil
 	}
 
-	user, err := iamService.GetUser(accountID, username)
+	user, err := iamService.GetUser(accountID, username, username)
 	if err != nil || user == nil || len(user.AccessKeys) == 0 {
 		logger.GetLogger("dedups3").Errorf("failed to get root user for account %s", accountID)
 		xhttp.AdminWriteJSONError(w, r, http.StatusServiceUnavailable, "service unavailable", nil, http.StatusServiceUnavailable)
@@ -182,7 +182,7 @@ func AdminLoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 验证用户名密码
-	user, err := iam.GetUser(accountID, username)
+	user, err := iam.GetUser(accountID, username, username)
 	if user == nil || err != nil {
 		logger.GetLogger("dedups3").Errorf("user %s not found", username)
 		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "user not found", nil, http.StatusBadRequest)
@@ -921,7 +921,7 @@ func AdminListUserHandler(w http.ResponseWriter, r *http.Request) {
 	userList := make([]*IamUserInfo, 0)
 
 	for uname, _ := range pe.ac.Users {
-		u, err := pe.iam.GetUser(pe.accountID, uname)
+		u, err := pe.iam.GetUser(pe.accountID, pe.username, uname)
 		if err != nil || u == nil {
 			logger.GetLogger("dedups3").Errorf("failed to get user %s: %v", uname, err)
 			continue
@@ -1020,7 +1020,7 @@ func AdminCreateUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := pe.iam.CreateUser(pe.accountID, req.Username, req.Password, req.Groups, req.Roles, req.AttachPolicies, req.Enabled)
+	_, err := pe.iam.CreateUser(pe.accountID, pe.username, req.Username, req.Password, req.Groups, req.Roles, req.AttachPolicies, req.Enabled)
 	if err != nil {
 		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
 			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
@@ -1072,7 +1072,7 @@ func AdminUpdateUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := pe.iam.UpdateUser(pe.accountID, req.Username, req.Password, req.Groups, req.Roles, req.AttachPolicies, req.Enabled)
+	_, err := pe.iam.UpdateUser(pe.accountID, pe.username, req.Username, req.Password, req.Groups, req.Roles, req.AttachPolicies, req.Enabled)
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to create user: %v", err)
 		if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidName)) {
@@ -1111,7 +1111,7 @@ func AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	username := query.Get("username")
 	username = strings.TrimSpace(username)
 
-	err := pe.iam.DeletePolicy(pe.accountID, pe.username, username)
+	err := pe.iam.DeleteUser(pe.accountID, pe.username, username)
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to delete user: %v", err)
 		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
@@ -1630,7 +1630,7 @@ func AdminListAccessKeyHandler(w http.ResponseWriter, r *http.Request) {
 
 	akList := make([]AkItem, 0)
 	for username, _ := range pe.ac.Users {
-		user, err := pe.iam.GetUser(pe.accountID, username)
+		user, err := pe.iam.GetUser(pe.accountID, pe.username, username)
 		if user == nil || err != nil {
 			continue
 		}
@@ -1932,24 +1932,63 @@ func AdminDeleteQuotaHandler(w http.ResponseWriter, r *http.Request) {
 	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
 }
 
+func AdminListChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
+	logger.GetLogger("dedups3").Errorf("[call adminListChunkConfigHandler] %#v", r.URL)
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+
+	ss := storage.GetStorageService()
+	if ss == nil {
+		logger.GetLogger("dedups3").Errorf("[call adminListChunkConfigHandler] storage service is nil")
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "storage service is nil", nil, http.StatusInternalServerError)
+		return
+	}
+
+	storages := ss.ListStorages()
+	chunks := make(map[string]*meta.ChunkConfig)
+	for _, _storage := range storages {
+		if _storage.Chunk != nil {
+			chunks[_storage.ID] = _storage.Chunk
+		}
+	}
+
+	xhttp.AdminWriteJSONError(w, r, 0, "success", chunks, http.StatusOK)
+}
+
 func AdminGetChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
 	logger.GetLogger("dedups3").Errorf("[call adminGetChunkConfigHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil || pe.ac == nil {
 		return
 	}
-	//defaultChunkConfig := &meta.ChunkConfig{
-	//	ChunkSize: 1024 * 1024,
-	//	FixSize:   false,
-	//	Encrypt:   true,
-	//	Compress:  true,
-	//}
-	//if pe.ac.Chunk == nil {
-	//	pe.ac.Chunk = defaultChunkConfig
-	//}
-	//
-	//// 返回成功响应
-	//xhttp.AdminWriteJSONError(w, r, 0, "success", pe.ac.Chunk, http.StatusOK)
+	query := utils.DecodeQuerys(r.URL.Query())
+	storageID := query.Get("storageID")
+
+	ss := storage.GetStorageService()
+	if ss == nil {
+		logger.GetLogger("dedups3").Errorf("[call adminListChunkConfigHandler] storage service is nil")
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "storage service is nil", nil, http.StatusInternalServerError)
+		return
+	}
+	_storage, err := ss.GetStorage(storageID)
+	if err != nil || _storage == nil {
+		logger.GetLogger("dedups3").Errorf("failed to get storage %s: %v", storageID, err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "failed to get storage", nil, http.StatusInternalServerError)
+		return
+	}
+
+	resp := map[string]interface{}{
+		"storageID": _storage.ID,
+		"chunkSize": _storage.Chunk.ChunkSize,
+		"fixSize":   _storage.Chunk.FixSize,
+		"encrypt":   _storage.Chunk.Encrypt,
+		"compress":  _storage.Chunk.Compress,
+	}
+
+	// 返回成功响应
+	xhttp.AdminWriteJSONError(w, r, 0, "success", resp, http.StatusOK)
 }
 
 func AdminSetChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
@@ -1959,11 +1998,13 @@ func AdminSetChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type Req struct {
-		ChunkSize int32 `json:"chunkSize"`
-		FixSize   bool  `json:"fixSize"`
-		Encrypt   bool  `json:"encrypt"`
-		Compress  bool  `json:"compress"`
+		StorageID string `json:"storageID"`
+		ChunkSize int32  `json:"chunkSize"`
+		FixSize   bool   `json:"fixSize"`
+		Encrypt   bool   `json:"encrypt"`
+		Compress  bool   `json:"compress"`
 	}
+
 	// 解析请求体
 	var req Req
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1972,23 +2013,30 @@ func AdminSetChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//err := pe.iam.SetChunkConfig(pe.accountID, &meta.ChunkConfig{
-	//	ChunkSize: req.ChunkSize,
-	//	FixSize:   req.FixSize,
-	//	Encrypt:   req.Encrypt,
-	//	Compress:  req.Compress,
-	//})
+	ss := storage.GetStorageService()
+	if ss == nil {
+		logger.GetLogger("dedups3").Errorf("[call adminListChunkConfigHandler] storage service is nil")
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "storage service is nil", nil, http.StatusInternalServerError)
+		return
+	}
 
-	//if err != nil {
-	//	logger.GetLogger("dedups3").Errorf("failed to update chunk config: %v", err)
-	//	if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
-	//		xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
-	//		return
-	//	}
-	//
-	//	xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "update chunk config failed", nil, http.StatusBadRequest)
-	//	return
-	//}
+	err := ss.SetChunkConfig(req.StorageID, &meta.ChunkConfig{
+		ChunkSize: req.ChunkSize,
+		FixSize:   req.FixSize,
+		Encrypt:   req.Encrypt,
+		Compress:  req.Compress,
+	})
+
+	if err != nil {
+		logger.GetLogger("dedups3").Errorf("failed to update chunk config: %v", err)
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
+			return
+		}
+
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "update chunk config failed", nil, http.StatusBadRequest)
+		return
+	}
 
 	// 返回成功响应
 	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)

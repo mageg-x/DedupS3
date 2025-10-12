@@ -123,21 +123,29 @@ func (s *IamService) CreateAccount(username, password string) (*meta.IamAccount,
 	// 创建新账户
 	account := meta.CreateAccount(username)
 
-	// 添加根策略
+	// 添加根策略 和缺省策略
 	rootPolicyName := "root-policy"
-	rootPolicy := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["*"],"Resource":["*"]}]}`
-	policy := meta.IamPolicy{
-		ARN:         meta.FormatPolicyARN(account.AccountID, rootPolicyName),
-		Name:        rootPolicyName,
-		Description: rootPolicyName,
-		Document:    rootPolicy,
+	policyMap := map[string]string{
+		rootPolicyName:      meta.RootPolicy(),
+		"FullS3Policy":      meta.FullS3Policy(),
+		"FullIamPolicy":     meta.FullIAMPolicy(),
+		"FullConsolePolicy": meta.FullAdminPolicy(),
 	}
-	policyKey := POLICY_PREFIX + account.AccountID + ":" + rootPolicyName
-	if err := s.conf.TxnSetKv(txn, policyKey, &policy); err != nil {
-		logger.GetLogger("dedups3").Errorf("failed to set policy to kv config: %v", err)
-		return nil, fmt.Errorf("failed to set policy to kv config: %w", err)
+	for policyName, policyDoc := range policyMap {
+		policy := meta.IamPolicy{
+			ARN:         meta.FormatPolicyARN(account.AccountID, policyName),
+			Name:        policyName,
+			Description: policyName,
+			Document:    policyDoc,
+			CreateAt:    time.Now().UTC(),
+		}
+		policyKey := POLICY_PREFIX + account.AccountID + ":" + policyName
+		if err := s.conf.TxnSetKv(txn, policyKey, &policy); err != nil {
+			logger.GetLogger("dedups3").Errorf("failed to set policy to kv config: %v", err)
+			return nil, fmt.Errorf("failed to set policy to kv config: %w", err)
+		}
+		account.Policies[policyName] = struct{}{}
 	}
-	account.Policies[rootPolicyName] = struct{}{}
 
 	// 创建根用户
 	rootUser, err := account.CreateUser(username, password, nil, nil, []string{rootPolicyName}, true)
@@ -193,10 +201,10 @@ func (s *IamService) GetAccount(accountID string) (*meta.IamAccount, error) {
 }
 
 // CreateUser 为指定账户添加新用户
-func (s *IamService) CreateUser(accountID, username, password string, groups, roles, policies []string, enable bool) (*meta.IamUser, error) {
+func (s *IamService) CreateUser(accountID, username, targetusername, password string, groups, roles, policies []string, enable bool) (*meta.IamUser, error) {
 	// 验证用户名和密码
-	if err := meta.ValidateUsername(username); err != nil {
-		logger.GetLogger("dedups3").Errorf("username %s is invalid format", username)
+	if err := meta.ValidateUsername(targetusername); err != nil {
+		logger.GetLogger("dedups3").Errorf("username %s is invalid format", targetusername)
 		return nil, xhttp.ToError(xhttp.ErrInvalidName)
 	}
 
@@ -229,21 +237,43 @@ func (s *IamService) CreateUser(accountID, username, password string, groups, ro
 		return nil, fmt.Errorf("failed to unmarshal account %s: %w", accountID, err)
 	}
 
-	user, err := account.CreateUser(username, password, groups, roles, policies, enable)
+	user, err := account.CreateUser(targetusername, password, groups, roles, policies, enable)
 	if err != nil || user == nil {
-		logger.GetLogger("dedups3").Errorf("failed to create user %s in account %s: %v", username, accountID, err)
+		logger.GetLogger("dedups3").Errorf("failed to create user %s in account %s: %v", targetusername, accountID, err)
 		return nil, fmt.Errorf("create usser failed %w", err)
 	}
-	userKey := USER_PREFIX + accountID + ":" + username
+	userKey := USER_PREFIX + accountID + ":" + targetusername
 	if err = s.conf.TxnSetKv(txn, userKey, user); err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to set user to kv config: %v", err)
 		return nil, fmt.Errorf("failed to set user to kv config: %w", err)
 	}
 
-	account.Users[username] = struct{}{}
+	account.Users[targetusername] = struct{}{}
 	if err := s.conf.TxnSetKv(txn, accountKey, account); err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to set account to kv config: %v", err)
 		return nil, fmt.Errorf("failed to set account to kv config: %w", err)
+	}
+
+	// 往相关群组中添加
+	for _, gname := range groups {
+		groupKey := GROUP_PREFIX + accountID + ":" + gname
+		var _g meta.IamGroup
+		g, err := s.conf.Get(groupKey, _g)
+		if err != nil || g == nil {
+			logger.GetLogger("dedups3").Errorf("failed to get group %s: %v", gname, err)
+			return nil, fmt.Errorf("failed to get group %s: %w", gname, err)
+		}
+		group, ok := g.(*meta.IamGroup)
+		if !ok || group == nil {
+			logger.GetLogger("dedups3").Errorf("failed to get group %s: %v", gname, err)
+			return nil, fmt.Errorf("failed to get group %s: %w", gname, err)
+		}
+		group.Users = make(meta.StringSet)
+		group.Users[targetusername] = struct{}{}
+		if err := s.conf.TxnSetKv(txn, groupKey, group); err != nil {
+			logger.GetLogger("dedups3").Errorf("failed to set group to kv config: %v", err)
+			return nil, fmt.Errorf("failed to set group to kv config: %w", err)
+		}
 	}
 
 	if err = s.conf.TxnCommit(txn); err != nil {
@@ -255,31 +285,31 @@ func (s *IamService) CreateUser(accountID, username, password string, groups, ro
 }
 
 // GetUser 根据用户名获取用户信息，包括root用户
-func (s *IamService) GetUser(accountID, username string) (*meta.IamUser, error) {
-	userKey := USER_PREFIX + accountID + ":" + username
+func (s *IamService) GetUser(accountID, username, targetusername string) (*meta.IamUser, error) {
+	userKey := USER_PREFIX + accountID + ":" + targetusername
 	var _u meta.IamUser
 	u, err := s.conf.Get(userKey, _u)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		logger.GetLogger("dedups3").Errorf("user %s does not exist", username)
+		logger.GetLogger("dedups3").Errorf("user %s does not exist", targetusername)
 		return nil, xhttp.ToError(xhttp.ErrAdminNoSuchUser)
 	}
 	if err != nil || u == nil {
-		logger.GetLogger("dedups3").Errorf("failed to get user %s: %v", username, err)
-		return nil, fmt.Errorf("failed to get user %s: %w", username, err)
+		logger.GetLogger("dedups3").Errorf("failed to get user %s: %v", targetusername, err)
+		return nil, fmt.Errorf("failed to get user %s: %w", targetusername, err)
 	}
 	user, ok := u.(*meta.IamUser)
 	if !ok || user == nil {
-		logger.GetLogger("dedups3").Errorf("failed to get user %s: %v", username, err)
-		return nil, fmt.Errorf("failed to get user %s: %w", username, err)
+		logger.GetLogger("dedups3").Errorf("failed to get user %s: %v", targetusername, err)
+		return nil, fmt.Errorf("failed to get user %s: %w", targetusername, err)
 	}
 	return user, nil
 }
 
 // UpdateUser 更新用户
-func (s *IamService) UpdateUser(accountID, username, password string, groups, roles, policies []string, enable bool) (*meta.IamUser, error) {
+func (s *IamService) UpdateUser(accountID, username, targetusername, password string, groups, roles, policies []string, enable bool) (*meta.IamUser, error) {
 	// 验证用户名和密码
-	if err := meta.ValidateUsername(username); err != nil {
-		logger.GetLogger("dedups3").Errorf("username %s is invalid format", username)
+	if err := meta.ValidateUsername(targetusername); err != nil {
+		logger.GetLogger("dedups3").Errorf("username %s is invalid format", targetusername)
 		return nil, xhttp.ToError(xhttp.ErrInvalidName)
 	}
 
@@ -300,7 +330,7 @@ func (s *IamService) UpdateUser(accountID, username, password string, groups, ro
 		}
 	}()
 
-	userKey := USER_PREFIX + accountID + ":" + username
+	userKey := USER_PREFIX + accountID + ":" + targetusername
 	var _u meta.IamUser
 	u, err := s.conf.TxnGetKv(txn, userKey, _u)
 	if err != nil || u == nil {
@@ -314,29 +344,29 @@ func (s *IamService) UpdateUser(accountID, username, password string, groups, ro
 	}
 
 	if password != "" {
-		if err := meta.ValidatePassword(password, username); err != nil {
-			logger.GetLogger("dedups3").Errorf("password for user %s is invalid: %v", username, err)
+		if err := meta.ValidatePassword(password, targetusername); err != nil {
+			logger.GetLogger("dedups3").Errorf("password for user %s is invalid: %v", targetusername, err)
 			return nil, xhttp.ToError(xhttp.ErrInvalidRequest)
 		}
 		user.Password = password
 	}
 	user.Enabled = enable
 
-	user.Groups = make(map[string]struct{})
+	user.Groups = make(meta.StringSet)
 	for _, group := range groups {
 		if _, exists := ac.Groups[group]; exists {
 			user.Groups[group] = struct{}{}
 		}
 	}
 
-	user.Roles = make(map[string]struct{})
+	user.Roles = make(meta.StringSet)
 	for _, role := range roles {
 		if _, exists := ac.Roles[role]; exists {
 			user.Roles[role] = struct{}{}
 		}
 	}
 
-	user.AttachedPolicies = make(map[string]struct{})
+	user.AttachedPolicies = make(meta.StringSet)
 	for _, policy := range policies {
 		if _, exists := ac.Policies[policy]; exists {
 			user.AttachedPolicies[policy] = struct{}{}
@@ -348,6 +378,28 @@ func (s *IamService) UpdateUser(accountID, username, password string, groups, ro
 		return nil, fmt.Errorf("failed to set user to kv config: %w", err)
 	}
 
+	// 往相关群组中添加
+	for _, gname := range groups {
+		groupKey := GROUP_PREFIX + accountID + ":" + gname
+		var _g meta.IamGroup
+		g, err := s.conf.Get(groupKey, _g)
+		if err != nil || g == nil {
+			logger.GetLogger("dedups3").Errorf("failed to get group %s: %v", gname, err)
+			return nil, fmt.Errorf("failed to get group %s: %w", gname, err)
+		}
+		group, ok := g.(*meta.IamGroup)
+		if !ok || group == nil {
+			logger.GetLogger("dedups3").Errorf("failed to get group %s: %v", gname, err)
+			return nil, fmt.Errorf("failed to get group %s: %w", gname, err)
+		}
+		group.Users = make(meta.StringSet)
+		group.Users[targetusername] = struct{}{}
+		if err := s.conf.TxnSetKv(txn, groupKey, group); err != nil {
+			logger.GetLogger("dedups3").Errorf("failed to set group to kv config: %v", err)
+			return nil, fmt.Errorf("failed to set group to kv config: %w", err)
+		}
+	}
+
 	if err := s.conf.TxnCommit(txn); err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to commit transaction: %v", err)
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
@@ -357,7 +409,7 @@ func (s *IamService) UpdateUser(accountID, username, password string, groups, ro
 	return user, nil
 }
 
-func (s *IamService) DeleteUser(accountID, username string) error {
+func (s *IamService) DeleteUser(accountID, username, targetusername string) error {
 	txn, err := s.conf.TxnBegin()
 	if err != nil || txn == "" {
 		logger.GetLogger("dedups3").Errorf("failed to initialize kvstore txn: %v", err)
@@ -369,7 +421,7 @@ func (s *IamService) DeleteUser(accountID, username string) error {
 		}
 	}()
 
-	userKey := USER_PREFIX + accountID + ":" + username
+	userKey := USER_PREFIX + accountID + ":" + targetusername
 	var _u meta.IamUser
 	u, err := s.conf.TxnGetKv(txn, userKey, _u)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -391,7 +443,7 @@ func (s *IamService) DeleteUser(accountID, username string) error {
 
 	// 从group中删除关联user
 	for gname := range user.Groups {
-		groupKey := USER_PREFIX + accountID + ":" + gname
+		groupKey := GROUP_PREFIX + accountID + ":" + gname
 		var _g meta.IamGroup
 		g, err := s.conf.TxnGetKv(txn, groupKey, _g)
 		if g == nil || err != nil {
@@ -403,7 +455,7 @@ func (s *IamService) DeleteUser(accountID, username string) error {
 			logger.GetLogger("dedups3").Errorf("failed to get group to kv config: %v", err)
 			return fmt.Errorf("failed to get group to kv config: %w", err)
 		}
-		delete(group.Users, username)
+		delete(group.Users, targetusername)
 		if err := s.conf.TxnSetKv(txn, groupKey, group); err != nil {
 			logger.GetLogger("dedups3").Errorf("failed to set group to kv config: %v", err)
 			return fmt.Errorf("failed to set group to kv config: %w", err)
@@ -416,7 +468,7 @@ func (s *IamService) DeleteUser(accountID, username string) error {
 		return fmt.Errorf("failed to delete user to kv config: %w", err)
 	}
 
-	accountKey := USER_PREFIX + accountID
+	accountKey := ACCOUNT_PREFIX + accountID
 	var _ac meta.IamAccount
 	ac, err := s.conf.TxnGetKv(txn, accountKey, _ac)
 	if err != nil || ac == nil {
@@ -429,7 +481,7 @@ func (s *IamService) DeleteUser(accountID, username string) error {
 		return fmt.Errorf("failed to get account to kv config: %w", err)
 	}
 	// 从account 中删除 user
-	delete(account.Users, username)
+	delete(account.Users, targetusername)
 	if err := s.conf.TxnSetKv(txn, accountKey, account); err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to set account to kv config: %v", err)
 		return fmt.Errorf("failed to set account to kv config: %w", err)
@@ -960,7 +1012,7 @@ func (s *IamService) CreateRole(accountID, username, rolename, desc, assumeRoleP
 		Description:      desc,
 		AssumeRolePolicy: assumeRolePolicy,
 		CreateAt:         time.Now().UTC(),
-		AttachedPolicies: make(map[string]struct{}),
+		AttachedPolicies: make(meta.StringSet),
 	}
 	for _, pname := range attachPolicies {
 		role.AttachedPolicies[pname] = struct{}{}
@@ -1049,7 +1101,7 @@ func (s *IamService) UpdateRole(accountID, username, rolename, desc, assumeRoleP
 	}
 	role.AssumeRolePolicy = assumeRolePolicy
 	role.Description = desc
-	role.AttachedPolicies = make(map[string]struct{})
+	role.AttachedPolicies = make(meta.StringSet)
 	for _, pname := range attachPolicies {
 		role.AttachedPolicies[pname] = struct{}{}
 	}
@@ -1178,10 +1230,12 @@ func (s *IamService) CreateGroup(accountID, username, groupname, desc string, us
 		return nil, xhttp.ToError(xhttp.ErrGroupAlreadyExists)
 	}
 	group := meta.IamGroup{
-		ARN:         meta.FormatGroupARN(accountID, groupname),
-		Name:        groupname,
-		Description: desc,
-		CreateAt:    time.Now().UTC(),
+		ARN:              meta.FormatGroupARN(accountID, groupname),
+		Name:             groupname,
+		Description:      desc,
+		Users:            make(meta.StringSet),
+		AttachedPolicies: make(meta.StringSet),
+		CreateAt:         time.Now().UTC(),
 	}
 	for _, uname := range users {
 		if _, exists := account.Users[uname]; exists {
@@ -1267,14 +1321,14 @@ func (s *IamService) UpdateGroup(accountID, username, groupname, desc string, us
 		return nil, fmt.Errorf("failed to get group from kv config: %w", err)
 	}
 	group.Description = desc
-	group.Users = make(map[string]struct{})
+	group.Users = make(meta.StringSet)
 	for _, uname := range users {
 		if _, exists := account.Users[uname]; exists {
 			group.Users[uname] = struct{}{}
 		}
 	}
 
-	group.AttachedPolicies = make(map[string]struct{})
+	group.AttachedPolicies = make(meta.StringSet)
 	for _, pname := range policies {
 		if _, exists := account.Policies[pname]; exists {
 			group.AttachedPolicies[pname] = struct{}{}
@@ -1441,7 +1495,7 @@ func (s *IamService) ListUserAllPolicies(accountID, username string) ([]*meta.Ia
 		logger.GetLogger("dedups3").Errorf("failed to get user : %v", u)
 		return nil, fmt.Errorf(`failed to get user : %v`, err)
 	}
-	policynames := make(map[string]struct{})
+	policynames := make(meta.StringSet)
 
 	// 直接附加的策略
 	for pname := range user.AttachedPolicies {
@@ -1508,7 +1562,7 @@ func (s *IamService) ListUserAllPolicies(accountID, username string) ([]*meta.Ia
 
 // ListUserPermissions 获取用户所有允许的操作
 func (s *IamService) ListUserPermissions(accountID, username string) ([]string, error) {
-	permissions := make(map[string]struct{})
+	permissions := make(meta.StringSet)
 	allPolicies, err := s.ListUserAllPolicies(accountID, username)
 	if err != nil {
 		return nil, err

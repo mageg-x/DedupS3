@@ -103,11 +103,12 @@ const (
 
 // Storage 表示单个存储实例的元数据
 type Storage struct {
-	ID       string               `json:"id" msgpack:"id"`       // 唯一标识符
-	Class    string               `json:"class" msgpack:"class"` // 存储类型 (标准， 低频， 归档存储)
-	Type     string               `json:"type" msgpack:"type"`   // 存储类别 (s3, disk, etc.)
-	Conf     config.StorageConfig `json:"conf" msgpack:"conf"`   // 存储配置
-	Instance block.BlockStore     `json:"-" msgpack:"-"`         // 实际读写实例
+	ID       string               `json:"id" msgpack:"id"`                           // 唯一标识符
+	Class    string               `json:"class" msgpack:"class"`                     // 存储类型 (标准， 低频， 归档存储)
+	Type     string               `json:"type" msgpack:"type"`                       // 存储类别 (s3, disk, etc.)
+	Conf     config.StorageConfig `json:"conf" msgpack:"conf"`                       // 存储配置
+	Chunk    *ChunkConfig         `json:"chunk,omitempty" msgpack:"chunk,omitempty"` // 切片配置
+	Instance block.BlockStore     `json:"-" msgpack:"-"`                             // 实际读写实例
 }
 
 type ChunkConfig struct {
