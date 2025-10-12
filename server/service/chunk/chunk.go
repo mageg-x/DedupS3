@@ -8,6 +8,7 @@ import (
 	"fmt"
 	xcache "github.com/mageg-x/dedups3/plugs/cache"
 	"github.com/mageg-x/dedups3/plugs/kv"
+	"github.com/mageg-x/dedups3/service/storage"
 	"io"
 	"reflect"
 	"sync"
@@ -28,6 +29,11 @@ var (
 	instance *ChunkService
 	mu       = sync.Mutex{}
 )
+
+type ChunkerOpts struct {
+	fastcdc.ChunkerOpts
+	FixSize, Encrypt, Compress bool
+}
 
 type ChunkService struct {
 	kvstore kv.KVStore
@@ -59,15 +65,30 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.BaseObject, cb WriteObjCB)
 	// 创建输出通道
 	chunkChan := make(chan *meta.Chunk, 100)
 
-	// 根据 cfg.Block.ChunkSize 设置 ChunkerOpts
-	//cfg := xconf.Get()
-	// 边界检查,默认 16KB
-	//chunkSize := max(cfg.Block.ChunkSize, 16*1024)
+	// 根据 ChunkSize 设置 ChunkerOpts
 	chunkSize := 16 * 1024
-	opts := &fastcdc.ChunkerOpts{
-		MinSize:    chunkSize * 5 / 10, // 50% of S
-		NormalSize: chunkSize,          // 100% of S
-		MaxSize:    chunkSize * 2,      // 200% of S
+	FixSize, Encrypt, Compress := false, true, true
+	ss := storage.GetStorageService()
+	if ss != nil {
+		if _storage, err := ss.GetStorage(obj.DataLocation); err == nil {
+			if _storage.Chunk != nil {
+				chunkSize = max(int(_storage.Chunk.ChunkSize*1024), 16*1024)
+				FixSize = _storage.Chunk.FixSize
+				Encrypt = _storage.Chunk.Encrypt
+				Compress = _storage.Chunk.Compress
+			}
+		}
+	}
+
+	opts := &ChunkerOpts{
+		ChunkerOpts: fastcdc.ChunkerOpts{
+			MinSize:    chunkSize * 5 / 10, // 50% of S
+			NormalSize: chunkSize,          // 100% of S
+			MaxSize:    chunkSize * 2,      // 200% of S
+		},
+		FixSize:  FixSize,
+		Encrypt:  Encrypt,
+		Compress: Compress,
 	}
 
 	// 切分
@@ -158,15 +179,14 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.BaseObject, cb WriteObjCB)
 }
 
 // Split DoChunk 简单的CDC分块函数
-func (c *ChunkService) Split(ctx context.Context, r io.Reader, outputChan chan *meta.Chunk, opt *fastcdc.ChunkerOpts, obj *meta.BaseObject) error {
+func (c *ChunkService) Split(ctx context.Context, r io.Reader, outputChan chan *meta.Chunk, opt *ChunkerOpts, obj *meta.BaseObject) error {
 	//cfg := xconf.Get()
 	var prevChunk *meta.Chunk
 	objSize := 0 // 统计真实长度
 
-	if false {
+	if opt.FixSize {
 		// 固定切片
-		//chunkSize := max(cfg.Block.ChunkSize, 16*1024)
-		chunkSize := 16 * 1024
+		chunkSize := max(opt.ChunkerOpts.NormalSize, 16*1024)
 		tempBuf := make([]byte, chunkSize)
 		chunkData := make([]byte, 0, chunkSize)
 		for {
@@ -223,7 +243,7 @@ func (c *ChunkService) Split(ctx context.Context, r io.Reader, outputChan chan *
 		// 把 []byte 转成 io.Reader
 		// reader := bytes.NewReader(bodyData)
 		// 创建CDC分块器
-		chunker, err := fastcdc.NewChunker("fastcdc", r, opt)
+		chunker, err := fastcdc.NewChunker("fastcdc", r, &opt.ChunkerOpts)
 		if err != nil {
 			return fmt.Errorf("error creating chunker: %w", err)
 		}

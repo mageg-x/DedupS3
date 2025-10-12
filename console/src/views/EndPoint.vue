@@ -283,74 +283,115 @@
 
     <!-- 查看详情对话框 -->
     <div v-if="showViewDialog" class="fixed inset-0 bg-[rgba(0,0,0,0.5)] flex items-center justify-center z-50 transition-opacity duration-300">
-      <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto transition-all duration-300 transform animate-slideUp">
-        <div class="p-5 border-b border-gray-100 flex items-center justify-between">
-          <h3 class="text-lg font-bold text-gray-800">{{ t('endpoint.viewStoragePoint') }}</h3>
-          <button @click="showViewDialog = false" class="text-gray-500 hover:text-gray-700 transition-colors" aria-label="关闭">
-            <i class="fas fa-times"></i>
+      <div class="bg-white rounded-xl shadow-lg w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto transition-all duration-300 transform animate-slideUp">
+        <!-- 对话框头部 -->
+        <div class="p-6 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-xl">
+          <h3 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+            <i class="fas fa-info-circle text-blue-600"></i>
+            {{ t('endpoint.viewStoragePoint') }}
+          </h3>
+          <button @click="showViewDialog = false" class="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-full hover:bg-gray-100" aria-label="关闭">
+            <i class="fas fa-times text-lg"></i>
           </button>
         </div>
-        <div class="p-5">
+        
+        <!-- 对话框内容 -->
+        <div class="p-6">
           <div class="space-y-6">
-            <div>
-              <h4 class="font-semibold text-gray-700 mb-2">{{ t('endpoint.basicInfo') }}</h4>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- 基本信息卡片 -->
+            <div class="bg-gradient-to-br from-white to-gray-50 rounded-lg p-5 border border-gray-100 shadow-sm">
+              <h4 class="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                <i class="fas fa-id-card text-blue-500"></i>
+                {{ t('endpoint.basicInfo') }}
+              </h4>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div class="flex items-center">
-                  <span class="text-gray-500 w-24">{{ t('endpoint.id') }}:</span>
-                  <span class="font-medium">{{ currentViewPoint?.id }}</span>
+                  <span class="text-gray-500 w-24 font-medium">{{ t('endpoint.id') }}:</span>
+                  <span class="font-medium text-gray-800 bg-blue-50 px-3 py-1 rounded">
+                    {{ currentViewPoint?.id || '-' }}
+                  </span>
                 </div>
                 <div class="flex items-center">
-                  <span class="text-gray-500 w-24">{{ t('endpoint.class') }}:</span>
-                  <span class="font-medium">{{ currentViewPoint?.type }}</span>
+                  <span class="text-gray-500 w-24 font-medium">{{ t('endpoint.class') }}:</span>
+                  <span class="font-medium px-3 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+                    {{ currentViewPoint?.type || '-' }}
+                  </span>
                 </div>
                 <div class="flex items-center">
-                  <span class="text-gray-500 w-24">{{ t('endpoint.type') }}:</span>
-                  <span class="font-medium">{{ currentViewPoint?.storage === 'disk' ? t('endpoint.diskStorage') : t('endpoint.s3CompatibleStorage') }}</span>
+                  <span class="text-gray-500 w-24 font-medium">{{ t('endpoint.type') }}:</span>
+                  <span class="font-medium text-gray-800">
+                    {{ currentViewPoint?.storage === 'disk' ? t('endpoint.diskStorage') : t('endpoint.s3CompatibleStorage') }}
+                  </span>
                 </div>
               </div>
             </div>
             
-            <div v-if="currentViewPoint?.storage === 'disk'">
-              <h4 class="font-semibold text-gray-700 mb-2">{{ t('endpoint.diskConfiguration') }}</h4>
-              <div class="flex items-center">
-                <span class="text-gray-500 w-24">{{ t('endpoint.absolutePath') }}:</span>
-                <span class="font-medium">{{ currentViewPoint?.path }}</span>
+            <!-- 磁盘配置卡片 -->
+            <div v-if="currentViewPoint?.storage === 'disk'" class="bg-gradient-to-br from-white to-gray-50 rounded-lg p-5 border border-gray-100 shadow-sm">
+              <h4 class="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                <i class="fas fa-hdd text-green-500"></i>
+                {{ t('endpoint.diskConfiguration') }}
+              </h4>
+              <div class="flex items-start gap-2">
+                <span class="text-gray-500 w-24 font-medium pt-1">{{ t('endpoint.absolutePath') }}:</span>
+                <div class="flex-1 bg-gray-50 px-4 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 break-all">
+                  {{ currentViewPoint?.path || '-' }}
+                </div>
               </div>
             </div>
             
-            <div v-if="currentViewPoint?.storage === 's3'">
-              <h4 class="font-semibold text-gray-700 mb-2">{{ t('endpoint.s3Configuration') }}</h4>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="flex items-center">
-                  <span class="text-gray-500 w-28">{{ t('endpoint.accessKey') }}:</span>
-                  <span class="font-medium">{{ currentViewPoint?.accessKey }}</span>
+            <!-- S3配置卡片 -->
+            <div v-if="currentViewPoint?.storage === 's3'" class="bg-gradient-to-br from-white to-gray-50 rounded-lg p-5 border border-gray-100 shadow-sm">
+              <h4 class="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                <i class="fas fa-cloud text-blue-500"></i>
+                {{ t('endpoint.s3Configuration') }}
+              </h4>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div class="flex items-start gap-2">
+                  <span class="text-gray-500 w-28 font-medium pt-1">{{ t('endpoint.accessKey') }}:</span>
+                  <div class="flex-1 bg-gray-50 px-3 py-1.5 rounded border border-gray-200 text-sm">
+                    {{ currentViewPoint?.accessKey || '-' }}
+                  </div>
                 </div>
-                <div class="flex items-center">
-                  <span class="text-gray-500 w-28">{{ t('endpoint.secretKey') }}:</span>
-                  <span class="font-medium">{{ currentViewPoint?.secretKey ? '******' : '-' }}</span>
+                <div class="flex items-start gap-2">
+                  <span class="text-gray-500 w-28 font-medium pt-1">{{ t('endpoint.secretKey') }}:</span>
+                  <div class="flex-1 bg-gray-50 px-3 py-1.5 rounded border border-gray-200 text-sm">
+                    {{ currentViewPoint?.secretKey ? '******' : '-' }}
+                  </div>
                 </div>
-                <div class="flex items-center">
-                  <span class="text-gray-500 w-28">{{ t('endpoint.region') }}:</span>
-                  <span class="font-medium">{{ currentViewPoint?.region }}</span>
+                <div class="flex items-start gap-2">
+                  <span class="text-gray-500 w-28 font-medium pt-1">{{ t('endpoint.region') }}:</span>
+                  <div class="flex-1 bg-gray-50 px-3 py-1.5 rounded border border-gray-200 text-sm">
+                    {{ currentViewPoint?.region || '-' }}
+                  </div>
                 </div>
-                <div class="flex items-center">
-                  <span class="text-gray-500 w-28">{{ t('endpoint.endpointLabel') }}:</span>
-                  <span class="font-medium">{{ currentViewPoint?.endpoint }}</span>
+                <div class="flex items-start gap-2">
+                  <span class="text-gray-500 w-28 font-medium pt-1">{{ t('endpoint.endpointLabel') }}:</span>
+                  <div class="flex-1 bg-gray-50 px-3 py-1.5 rounded border border-gray-200 text-sm break-all">
+                    {{ currentViewPoint?.endpoint || '-' }}
+                  </div>
                 </div>
-                <div class="flex items-center">
-                  <span class="text-gray-500 w-28">{{ t('endpoint.bucket') }}:</span>
-                  <span class="font-medium">{{ currentViewPoint?.bucket }}</span>
+                <div class="flex items-start gap-2">
+                  <span class="text-gray-500 w-28 font-medium pt-1">{{ t('endpoint.bucket') }}:</span>
+                  <div class="flex-1 bg-gray-50 px-3 py-1.5 rounded border border-gray-200 text-sm">
+                    {{ currentViewPoint?.bucket || '-' }}
+                  </div>
                 </div>
-                <div class="flex items-center">
-                  <span class="text-gray-500 w-28">{{ t('endpoint.usePathStyle') }}:</span>
-                  <span class="font-medium">{{ currentViewPoint?.usePathStyle ? t('endpoint.enabled') : t('endpoint.disabled') }}</span>
+                <div class="flex items-start gap-2">
+                  <span class="text-gray-500 w-28 font-medium pt-1">{{ t('endpoint.usePathStyle') }}:</span>
+                  <span class="px-3 py-1.5 rounded-full text-xs font-medium mt-0.5" :class="currentViewPoint?.usePathStyle ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'">
+                    {{ currentViewPoint?.usePathStyle ? t('endpoint.enabled') : t('endpoint.disabled') }}
+                  </span>
                 </div>
               </div>
             </div>
           </div>
         </div>
-        <div class="p-5 border-t border-gray-100 flex items-center justify-end">
-          <button @click="showViewDialog = false" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+        
+        <!-- 对话框底部 -->
+        <div class="p-6 border-t border-gray-100 flex items-center justify-end bg-gray-50 rounded-b-xl">
+          <button @click="showViewDialog = false" class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2 shadow-sm hover:shadow">
+            <i class="fas fa-times-circle"></i>
             {{ t('endpoint.close') }}
           </button>
         </div>

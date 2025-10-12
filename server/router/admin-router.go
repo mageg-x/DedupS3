@@ -113,6 +113,9 @@ func registerAdminRouter(mr *mux.Router) {
 	api_router.Methods(http.MethodPost).Path("/config/createstorage").HandlerFunc(handler.AdminCreateStorageHandler)
 	api_router.Methods(http.MethodPost).Path("/config/teststorage").HandlerFunc(handler.AdminTestStorageHandler)
 	api_router.Methods(http.MethodDelete).Path("/config/deletestorage").HandlerFunc(handler.AdminDeleteStorageHandler)
+	api_router.Methods(http.MethodGet).Path("/debug/object").HandlerFunc(handler.AdminDebugObjectInfoHandler)
+	api_router.Methods(http.MethodGet).Path("/debug/block").HandlerFunc(handler.AdminDebugBlockInfoHandler)
+	api_router.Methods(http.MethodGet).Path("/debug/chunk").HandlerFunc(handler.AdminDebugChunkInfoHandler)
 
 	// 处理静态资源路由
 	ar.Methods(http.MethodGet).Path("/{path:.*}").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

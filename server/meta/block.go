@@ -31,7 +31,7 @@ type BlockHeader struct {
 	Compressed bool         `json:"compressed" msgpack:"compressed"`           // 是否压缩
 	Encrypted  bool         `json:"encrypted" msgpack:"encrypted"`             // 是否加密
 	Location   string       `json:"location" xml:"Location"`                   // 所在的的Address
-	ChunkList  []BlockChunk `json:"chunk_list" msgpack:"chunk_list"`           // 块列表
+	ChunkList  []BlockChunk `json:"chunk_list" msgpack:"chunk_list"`           // 切片列表
 	Finally    bool         `json:"finally" msgpack:"finally" default:"false"` // 是否结束不再增加内容
 	StorageID  string       `json:"storage_id" msgpack:"storage_id"`           // 存储后端ID
 	CreatedAt  time.Time    `json:"created_at" msgpack:"created_at"`           // 创建时间

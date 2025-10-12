@@ -308,3 +308,6 @@ export const liststorage = apicall.get("/config/liststorage", "Failed to list st
 export const createstorage = apicall.post("/config/createstorage", "Failed to create storage info");
 export const teststorage = apicall.post("/config/teststorage", "Failed to test storage info");
 export const delstorage= apicall.delete("/config/deletestorage", "Failed to delete storage info");
+export const objectinfo= apicall.get("/debug/object", "Failed to get object info");
+export const blockinfo= apicall.get("/debug/block", "Failed to get block info");
+export const chunkinfo= apicall.get("/debug/chunk", "Failed to get chunk info");

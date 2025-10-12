@@ -203,10 +203,10 @@ const loadConfigs = async () => {
       for (const [storageID, config] of Object.entries(result.data)) {
         configsArray.push({
           storageID,
-          chunkSize: config.ChunkSize || 32768,
-          fixSize: config.FixSize ?? true,
-          encrypt: config.Encrypt ?? false,
-          compress: config.Compress ?? true
+          chunkSize: config.chunkSize || 32768, // 修正：使用小写chunkSize
+          fixSize: config.fixSize ?? true,     // 修正：使用小写fixSize
+          encrypt: config.encrypt ?? false,    // 修正：使用小写encrypt
+          compress: config.compress ?? true    // 修正：使用小写compress
         });
       }
       configs.value = configsArray;
@@ -225,17 +225,22 @@ const loadConfigDetail = async (storageID) => {
   try {
     const result = await getchunkcfg({ storageID });
     if (result.code === 0 && result.data) {
-      const { chunkSize, fixSize, encrypt, compress } = result.data;
+      // 确保使用正确的字段名
+      const chunkSize = result.data.chunkSize || result.data.ChunkSize || 32768;
+      const fixSize = 'fixSize' in result.data ? result.data.fixSize : ('FixSize' in result.data ? result.data.FixSize : true);
+      const encrypt = 'encrypt' in result.data ? result.data.encrypt : ('Encrypt' in result.data ? result.data.Encrypt : false);
+      const compress = 'compress' in result.data ? result.data.compress : ('Compress' in result.data ? result.data.Compress : true);
+      
       const { value, unit } = convertToDisplayUnit(chunkSize);
       
       editingConfig.value = {
-        storageID: result.data.storageID,
+        storageID,
         chunkSize,
         chunkSizeDisplay: value,
         chunkSizeUnit: unit,
-        fixSize: fixSize ?? true,
-        encrypt: encrypt ?? false,
-        compress: compress ?? true
+        fixSize,
+        encrypt,
+        compress
       };
     } else {
       throw new Error(result.msg || '获取配置详情失败');

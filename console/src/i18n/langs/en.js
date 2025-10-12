@@ -765,6 +765,68 @@ const en = {
       debugToolDescription: "Advanced tools for system diagnosis and troubleshooting."
   },
 
+  // 调试工具页面
+  debug: {
+    metadataQuery: "Metadata Query",
+    objectMetadata: "Object Metadata",
+    chunkMetadata: "Chunk Metadata",
+    blockMetadata: "Block Metadata",
+    queryPlaceholder: "Enter ID to query",
+    queryButton: "Query",
+    metadataViewer: "Metadata Viewer",
+    noData: "No data available",
+    queryResults: "Query Results",
+    metadataType: "Metadata Type",
+    id: "ID",
+    size: "Size",
+    chunksCount: "Chunks Count",
+    blocksCount: "Blocks Count",
+    hash: "Hash",
+    createTime: "Create Time",
+    lastAccessTime: "Last Access Time",
+    references: "References",
+    blockList: "Block List",
+    chunkList: "Chunk List",
+    key: "Key",
+    value: "Value",
+    details: "Details",
+    showAsJson: "Show as JSON",
+    formattedView: "Formatted View",
+    downloadJson: "Download JSON",
+    copyToClipboard: "Copy to Clipboard",
+    copied: "Copied!",
+    // 对象元数据字段
+    bucket: "Bucket",
+    etag: "ETag",
+    // 数据类型标签
+    objectType: "Object",
+    chunkType: "Chunk",
+    blockType: "Block",
+    // 操作状态
+    querying: "Querying...",
+    copyFailed: "Failed to copy",
+    // 表格列头
+    chunkHash: "Chunk Hash",
+    // 其他字段
+    finally: "Final Flag",
+    createdAt: "Created At",
+    lastModified: "Last Modified",
+    dataLocation: "Data Location",
+    // 切片元数据字段
+    ref_count: "Reference Count",
+    block_id: "Block ID",
+    // 块元数据字段
+    ver: "Version",
+    total_size: "Total Size",
+    real_size: "Real Size",
+    compressed: "Compressed",
+    encrypted: "Encrypted",
+    location: "Location",
+    storage_id: "Storage ID",
+    created_at: "Created At",
+    updated_at: "Updated At"
+  },
+
   // 事件日志页面
   event: {
     pageTitle: "Event Log",
@@ -1016,6 +1078,9 @@ const en = {
     loadFailed: "Failed to load storage point list",
     enabled: "Enabled",
     disabled: "Disabled",
+    view: "View",
+    viewStoragePoint: "View Storage Point Details",
+    basicInfo: "Basic Information",
     storageType: {
       standard: {
         label: "Standard Storage",

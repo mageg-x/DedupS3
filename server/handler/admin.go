@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/mageg-x/dedups3/internal/vfs"
-	block2 "github.com/mageg-x/dedups3/plugs/block"
 	"io"
 	"net/http"
 	"net/url"
@@ -17,18 +15,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mageg-x/dedups3/middleware"
-	"github.com/mageg-x/dedups3/service/storage"
-
 	xconf "github.com/mageg-x/dedups3/internal/config"
 	xhttp "github.com/mageg-x/dedups3/internal/http"
 	"github.com/mageg-x/dedups3/internal/logger"
 	"github.com/mageg-x/dedups3/internal/utils"
+	"github.com/mageg-x/dedups3/internal/vfs"
 	"github.com/mageg-x/dedups3/meta"
+	"github.com/mageg-x/dedups3/middleware"
+	block2 "github.com/mageg-x/dedups3/plugs/block"
+	"github.com/mageg-x/dedups3/plugs/kv"
 	sb "github.com/mageg-x/dedups3/service/bucket"
 	iam2 "github.com/mageg-x/dedups3/service/iam"
 	"github.com/mageg-x/dedups3/service/object"
 	"github.com/mageg-x/dedups3/service/stats"
+	"github.com/mageg-x/dedups3/service/storage"
 )
 
 type PrepareEnv struct {
@@ -251,7 +251,7 @@ func AdminLogoutHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminGetStatsHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[Call GetStatsHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call GetStatsHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil {
 		return
@@ -270,7 +270,7 @@ func AdminGetStatsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminListBucketsHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[Call ListBucketHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call ListBucketHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil {
 		return
@@ -318,7 +318,7 @@ func AdminListBucketsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminCreateBucketHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call createbuckethandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call createbuckethandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil {
 		return
@@ -366,7 +366,7 @@ func AdminCreateBucketHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminDeleteBucketHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call deletebuckethandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call deletebuckethandler] %#v", r.URL)
 	query := utils.DecodeQuerys(r.URL.Query())
 	bucketName := query.Get("name")
 
@@ -399,7 +399,7 @@ func AdminDeleteBucketHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminListObjectsHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminlistobjectshandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminlistobjectshandler] %#v", r.URL)
 
 	query := utils.DecodeQuerys(r.URL.Query())
 	bucketName := query.Get("bucket")
@@ -486,7 +486,7 @@ func AdminListObjectsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminCreateFolderHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call admincreatefolderhandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call admincreatefolderhandler] %#v", r.URL)
 
 	// 定义接收结构体
 	var req struct {
@@ -542,7 +542,7 @@ func AdminCreateFolderHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminPutObjectHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminputobjecthandler]")
+	logger.GetLogger("dedups3").Debugf("[Call adminputobjecthandler]")
 	// 限制请求体大小
 	const maxRequestSize = 500 << 20 // 500MB
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestSize)
@@ -643,7 +643,7 @@ func AdminPutObjectHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminDelObjectHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call admindelobjecthandler]")
+	logger.GetLogger("dedups3").Debugf("[Call admindelobjecthandler]")
 
 	type Req struct {
 		BucketName string   `json:"bucket"`
@@ -733,7 +733,7 @@ func AdminDelObjectHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminGetObjectHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call admingetobjecthandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call admingetobjecthandler] %#v", r.URL)
 	type Req struct {
 		BucketName string   `json:"bucket"`
 		Files      []string `json:"files"`
@@ -912,7 +912,7 @@ func AdminGetObjectHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminListUserHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminListUserHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[call adminListUserHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil {
 		return
@@ -946,7 +946,7 @@ func AdminListUserHandler(w http.ResponseWriter, r *http.Request) {
 	xhttp.AdminWriteJSONError(w, r, 0, "success", userList, http.StatusOK)
 }
 func AdminGetUserHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminGetUserHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[call adminGetUserHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil {
 		return
@@ -992,7 +992,7 @@ func AdminGetUserHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminCreateUserHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminCreateUserHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminCreateUserHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil {
 		return
@@ -1044,7 +1044,7 @@ func AdminCreateUserHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminUpdateUserHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminUpdateUserHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminUpdateUserHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil {
 		return
@@ -1097,7 +1097,7 @@ func AdminUpdateUserHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminDeleteUserHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminDeleteUserHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil {
 		return
@@ -1131,7 +1131,7 @@ func AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminListPolicyHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminListPolicyHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminListPolicyHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil {
 		return
@@ -1179,7 +1179,7 @@ func AdminGetPolicyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminUpdatePolicyHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminListPolicyHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminListPolicyHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil {
 		return
@@ -1223,7 +1223,7 @@ func AdminUpdatePolicyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminCreatePolicyHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminListPolicyHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminListPolicyHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil {
 		return
@@ -1303,7 +1303,7 @@ func AdminDeletePolicyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminListRoleHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminListRoleHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminListRoleHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil || pe.ac == nil {
 		return
@@ -1319,7 +1319,7 @@ func AdminListRoleHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminGetRoleHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminGetRoleHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminGetRoleHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil || pe.ac == nil {
 		return
@@ -1339,7 +1339,7 @@ func AdminGetRoleHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminCreateRoleHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminCreateRoleHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminCreateRoleHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil {
 		return
@@ -1387,7 +1387,7 @@ func AdminCreateRoleHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminUpdateRoleHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminUpdateRoleHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminUpdateRoleHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil {
 		return
@@ -1431,7 +1431,7 @@ func AdminUpdateRoleHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminDeleteRoleHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminDeleteRoleHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminDeleteRoleHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil || pe.ac == nil {
 		return
@@ -1458,7 +1458,7 @@ func AdminDeleteRoleHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminListGroupHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminListGroupHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminListGroupHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil {
 		return
@@ -1480,7 +1480,7 @@ func AdminListGroupHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminGetGroupHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminGetGroupHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminGetGroupHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil || pe.ac == nil {
 		return
@@ -1501,7 +1501,7 @@ func AdminGetGroupHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminCreateGroupHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminCreateGroupHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminCreateGroupHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil {
 		return
@@ -1546,7 +1546,7 @@ func AdminCreateGroupHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminUpdateGroupHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminUpdateGroupHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminUpdateGroupHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil {
 		return
@@ -1588,7 +1588,7 @@ func AdminUpdateGroupHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminDeleteGroupHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminDeleteGroupHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminDeleteGroupHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil || pe.ac == nil {
 		return
@@ -1615,7 +1615,7 @@ func AdminDeleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminListAccessKeyHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminListAccessKeyHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminListAccessKeyHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil || pe.ac == nil || pe.user == nil {
 		return
@@ -1657,7 +1657,7 @@ func AdminListAccessKeyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminCreateAccessKeyHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminCreateAccessKeyHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminCreateAccessKeyHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil {
 		return
@@ -1705,7 +1705,7 @@ func AdminCreateAccessKeyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminUpdateAccessKeyHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call AdminUpdateAccessKeyHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call AdminUpdateAccessKeyHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil {
 		return
@@ -1753,7 +1753,7 @@ func AdminUpdateAccessKeyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminDeleteAccessKeyHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminDeleteAccessKeyHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminDeleteAccessKeyHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil || pe.ac == nil {
 		return
@@ -1780,7 +1780,7 @@ func AdminDeleteAccessKeyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminListQuotaHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminListQuotaHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminListQuotaHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil || pe.ac == nil {
 		return
@@ -1809,7 +1809,7 @@ func AdminListQuotaHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminCreateQuotaHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminCreateQuotaHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminCreateQuotaHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil || pe.ac == nil {
 		return
@@ -1862,7 +1862,7 @@ func AdminCreateQuotaHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminUpdateQuotaHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminUpdateQuotaHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminUpdateQuotaHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil || pe.ac == nil {
 		return
@@ -1905,7 +1905,7 @@ func AdminUpdateQuotaHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminDeleteQuotaHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call AdminDeleteQuotaHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call AdminDeleteQuotaHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil || pe.ac == nil {
 		return
@@ -1933,7 +1933,7 @@ func AdminDeleteQuotaHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminListChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminListChunkConfigHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminListChunkConfigHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil || pe.ac == nil {
 		return
@@ -1941,7 +1941,7 @@ func AdminListChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 	ss := storage.GetStorageService()
 	if ss == nil {
-		logger.GetLogger("dedups3").Errorf("[call adminListChunkConfigHandler] storage service is nil")
+		logger.GetLogger("dedups3").Debugf("[Call adminListChunkConfigHandler] storage service is nil")
 		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "storage service is nil", nil, http.StatusInternalServerError)
 		return
 	}
@@ -1958,7 +1958,7 @@ func AdminListChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminGetChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminGetChunkConfigHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminGetChunkConfigHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil || pe.ac == nil {
 		return
@@ -1968,7 +1968,7 @@ func AdminGetChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 	ss := storage.GetStorageService()
 	if ss == nil {
-		logger.GetLogger("dedups3").Errorf("[call adminListChunkConfigHandler] storage service is nil")
+		logger.GetLogger("dedups3").Debugf("[Call adminListChunkConfigHandler] storage service is nil")
 		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "storage service is nil", nil, http.StatusInternalServerError)
 		return
 	}
@@ -1992,7 +1992,7 @@ func AdminGetChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminSetChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminSetChunkConfigHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminSetChunkConfigHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil || pe.ac == nil {
 		return
@@ -2015,7 +2015,7 @@ func AdminSetChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 	ss := storage.GetStorageService()
 	if ss == nil {
-		logger.GetLogger("dedups3").Errorf("[call adminListChunkConfigHandler] storage service is nil")
+		logger.GetLogger("dedups3").Debugf("[Call adminListChunkConfigHandler] storage service is nil")
 		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "storage service is nil", nil, http.StatusInternalServerError)
 		return
 	}
@@ -2043,7 +2043,7 @@ func AdminSetChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminListStorageHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminListStorageHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminListStorageHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil || pe.ac == nil {
 		return
@@ -2087,7 +2087,7 @@ func AdminListStorageHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminCreateStorageHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminCreateStorageHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminCreateStorageHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil || pe.ac == nil {
 		return
@@ -2200,7 +2200,7 @@ func AdminCreateStorageHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminTestStorageHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminTestStorageHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminTestStorageHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil || pe.ac == nil {
 		return
@@ -2272,7 +2272,7 @@ func AdminTestStorageHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminDeleteStorageHandler(w http.ResponseWriter, r *http.Request) {
-	logger.GetLogger("dedups3").Errorf("[call adminDeleteStorageHandler] %#v", r.URL)
+	logger.GetLogger("dedups3").Debugf("[Call adminDeleteStorageHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
 	if pe == nil || pe.ac == nil {
 		return
@@ -2291,4 +2291,103 @@ func AdminDeleteStorageHandler(w http.ResponseWriter, r *http.Request) {
 	bs.RemoveStorage(storageID)
 
 	xhttp.AdminWriteJSONError(w, r, 0, "success", nil, http.StatusOK)
+}
+
+func AdminDebugObjectInfoHandler(w http.ResponseWriter, r *http.Request) {
+	query := utils.DecodeQuerys(r.URL.Query())
+	objectID := query.Get("objectID")
+	objectID = strings.TrimSpace(objectID)
+	kvstore, err := kv.GetKvStore()
+	if err != nil || kvstore == nil {
+		logger.GetLogger("dedups3").Errorf("failed to get kvstore: %v", err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "failed to get kvstore", nil, http.StatusInternalServerError)
+		return
+	}
+
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+
+	objkey := "aws:object:" + pe.accountID + ":" + objectID
+
+	var _object meta.Object
+	exist, err := kvstore.Get(objkey, &_object)
+	if err != nil {
+		logger.GetLogger("dedups3").Errorf("failed to fetch object %s: %v", objkey, err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "failed to fetch object", nil, http.StatusInternalServerError)
+		return
+	}
+	if !exist {
+		logger.GetLogger("dedups3").Infof("object %s does not exist", objkey)
+		xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "object not found", nil, http.StatusNotFound)
+		return
+	}
+	xhttp.AdminWriteJSONError(w, r, 0, "success", &_object.BaseObject, http.StatusOK)
+}
+
+func AdminDebugBlockInfoHandler(w http.ResponseWriter, r *http.Request) {
+	query := utils.DecodeQuerys(r.URL.Query())
+	blockID := query.Get("blockID")
+	blockID = strings.TrimSpace(blockID)
+	kvstore, err := kv.GetKvStore()
+	if err != nil || kvstore == nil {
+		logger.GetLogger("dedups3").Errorf("failed to get kvstore: %v", err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "failed to get kvstore", nil, http.StatusInternalServerError)
+		return
+	}
+
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+
+	blockkey := "aws:block:" + blockID
+
+	var _block meta.Block
+	exist, err := kvstore.Get(blockkey, &_block)
+	if err != nil {
+		logger.GetLogger("dedups3").Errorf("failed to fetch block %s: %v", blockkey, err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "failed to fetch block", nil, http.StatusInternalServerError)
+		return
+	}
+	if !exist {
+		logger.GetLogger("dedups3").Infof("block %s does not exist", blockkey)
+		xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "block not found", nil, http.StatusNotFound)
+		return
+	}
+	xhttp.AdminWriteJSONError(w, r, 0, "success", &_block.BlockHeader, http.StatusOK)
+}
+
+func AdminDebugChunkInfoHandler(w http.ResponseWriter, r *http.Request) {
+	query := utils.DecodeQuerys(r.URL.Query())
+	chunkID := query.Get("chunkID")
+	chunkID = strings.TrimSpace(chunkID)
+	kvstore, err := kv.GetKvStore()
+	if err != nil || kvstore == nil {
+		logger.GetLogger("dedups3").Errorf("failed to get kvstore: %v", err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "failed to get kvstore", nil, http.StatusInternalServerError)
+		return
+	}
+
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+
+	chunkkey := "aws:chunk:" + chunkID
+
+	var _chunk meta.Chunk
+	exist, err := kvstore.Get(chunkkey, &_chunk)
+	if err != nil {
+		logger.GetLogger("dedups3").Errorf("failed to fetch chunk %s: %v", chunkkey, err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "failed to fetch block", nil, http.StatusInternalServerError)
+		return
+	}
+	if !exist {
+		logger.GetLogger("dedups3").Infof("chunk %s does not exist", chunkkey)
+		xhttp.AdminWriteJSONError(w, r, http.StatusNotFound, "chunk not found", nil, http.StatusNotFound)
+		return
+	}
+	xhttp.AdminWriteJSONError(w, r, 0, "success", &_chunk, http.StatusOK)
 }

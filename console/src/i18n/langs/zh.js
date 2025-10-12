@@ -118,6 +118,12 @@ const zh = {
     failure: "失败",
     system: "系统",
     operation: "操作",
+    view: "查看",
+    viewStoragePoint: "查看存储点详情",
+    basicInfo: "基本信息",
+    close: "关闭",
+    enabled: "已启用",
+    disabled: "已禁用",
     edit: "编辑",
     save: "保存",
     create: "创建",
@@ -742,6 +748,68 @@ const zh = {
       debugToolDescription: "用于系统诊断和问题排查的高级工具。"
   },
 
+  // 调试工具页面
+  debug: {
+    metadataQuery: "元数据查询",
+    objectMetadata: "对象元数据",
+    chunkMetadata: "切片元数据",
+    blockMetadata: "块元数据",
+    queryPlaceholder: "输入ID进行查询",
+    queryButton: "查询",
+    metadataViewer: "元数据查看器",
+    noData: "暂无数据",
+    queryResults: "查询结果",
+    metadataType: "元数据类型",
+    id: "ID",
+    size: "大小",
+    chunksCount: "切片数量",
+    blocksCount: "块数量",
+    hash: "哈希值",
+    createTime: "创建时间",
+    lastAccessTime: "最后访问时间",
+    references: "引用次数",
+    blockList: "块列表",
+    chunkList: "切片列表",
+    key: "键",
+    value: "值",
+    details: "详情",
+    showAsJson: "显示为JSON",
+    formattedView: "格式化视图",
+    downloadJson: "下载JSON",
+    copyToClipboard: "复制到剪贴板",
+    copied: "已复制!",
+    // 对象元数据字段
+    bucket: "存储桶",
+    etag: "ETag",
+    // 数据类型标签
+    objectType: "对象",
+    chunkType: "切片",
+    blockType: "块",
+    // 操作状态
+    querying: "查询中...",
+    copyFailed: "复制失败",
+    // 表格列头
+    chunkHash: "切片哈希",
+    // 其他字段
+    finally: "是否完整",
+    createdAt: "创建时间",
+    lastModified: "最后修改时间",
+    dataLocation: "数据位置",
+    // 切片元数据字段
+    ref_count: "引用计数",
+    block_id: "块ID",
+    // 块元数据字段
+    ver: "版本",
+    total_size: "总大小",
+    real_size: "实际大小",
+    compressed: "是否压缩",
+    encrypted: "是否加密",
+    location: "存储位置",
+    storage_id: "存储后端ID",
+    created_at: "创建时间",
+    updated_at: "更新时间"
+  },
+
   // 事件日志页面
   event: {
     pageTitle: "事件日志",
@@ -983,6 +1051,9 @@ const zh = {
     updateSuccess: "存储点配置已成功更新！",
     deleteSuccess: "存储点已成功删除！",
     loadFailed: "加载存储点列表失败",
+    view: "查看",
+    viewStoragePoint: "查看存储点详情",
+    basicInfo: "基本信息",
     storageType: {
       standard: {
         label: "标准存储",

@@ -26,24 +26,23 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	xcache "github.com/mageg-x/dedups3/plugs/cache"
-	"github.com/mageg-x/dedups3/plugs/kv"
-	"github.com/mageg-x/dedups3/service/stats"
 	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	xhttp "github.com/mageg-x/dedups3/internal/http"
+	"github.com/mageg-x/dedups3/internal/logger"
 	"github.com/mageg-x/dedups3/internal/utils"
+	"github.com/mageg-x/dedups3/meta"
+	xcache "github.com/mageg-x/dedups3/plugs/cache"
+	"github.com/mageg-x/dedups3/plugs/kv"
 	"github.com/mageg-x/dedups3/service/block"
 	"github.com/mageg-x/dedups3/service/chunk"
 	"github.com/mageg-x/dedups3/service/gc"
-
-	xhttp "github.com/mageg-x/dedups3/internal/http"
-	"github.com/mageg-x/dedups3/internal/logger"
-	"github.com/mageg-x/dedups3/meta"
 	"github.com/mageg-x/dedups3/service/iam"
+	"github.com/mageg-x/dedups3/service/stats"
 	"github.com/mageg-x/dedups3/service/storage"
 )
 
@@ -259,6 +258,7 @@ func (o *ObjectService) HeadObject(params *BaseObjectParams) (*meta.Object, erro
 			cache.Del(context.Background(), objkey)
 		}
 	}
+
 	if object == nil {
 		var _object meta.Object
 		exist, err := o.kvstore.Get(objkey, &_object)

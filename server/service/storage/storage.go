@@ -378,7 +378,7 @@ func (s *StorageService) SetChunkConfig(storageID string, chunk *meta.ChunkConfi
 	}()
 
 	sKey := STORAGE_PREFIX + storageID
-	var _ss *meta.Storage
+	var _ss meta.Storage
 	ss, err := s.conf.TxnGetKv(txn, sKey, _ss)
 	if err != nil || ss == nil {
 		logger.GetLogger("dedups3").Errorf("failed to get storage %s: %v", sKey, err)
