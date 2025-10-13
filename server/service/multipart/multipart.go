@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/mageg-x/dedups3/plugs/kv"
+	"github.com/mageg-x/dedups3/service/stats"
 	"io"
 	"net/http"
 	"sort"
@@ -517,6 +518,13 @@ func (m *MultiPartService) UploadPart(r io.Reader, params *object.BaseObjectPara
 		return nil, xhttp.ToError(xhttp.ErrAccessDenied)
 	}
 
+	// 检查配额是否超限
+	ss := stats.GetStatsService()
+	if exceeded, _ := ss.CheckQuotaExceeded(ak.AccountID); exceeded {
+		logger.GetLogger("dedups3").Errorf("account %s quota exceeded", ak.AccountID)
+		return nil, xhttp.ToError(xhttp.ErrAdminBucketQuotaExceeded)
+	}
+
 	uploadKey := "aws:upload:" + ak.AccountID + ":" + params.BucketName + "/" + params.ObjKey + "/" + params.UploadID
 
 	var upload meta.MultipartUpload
@@ -575,6 +583,13 @@ func (m *MultiPartService) UploadPartCopy(srcBucket, srcObject string, params *o
 	if err != nil || ak == nil {
 		logger.GetLogger("dedups3").Errorf("failed to get access key %s", params.AccessKeyID)
 		return nil, xhttp.ToError(xhttp.ErrAccessDenied)
+	}
+
+	// 检查配额是否超限
+	ss := stats.GetStatsService()
+	if exceeded, _ := ss.CheckQuotaExceeded(ak.AccountID); exceeded {
+		logger.GetLogger("dedups3").Errorf("account %s quota exceeded", ak.AccountID)
+		return nil, xhttp.ToError(xhttp.ErrAdminBucketQuotaExceeded)
 	}
 
 	// 1. 检查源对象是否存在

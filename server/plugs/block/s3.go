@@ -134,6 +134,12 @@ func (s *S3Store) WriteBlock(ctx context.Context, blockID string, data []byte, v
 		}
 	}
 
+	// 检查文件缓存区的剩余空间
+	if vfile.FreeSpace() < int64(2*len(data)) {
+		logger.GetLogger("dedups3").Errorf("vfile is leave too small to free space")
+		return fmt.Errorf("vfile is leave too small to free space")
+	}
+
 	if ver <= oldVer {
 		return nil
 	}

@@ -154,13 +154,8 @@ func (d *DiskConfig) Equal(other *DiskConfig) bool {
 
 // StorageConfig 存储Block相关配置
 type StorageConfig struct {
-	ID        string `mapstructure:"id" json:"id" env:"DEDUPS3_BLOCK_STORAGE_ID"`
-	Class     string `mapstructure:"class" json:"class" env:"DEDUPS3_STORAGE_CLASS" default:"STANDARD"`
-	Compress  bool   `mapstructure:"compress" json:"compress" env:"DEDUPS3_BLOCK_COMPRESS" default:"true"`
-	Encrypt   bool   `mapstructure:"encryte" json:"encrypt" env:"DEDUPS3_BLOCK_ENCRYPT" default:"true"`
-	ChunkSize int    `mapstructure:"chunk_size" json:"chunkSize" env:"DEDUPS3_BLOCK_CHUNK_SIZE" default:"2097152"`
-	FixChunk  bool   `mapstructure:"fix_chunk"json:"fixChunk" env:"DEDUPS3_BLOCK_FIX_CHUNK" default:"false"`
-
+	ID    string `mapstructure:"id" json:"id" env:"DEDUPS3_BLOCK_STORAGE_ID"`
+	Class string `mapstructure:"class" json:"class" env:"DEDUPS3_STORAGE_CLASS" default:"STANDARD"`
 	// Only one of the following should be set
 	S3   *S3Config   `mapstructure:"s3" json:"s3,omitempty"`
 	Disk *DiskConfig `mapstructure:"disk" json:"disk,omitempty"`

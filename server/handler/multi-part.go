@@ -439,6 +439,11 @@ func CopyObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAdminBucketQuotaExceeded)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAdminBucketQuotaExceeded)
+			return
+		}
+
 		logger.GetLogger("dedups3").Errorf("%s/%s/%s/%d copy object part  failed : %v", bucket, objectKey, uploadID, partNumber, err)
 		xhttp.WriteAWSErr(w, r, xhttp.ErrServerNotInitialized)
 		return
@@ -517,6 +522,12 @@ func PutObjectPartHandler(w http.ResponseWriter, r *http.Request) {
 		ContentLen:  contentLength,
 		ContentMd5:  contentMd5,
 	})
+
+	if errors.Is(err, xhttp.ToError(xhttp.ErrAdminBucketQuotaExceeded)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrAdminBucketQuotaExceeded)
+		return
+	}
+
 	if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidQueryParams)) {
 		xhttp.WriteAWSErr(w, r, xhttp.ErrInvalidQueryParams)
 		return

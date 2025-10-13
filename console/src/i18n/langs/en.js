@@ -1,4 +1,3 @@
-// 英文翻译
 const en = {
   // About page
   about: {
@@ -147,7 +146,6 @@ const en = {
     role: "Role",
     advancedFeatures: "Advanced",
     migration: "Migration",
-    defragment: "Defragment",
     snapshot: "SnapShot",
     analysis: "Analysis",
     debugTool: "Debug Tool",
@@ -755,8 +753,6 @@ const en = {
   advancedFeatures: {
       migration: "Migration",
       migrationDescription: "Function to migrate data from one storage location to another.",
-      defragment: "Defragment",
-      defragmentDescription: "Optimize storage fragments to improve system performance and space utilization.",
       snapshot: "SnapShot",
       snapshotDescription: "SnapShot of data and storage structures.",
       analysis: "Analysis",
@@ -765,8 +761,51 @@ const en = {
       debugToolDescription: "Advanced tools for system diagnosis and troubleshooting."
   },
 
-  // 调试工具页面
+  // Debug Tool
   debug: {
+    toolTitle: "Debug Tools",
+    metadataManagement: "Metadata Management",
+    metadataViewer: "Metadata Viewer",
+    metadataRebuild: "Metadata Rebuild",
+    forceClean: "Force Clean",
+    querying: "Querying...",
+    copyFailed: "Failed to copy",
+    chunkHash: "Chunk Hash",
+    finally: "Final Flag",
+    createdAt: "Created At",
+    objectType: "Object",
+    chunkType: "Chunk",
+    blockType: "Block",
+    queryPlaceholder: "Please enter ID",
+    invalidType: "Invalid metadata type",
+    queryFailed: "Query failed",
+    noData: "No data available",
+    copySuccess: "Copied successfully",
+    jsonView: "JSON View",
+    formattedView: "Formatted View",
+    download: "Download",
+    downloadFailed: "Download failed",
+    // Metadata Rebuild
+    rebuildButton: "Rebuild Metadata",
+    rebuilding: "Rebuilding...",
+    rebuildSuccess: "Rebuild successful",
+    rebuildFailed: "Rebuild failed",
+    rebuildResult: "Rebuild Result",
+    originalData: "Original Data",
+    rebuiltData: "Rebuilt Data",
+    differences: "Differences",
+    noRebuildData: "No rebuild data available",
+    // Force Clean
+    cleanButton: "Force Clean",
+    cleaning: "Cleaning...",
+    cleanSuccess: "Clean successful",
+    cleanFailed: "Clean failed",
+    cleanSuccessMessage: "The metadata has been successfully cleared",
+    cleanFailedMessage: "Failed to clear the metadata",
+    reason: "Reason",
+    hasReferences: "The metadata has active references and cannot be cleared",
+    noCleanData: "No clean data available",
+    // 旧的debug翻译内容
     metadataQuery: "Metadata Query",
     objectMetadata: "Object Metadata",
     chunkMetadata: "Chunk Metadata",
@@ -795,27 +834,17 @@ const en = {
     downloadJson: "Download JSON",
     copyToClipboard: "Copy to Clipboard",
     copied: "Copied!",
-    // 对象元数据字段
     bucket: "Bucket",
     etag: "ETag",
-    // 数据类型标签
-    objectType: "Object",
-    chunkType: "Chunk",
-    blockType: "Block",
-    // 操作状态
     querying: "Querying...",
     copyFailed: "Failed to copy",
-    // 表格列头
     chunkHash: "Chunk Hash",
-    // 其他字段
-    finally: "Final Flag",
+    finally: "Finally",
     createdAt: "Created At",
     lastModified: "Last Modified",
     dataLocation: "Data Location",
-    // 切片元数据字段
     ref_count: "Reference Count",
     block_id: "Block ID",
-    // 块元数据字段
     ver: "Version",
     total_size: "Total Size",
     real_size: "Real Size",
@@ -856,7 +885,6 @@ const en = {
     error: "Error",
     warning: "Warning",
     info: "Info",
-    debug: "Debug",
     eventsPerPage: "Events per Page",
     totalRecords: "Total {total} records",
     page10: "10 per page",
@@ -986,7 +1014,7 @@ const en = {
     configPlaceholder: "Configure data chunk parameters...",
     basicConfiguration: "Basic Configuration",
     chunkLength: "Chunk Length",
-    recommendedValue: "Recommended value is 16-64MB",
+    recommendedValue: "Recommended value is 1-2MB",
     advancedSettings: "Advanced Settings",
     useFixedLengthChunking: "Use Fixed Length Chunking",
     enableDataEncryption: "Enable Data Encryption",
@@ -1127,7 +1155,7 @@ const en = {
     failedToLoadObjects: "Failed to load objects",
     downloadFailed: "Failed to download objects",
     uploadFailed: "Upload failed"
-  },
+  }
 };
 
 export default en;

@@ -121,8 +121,8 @@ func (sm *SyncManager) worker() {
 		batch = make([]*SyncRequest, 0, sm.batchSize)
 		batchMutex.Unlock()
 
-		logger.GetLogger("dedups3").Debugf("%d + %d reqs waiting to excute and syncNum %d",
-			len(thisBatch), len(sm.queues[0])+len(sm.queues[1])+len(sm.queues[2]), cfg.Block.SyncNum)
+		//logger.GetLogger("dedups3").Debugf("%d + %d reqs waiting to excute and syncNum %d",
+		//	len(thisBatch), len(sm.queues[0])+len(sm.queues[1])+len(sm.queues[2]), cfg.Block.SyncNum)
 
 		versionMap := make(map[string]int32) // 记录每个文件的最高版本
 		// 第一遍：找出每个文件的最高版本

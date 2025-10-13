@@ -94,11 +94,6 @@ const routes = [
         component: () => import("@/views/Migration.vue")
       },
       {
-        path: '/defragment',
-        name: 'Defragment',
-        component: () => import("@/views/Defragment.vue")
-      },
-      {
         path: '/snapshot',
         name: 'SnapShot',
         component: () => import("@/views/SnapShot.vue")

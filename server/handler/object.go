@@ -803,6 +803,11 @@ func CopyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		SourceIfModifiedSince:   SourceIfModifiedSince,
 		SourceIfUnmodifiedSince: SourceIfUnmodifiedSince,
 	})
+
+	if errors.Is(err, xhttp.ToError(xhttp.ErrAdminBucketQuotaExceeded)) {
+		xhttp.WriteAWSErr(w, r, xhttp.ErrAdminBucketQuotaExceeded)
+		return
+	}
 	if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
 		xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
 		return
@@ -947,6 +952,10 @@ func PutObjectHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAdminBucketQuotaExceeded)) {
+			xhttp.WriteAWSErr(w, r, xhttp.ErrAdminBucketQuotaExceeded)
+			return
+		}
 		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
 			xhttp.WriteAWSErr(w, r, xhttp.ErrAccessDenied)
 			return

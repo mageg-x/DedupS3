@@ -12,7 +12,7 @@ import (
 
 func AdminAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		logger.GetLogger("dedups3").Errorf("access request %s %s", r.Method, r.URL.Path)
+		logger.GetLogger("dedups3").Debugf("access request %s %s", r.Method, r.URL.Path)
 
 		// 允许跨域并支持凭据
 		origin := r.Header.Get("Origin")

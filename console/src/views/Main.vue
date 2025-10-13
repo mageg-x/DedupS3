@@ -243,7 +243,6 @@ const menuItems = [
     permission: 'console:Storage',
     children: [
       { path: '/migration', label: t('mainMenu.migration'), icon: 'fa-exchange-alt', permission: 'console:Migrate' },
-      { path: '/defragment', label: t('mainMenu.defragment'), icon: 'fa-puzzle-piece', permission: 'console:Defragment' },
       { path: '/snapshot', label: t('mainMenu.snapshot'), icon: 'fa-images', permission: 'console:Snapshot' },
       { path: '/analysis', label: t('mainMenu.analysis'), icon: 'fa-kit-medical', permission: 'console:Analysis' },
       { path: '/debugtool', label: t('mainMenu.debugTool'), icon: 'fa-bug', permission: 'console:Debug' },

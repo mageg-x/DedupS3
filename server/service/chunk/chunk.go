@@ -153,13 +153,14 @@ func (c *ChunkService) DoChunk(r io.Reader, obj *meta.BaseObject, cb WriteObjCB)
 		}
 	}
 
-	// 回滚处理，删除之前写入的block
+	// 回滚处理，删除之前写入的block， 只有，这些block 并不是 此object 独享的，会包含其他object的 chunk。
+	// 不能直接删除。要检查完整才能删除
 	if rollback {
 		if len(blocks) > 0 {
 			gcKey := gc.GCBlockPrefix + utils.GenUUID()
 			gcData := gc.GCBlock{
 				GCData: gc.GCData{
-					CreateAt: time.Now().UTC(),
+					CreateAt: time.Now().UTC().Add(5 * time.Minute),
 					Items:    make([]gc.GCItem, 0),
 				},
 			}

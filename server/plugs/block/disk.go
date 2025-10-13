@@ -71,6 +71,12 @@ func (d *DiskStore) WriteBlock(ctx context.Context, blockID string, data []byte,
 		return fmt.Errorf("failed to get tiered vfs: %v", err)
 	}
 
+	// 检查文件缓存区的剩余空间
+	if vfile.FreeSpace() < int64(2*len(data)) {
+		logger.GetLogger("dedups3").Errorf("vfile is leave too small to free space")
+		return fmt.Errorf("vfile is leave too small to free space")
+	}
+
 	oldVer := int32(-1)
 	if vfile.Exists(d.ID, blockID) {
 		if v, err := vfile.ReadFile(d.ID, blockID, 0, 4); err == nil && v != nil {

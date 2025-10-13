@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
 	"github.com/mageg-x/dedups3/plugs/kv"
+	"github.com/mageg-x/dedups3/service/iam"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -206,7 +208,7 @@ func (s *StatsService) loop() {
 }
 
 func (s *StatsService) doStats4Account(accountID string) error {
-	logger.GetLogger("dedups3").Errorf("doStats4Account %s", accountID)
+	logger.GetLogger("dedups3").Debugf("doStats4Account %s", accountID)
 	// 避免多个并发统计同一accountID
 	lockKey := "aws:lock:stats:" + accountID
 	if ok, _ := s.kvstore.TryLock(lockKey, "StatsService", time.Hour); !ok {
@@ -436,7 +438,7 @@ func (s *StatsService) doStats4Account(accountID string) error {
 			if err := json.Unmarshal(blockData, &block); err != nil {
 				continue
 			}
-			logger.GetLogger("dedups3").Errorf("block info %#v", block)
+			logger.GetLogger("dedups3").Debugf("block info %#v", block)
 			SizeOfBlock1 += block.TotalSize
 			SizeOfBlock2 += block.RealSize
 		}
@@ -487,7 +489,7 @@ func (s *StatsService) doStats4Account(accountID string) error {
 	}
 	jsonAccountStats, _ := json.Marshal(myStats)
 	jsonBucketStats, _ := json.Marshal(bucketOfAccount)
-	logger.GetLogger("dedups3").Errorf("account %s  stats %s bucket stats %s", accountID, string(jsonAccountStats), string(jsonBucketStats))
+	logger.GetLogger("dedups3").Debugf("account %s  stats %s bucket stats %s", accountID, string(jsonAccountStats), string(jsonBucketStats))
 	return nil
 }
 
@@ -779,4 +781,30 @@ func (s *StatsService) doStats4Global() error {
 	jsonBytes, _ := json.Marshal(globalStats)
 	logger.GetLogger("dedups3").Debugf("global stats: %s", string(jsonBytes))
 	return nil
+}
+
+func (s *StatsService) CheckQuotaExceeded(accountID string) (bool, error) {
+	iamService := iam.GetIamService()
+	if iamService == nil {
+		logger.GetLogger("dedups3").Errorf("failed to get iam service")
+		return false, xhttp.ToError(xhttp.ErrIAMNotInitialized)
+	}
+
+	ac, err := iamService.GetAccount(accountID)
+	if err != nil || ac == nil {
+		logger.GetLogger("dedups3").Errorf("failed to get account %s", accountID)
+		return false, xhttp.ToError(xhttp.ErrAccountNotEligible)
+	}
+
+	if ac.Quota != nil && ac.Quota.Enable {
+		if st, err := s.GetAccountStats(accountID); err == nil && st != nil {
+			if st.AccountStats.SizeOfBlock2 > int64(ac.Quota.MaxSpaceSize) || st.AccountStats.ObjectCount > int64(ac.Quota.MaxObjectCount) {
+				// 超过配额限制
+				logger.GetLogger("debups3").Errorf("exceed the account quota %d:%d , %d:%d",
+					st.AccountStats.SizeOfBlock2, ac.Quota.MaxSpaceSize, st.AccountStats.ObjectCount, ac.Quota.MaxObjectCount)
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }

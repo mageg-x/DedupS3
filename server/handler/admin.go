@@ -93,7 +93,7 @@ func Prepare4Iam(w http.ResponseWriter, r *http.Request) *PrepareEnv {
 	}
 
 	accessKeyIDs := utils.MapKeys(user.AccessKeys)
-	logger.GetLogger("dedups3").Errorf("account %s  user %s has access key %s", accountID, username, accessKeyIDs[0])
+	logger.GetLogger("dedups3").Debug("account %s  user %s has access key %s", accountID, username, accessKeyIDs[0])
 	return &PrepareEnv{
 		username:  username,
 		accountID: accountID,
@@ -571,7 +571,7 @@ func AdminPutObjectHandler(w http.ResponseWriter, r *http.Request) {
 	objectName = strings.TrimSpace(objectName)
 	objectName = path.Clean(objectName)
 
-	logger.GetLogger("dedups3").Errorf(" bucket: %s, object: %s, contenttype: %s", bucketName, objectName, contentType)
+	logger.GetLogger("dedups3").Debugf(" bucket: %s, object: %s, contenttype: %s", bucketName, objectName, contentType)
 	if err := utils.CheckValidObjectName(objectName); err != nil || bucketName == "" || objectName == "" {
 		logger.GetLogger("dedups3").Errorf("invalid bucket or object name")
 		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid bucket or object name", nil, http.StatusBadRequest)
@@ -618,6 +618,11 @@ func AdminPutObjectHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if err != nil {
+		if errors.Is(err, xhttp.ToError(xhttp.ErrAdminBucketQuotaExceeded)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "QuotaExceeded", nil, http.StatusBadRequest)
+			return
+		}
+
 		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
 			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "AccessDenied", nil, http.StatusForbidden)
 			return
@@ -656,7 +661,7 @@ func AdminDelObjectHandler(w http.ResponseWriter, r *http.Request) {
 		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
 		return
 	}
-	logger.GetLogger("dedups3").Errorf("get delete request object list : %#v", req.Keys)
+	logger.GetLogger("dedups3").Debug("get delete request object list : %#v", req.Keys)
 
 	// 验证参数
 	req.BucketName = strings.TrimSpace(req.BucketName)
@@ -707,7 +712,7 @@ func AdminDelObjectHandler(w http.ResponseWriter, r *http.Request) {
 			allObjectKeys = append(allObjectKeys, key)
 		}
 	}
-	logger.GetLogger("dedups3").Errorf("Prepare4S3 to delete key %#v", allObjectKeys)
+	logger.GetLogger("dedups3").Debugf("Prepare4S3 to delete key %#v", allObjectKeys)
 	deleteKeys := make([]string, 0, len(allObjectKeys))
 	for _, objkey := range allObjectKeys {
 		// 执行删除操作

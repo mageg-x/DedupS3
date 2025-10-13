@@ -58,6 +58,7 @@ type BlockCacheItem struct {
 	data   []byte
 	access time.Time
 }
+
 type BlockCache struct {
 	mu     sync.Mutex
 	blocks map[string]*BlockCacheItem
@@ -289,7 +290,7 @@ func (s *BlockService) doFlushBlock(ctx context.Context, block *meta.Block) erro
 		logger.GetLogger("dedups3").Errorf("flush block %s size mot match %d:%d:%d:%d", block.ID, size1, size2, blockData.RealSize, blockData.RealSize)
 		return fmt.Errorf("flush block %s size mot match %d:%d:%d:%d", block.ID, size1, size2, blockData.RealSize, blockData.RealSize)
 	}
-	logger.GetLogger("dedups3").Errorf("flush block data %s total size %d real size %d data size %d",
+	logger.GetLogger("dedups3").Debugf("flush block data %s total size %d real size %d data size %d",
 		blockData.ID, blockData.TotalSize, blockData.RealSize, len(blockData.Data))
 
 	// 计算md5，数据校验
@@ -324,9 +325,10 @@ func (s *BlockService) WriteBlock(ctx context.Context, storageID string, blockDa
 		logger.GetLogger("dedups3").Errorf("get nil storage instance id %s ", storageID)
 		return fmt.Errorf("get nil storage instance: %w", err)
 	}
+	logger.GetLogger("dedups3").Debugf("get storage id %s conf %#v", storageID, st.Chunk)
 
 	// 压缩Data
-	if st.Conf.Compress {
+	if st.Chunk != nil && st.Chunk.Compress {
 		if len(blockData.Data) > 1024 && utils.IsCompressible(blockData.Data, 4*1024, 0.9) {
 			compress, err := utils.Compress(blockData.Data)
 			if err == nil && compress != nil && float64(len(compress))/float64(len(blockData.Data)) < 0.9 {
@@ -338,7 +340,7 @@ func (s *BlockService) WriteBlock(ctx context.Context, storageID string, blockDa
 	blockData.RealSize = int64(len(blockData.Data))
 
 	// 加密Data
-	if st.Conf.Encrypt {
+	if st.Chunk != nil && st.Chunk.Encrypt {
 		if len(blockData.Data) > 0 {
 			encrypt, err := utils.Encrypt(blockData.Data, blockData.ID)
 			if err == nil && encrypt != nil {
@@ -350,7 +352,7 @@ func (s *BlockService) WriteBlock(ctx context.Context, storageID string, blockDa
 
 	blockData.RealSize = int64(len(blockData.Data))
 
-	logger.GetLogger("dedups3").Errorf("flush block data size %d:%d, compress rate %.2f%%",
+	logger.GetLogger("dedups3").Debugf("flush block data size %d:%d, compress rate %.2f%%",
 		blockData.TotalSize, blockData.RealSize, float64(100.0*blockData.RealSize)/float64(blockData.TotalSize))
 
 	data, err := msgpack.Marshal(&blockData)

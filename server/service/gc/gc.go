@@ -21,13 +21,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/mageg-x/dedups3/internal/config"
 	xcache "github.com/mageg-x/dedups3/plugs/cache"
 	"github.com/mageg-x/dedups3/plugs/kv"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/mageg-x/dedups3/internal/config"
 	"github.com/mageg-x/dedups3/internal/logger"
 	"github.com/mageg-x/dedups3/internal/utils"
 	"github.com/mageg-x/dedups3/meta"
@@ -326,14 +326,14 @@ func (g *GCService) cleanOne4Chunk(prefix, startKey string) (nextKey string, err
 
 		// 相关 block 也要 再次检查
 		if len(blockMap) > 0 {
-			gcKey := GCDedupPrefix + utils.GenUUID()
+			gcKey := GCBlockPrefix + utils.GenUUID()
 			gcData := GCDedup{
 				GCData: GCData{
 					CreateAt: time.Now().UTC(),
-					Items:    make([]GCItem, 0),
+					Items:    make([]GCItem, 0, len(blockMap)),
 				},
 			}
-			for blockID := range blockMap {
+			for blockID, _ := range blockMap {
 				gcData.Items = append(gcData.Items, GCItem{StorageID: StorageID, ID: blockID})
 			}
 			err = _txn.Set(gcKey, gcData)
@@ -391,8 +391,8 @@ func (g *GCService) cleanOne4Block(prefix, startKey string) (nextKey string, err
 	}
 
 	// block 清理要延迟，避免有些关联的 meta 数据还没有提交，因为block 是data 先提交， meta 后提交
-	if time.Since(gcBlock.CreateAt) < 5*time.Minute {
-		// 没有超过 3 分钟
+	// CreateAt 在创建时候就确定延迟的时长
+	if time.Since(gcBlock.CreateAt) < time.Second {
 		return nextKey, fmt.Errorf("gcblock %s is not old enought", curKey)
 	}
 
@@ -509,7 +509,6 @@ func (g *GCService) cleanOne4Block(prefix, startKey string) (nextKey string, err
 
 func (g *GCService) dedupOne4Block(prefix, startKey string) (nextKey string, err error) {
 	nextKey = utils.NextKey(startKey)
-
 	bs := block.GetBlockService()
 	if bs == nil {
 		logger.GetLogger("dedups3").Errorf("failed to get block service")
@@ -532,9 +531,11 @@ func (g *GCService) dedupOne4Block(prefix, startKey string) (nextKey string, err
 
 	// 没有更多键了
 	if len(keys) == 0 {
-		//logger.GetLogger("dedups3").Infof("no keys found, finish to gc %s", prefix)
-		return nextKey, nil
+		logger.GetLogger("dedups3").Infof("no keys found, finish to gc %s", prefix)
+		return "", nil
 	}
+
+	logger.GetLogger("dedups3").Tracef("get keys  %#v  %s", keys, prefix)
 
 	nextKey = nk
 	curKey := keys[0]
@@ -551,6 +552,8 @@ func (g *GCService) dedupOne4Block(prefix, startKey string) (nextKey string, err
 		return nextKey, fmt.Errorf("gcDedup %s does not exist", curKey)
 	}
 
+	logger.GetLogger("dedups3").Tracef("get gcDedup  %#v for  %s", gcDedup, keys[0])
+
 	if time.Since(gcDedup.CreateAt) < 5*time.Minute {
 		return nextKey, fmt.Errorf("gcDedup %s is not old enought", curKey)
 	}
@@ -566,8 +569,9 @@ func (g *GCService) dedupOne4Block(prefix, startKey string) (nextKey string, err
 			logger.GetLogger("dedups3").Errorf("failed to get block %s: %v", blockKey, err)
 			return nextKey, fmt.Errorf("failed to get block %s: %w", blockKey, err)
 		}
+
 		if !exists {
-			logger.GetLogger("dedups3").Errorf("block %s not found ", blockKey)
+			logger.GetLogger("dedups3").Infof("block %s not found ", blockKey)
 		}
 
 		if _block.Finally || time.Since(_block.UpdatedAt) > cfg.Block.MaxRetentionTime {

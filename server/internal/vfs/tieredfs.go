@@ -263,8 +263,9 @@ func (fs *TieredFs) loadMetadata() error {
 		if fileMeta.Discard {
 			continue
 		}
-		storageID := string(fileMeta.StorageID[:])
-		blockID := string(fileMeta.BlockID[:])
+		storageID := strings.TrimRight(string(fileMeta.StorageID[:]), "\x00")
+		blockID := strings.TrimRight(string(fileMeta.BlockID[:]), "\x00")
+
 		// 创建文件区域
 		fileRegion := &FileRegion{
 			Region:    Region{Start: fileMeta.Start, End: fileMeta.End},
@@ -785,10 +786,10 @@ func (fs *TieredFs) flushToTarget(region *FileRegion) error {
 			logger.GetLogger("dedups3").Infof("skip flush req %#v %#v ", currentRegion, region)
 			return nil
 		}
+
 		// 复制数据避免竞态
 		data := make([]byte, region.Size())
 		copy(data, fs.mmapData[region.Start:region.End])
-
 		syncTargetor := fs.syncTargetor[region.StorageID]
 		fs.mu.RUnlock()
 
@@ -833,7 +834,7 @@ func (fs *TieredFs) flushToTarget(region *FileRegion) error {
 			}
 			return err
 		} else {
-			logger.GetLogger("dedups3").Debugf("no flush targer to do for block  %s ", region.BlockID)
+			logger.GetLogger("dedups3").Debugf("no flush targer to do for block %s, fs.syncTargetor", region.StorageID)
 			return fmt.Errorf("no flush targer to do for %s ", region.BlockID)
 		}
 	})

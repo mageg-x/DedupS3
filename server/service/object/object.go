@@ -317,6 +317,13 @@ func (o *ObjectService) PutObject(r io.Reader, headers http.Header, params *Base
 		}
 	}
 
+	// 检查配额是否超限
+	ss := stats.GetStatsService()
+	if exceeded, _ := ss.CheckQuotaExceeded(ak.AccountID); exceeded {
+		logger.GetLogger("dedups3").Errorf("account %s quota exceeded", ak.AccountID)
+		return nil, xhttp.ToError(xhttp.ErrAdminBucketQuotaExceeded)
+	}
+
 	// 检查目标对象是否已经存在
 	dskobjKey := "aws:object:" + ak.AccountID + ":" + params.BucketName + "/" + params.ObjKey
 	var _dstobj meta.Object
@@ -978,7 +985,7 @@ func (o *ObjectService) ListObjects(bucket, accessKeyID, prefix, marker, delimit
 	// 提前关闭事务
 	txn.Rollback()
 	txn = nil
-	logger.GetLogger("dedups3").Errorf("get commonPrefixs %#v object %d", commonPrefixes, len(objects))
+	logger.GetLogger("dedups3").Debugf("get commonPrefixs %#v object %d", commonPrefixes, len(objects))
 	return objects, commonPrefixes, isTruncated, nextMarker, nil
 }
 
@@ -1041,7 +1048,7 @@ func (o *ObjectService) DeleteObject(params *BaseObjectParams) error {
 		gcData := gc.GCChunk{
 			GCData: gc.GCData{
 				CreateAt: time.Now().UTC(),
-				Items:    make([]gc.GCItem, 0),
+				Items:    make([]gc.GCItem, 0, len(_object.Chunks)),
 			},
 		}
 		for _, id := range _object.Chunks {
@@ -1128,6 +1135,13 @@ func (o *ObjectService) CopyObject(srcBucket, srcObject string, params *BaseObje
 	if srcobjkey == dstbucketkey {
 		logger.GetLogger("dedups3").Errorf("same object %s copy", dstbucketkey)
 		return nil, fmt.Errorf("same object %s copy", dstbucketkey)
+	}
+
+	// 检查配额是否超限
+	ss := stats.GetStatsService()
+	if exceeded, _ := ss.CheckQuotaExceeded(ak.AccountID); exceeded {
+		logger.GetLogger("dedups3").Errorf("account %s quota exceeded", ak.AccountID)
+		return nil, xhttp.ToError(xhttp.ErrAdminBucketQuotaExceeded)
 	}
 
 	// 检查目标对象是否已经存在
