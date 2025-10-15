@@ -1,199 +1,199 @@
-# Boulder - 高性能开源S3兼容存储服务
+# Boulder - High-Performance Open Source S3-Compatible Storage Service
 
 <p align="left">
   <a href="./README.md">中文</a> | <a href="./README_EN.md">English</a>
 </p>
 
-Boulder 是一个专注于**高效存储利用率**和**高性能**的开源 S3 兼容存储服务，专为大规模对象存储场景设计。它不仅提供与 Amazon S3 API 完全兼容的接口，还通过创新的数据去重、压缩和组织方式，显著降低存储成本，同时保持出色的读写性能。
+Boulder is an open-source S3-compatible storage service focused on **efficient storage utilization** and **high performance**, designed for large-scale object storage scenarios. It not only provides a fully compatible interface with Amazon S3 API but also significantly reduces storage costs through innovative data deduplication, compression, and organization methods while maintaining excellent read and write performance.
 
-## 目录
+## Table of Contents
 
-- [核心特点](#核心特点)
-- [在线演示](#在线演示)
-- [技术架构](#技术架构)
-- [支持的 S3 API](#支持的-s3-api)
-- [配置说明](#配置说明)
-- [快速开始](#快速开始)
-- [性能优化与调优](#性能优化与调优)
-- [许可证](#许可证)
+- [Core Features](#core-features)
+- [Online Demo](#online-demo)
+- [Technical Architecture](#technical-architecture)
+- [Supported S3 APIs](#supported-s3-apis)
+- [Configuration Instructions](#configuration-instructions)
+- [Quick Start](#quick-start)
+- [Performance Optimization and Tuning](#performance-optimization-and-tuning)
+- [License](#license)
 
-## 在线演示
+## Online Demo
 
-您可以通过以下地址体验 Boulder 的功能：
+You can experience Boulder's functionality through the following address:
 
-- **演示地址**: [http://110.42.45.16:3002/](http://110.42.45.16:3002/)
-- **登录信息**:
-  - 账户: `boulder`
-  - 密码: `Abcd@1234`
+- **Demo Address**: [http://110.42.45.16:3002/](http://110.42.45.16:3002/)
+- **Login Information**:
+  - Username: `boulder`
+  - Password: `Abcd@1234`
 
-## 核心特点
+## Core Features
 
-### 极致存储效率
+### Ultimate Storage Efficiency
 
-Boulder 的核心竞争力在于其先进的数据去重技术，能够在不影响性能的前提下最大化存储利用率：
+Boulder's core competitive advantage lies in its advanced data deduplication technology, which maximizes storage utilization without compromising performance:
 
-- **全局内容去重**: 通过为每个数据切片生成唯一哈希指纹，系统能够识别并消除全局范围内的重复数据
-- **高比例空间节省**: 对于包含大量重复内容的数据集合（如备份数据、日志文件、虚拟机镜像等），可实现高达90%以上的存储节省
-- **智能分块策略**: 采用 fastcdc 算法进行内容定义分块，能够基于数据内容特征动态调整切片大小
-  - 小文件（<1MB）: 切片大小范围为 8KB-64KB
-  - 中等文件（1MB-16MB）: 切片大小范围为 16KB-512KB
-  - 大文件（>16MB）: 切片大小范围为 1MB-4MB
-- **高效哈希计算**: 使用高性能哈希算法（如 Blake3）生成切片指纹，兼顾安全性和性能
+- **Global Content Deduplication**: By generating unique hash fingerprints for each data chunk, the system can identify and eliminate duplicate data globally
+- **High Proportion of Space Savings**: For data sets containing a lot of duplicate content (such as backup data, log files, virtual machine images, etc.), storage savings of up to 90% or more can be achieved
+- **Intelligent Chunking Strategy**: Uses fastcdc algorithm for content-defined chunking, which dynamically adjusts chunk size based on data content characteristics
+  - Small files (<1MB): chunk size ranges from 8KB to 64KB
+  - Medium files (1MB-16MB): chunk size ranges from 16KB to 512KB
+  - Large files (>16MB): chunk size ranges from 1MB to 4MB
+- **Efficient Hash Calculation**: Uses high-performance hash algorithms (such as Blake3) to generate chunk fingerprints, balancing security and performance
 
-### S3 完全兼容
+### S3 Full Compatibility
 
-提供与 Amazon S3 API 100%兼容的接口，可无缝对接现有 S3 客户端和应用，支持以下主要操作：
+Provides a 100% compatible interface with Amazon S3 API, which can seamlessly integrate with existing S3 clients and applications, supporting the following main operations:
 
-- 存储桶操作：创建、删除、列出存储桶等
-- 对象操作：上传、下载、复制、删除对象等
-- 分段上传：大文件分段上传、断点续传、并发上传等
+- Bucket operations: create, delete, list buckets, etc.
+- Object operations: upload, download, copy, delete objects, etc.
+- Multipart upload: large file multipart upload, resumable upload, concurrent upload, etc.
 
-### 高性能压缩
+### High-Performance Compression
 
-集成先进的压缩技术，在保持高性能的同时最大化存储空间节省：
+Integrates advanced compression technology to maximize storage space savings while maintaining high performance:
 
-- **zstd 压缩算法**: 集成 Facebook 开发的 zstd 压缩算法，在保持高压缩率的同时提供卓越的性能
-- **自适应压缩级别**: 根据数据类型和大小自动选择最优压缩级别，平衡压缩率和CPU开销
-- **批量压缩优化**: 对聚合后的块数据进行批量压缩，提高压缩效率和压缩率
-- **压缩后加密**: 确保数据在压缩后进行加密存储，提供完整的数据保护
+- **zstd Compression Algorithm**: Integrates Facebook-developed zstd compression algorithm, providing excellent performance while maintaining high compression ratio
+- **Adaptive Compression Level**: Automatically selects the optimal compression level based on data type and size, balancing compression ratio and CPU overhead
+- **Batch Compression Optimization**: Performs batch compression on aggregated block data, improving compression efficiency and ratio
+- **Compression-then-Encryption**: Ensures data is encrypted after compression for complete data protection
 
-### 多存储后端与类型支持
+### Multiple Storage Backends and Types Support
 
-支持多种存储后端和存储类型，满足不同场景的需求：
+Supports multiple storage backends and storage types to meet the needs of different scenarios:
 
-- **多存储后端**: 支持本地磁盘、标准 S3 等多种存储后端
-- **多存储类型**: 提供标准存储、低频存储和归档存储等多种存储类型
-- **智能分层**: 支持基于访问模式自动在不同存储类型间迁移数据
+- **Multiple Storage Backends**: Supports local disk, standard S3, and other storage backends
+- **Multiple Storage Types**: Provides standard storage, infrequent access storage, and archive storage
+- **Intelligent Tiering**: Supports automatic migration of data between different storage types based on access patterns
 
-### 灵活部署模式
+### Flexible Deployment Mode
 
-支持从单机开发测试到大规模生产集群的灵活部署方式：
+Supports flexible deployment from single-node development testing to large-scale production clusters:
 
-- **插件化设计**: 采用模块化的插件架构，各功能组件松耦合，便于扩展和定制
-- **单机部署**: 默认以单机版模式运行，配置简单且性能优秀
-  - 配置数据、事件日志和审计日志默认存储在本机SQLite数据库中
-  - 适合开发测试、小型应用场景
-- **集群部署**: 支持通过HTTP服务接口实现集群化、分布式部署
-  - 可配置服务通过接口远程存放和查询数据
-  - 提供高可用性、水平扩展能力和负载均衡
-  - 适合大规模生产环境和高并发场景
+- **Plugin-based Design**: Adopts a modular plugin architecture with loosely coupled functional components for easy extension and customization
+- **Single-node Deployment**: Runs in single-node mode by default, with simple configuration and excellent performance
+  - Configuration data, event logs, and audit logs are stored in the local SQLite database by default
+  - Suitable for development testing and small application scenarios
+- **Cluster Deployment**: Supports clustered, distributed deployment through HTTP service interfaces
+  - Can be configured to remotely store and query data through interfaces
+  - Provides high availability, horizontal scaling capabilities, and load balancing
+  - Suitable for large-scale production environments and high-concurrency scenarios
 
-## 技术架构
+## Technical Architecture
 
-Boulder 采用先进的分层架构设计，通过创新的数据处理和组织方式，实现了高效的存储利用和出色的性能表现。
+Boulder adopts an advanced layered architecture design, achieving efficient storage utilization and excellent performance through innovative data processing and organization methods.
 
-### 系统架构图
+### System Architecture Diagram
 
-![架构图](./console/src/assets/img/diagram-zh.svg)
+![Architecture Diagram](./console/src/assets/img/diagram-en.svg)
 
-### 1. 数据组织架构
+### 1. Data Organization Architecture
 
-Boulder 采用创新的三级数据组织结构，实现高效的存储利用和数据去重：
+Boulder adopts an innovative three-level data organization structure to achieve efficient storage utilization and data deduplication:
 
-- **对象(Object)**: 用户直接操作的存储单元，包含元数据和数据引用
-- **切片(Chunk)**: 使用 fastcdc 算法将对象数据切分为变长切片（可配置大小范围），每个切片都有唯一的哈希指纹
-- **块(Block)**: 将多个切片聚合为固定大小的块（约 64MB），进行 zstd 压缩和加密后存储
+- **Object**: The storage unit directly operated by users, containing metadata and data references
+- **Chunk**: Uses fastcdc algorithm to split object data into variable-length chunks (configurable size range), each chunk has a unique hash fingerprint
+- **Block**: Aggregates multiple chunks into fixed-size blocks (approximately 64MB), which are then compressed with zstd and encrypted for storage
 
-这种设计使得系统能够高效处理重复数据，相同内容的切片在全局范围内只需存储一次，显著提高存储空间利用率。
+This design enables the system to efficiently handle duplicate data, and chunks with the same content only need to be stored once globally, significantly improving storage space utilization.
 
-### 2. 系统架构分层
+### 2. System Architecture Layers
 
-- **接口层(Handler)**: 处理 HTTP 请求，解析 S3 API 调用，返回符合 S3 规范的响应
-- **业务层(Service)**: 实现核心业务逻辑，包括对象管理、存储桶管理、分段上传等
-- **数据处理层**: 负责数据切片、去重、压缩和加密等核心功能
-- **元数据层(Meta)**: 管理对象、切片、块的元数据信息
-- **存储层(Storage)**: 提供底层存储接口，支持多种存储后端, 支持数据压缩和加密
+- **Interface Layer (Handler)**: Processes HTTP requests, parses S3 API calls, and returns responses that comply with S3 specifications
+- **Business Layer (Service)**: Implements core business logic, including object management, bucket management, multipart upload, etc.
+- **Data Processing Layer**: Responsible for core functions such as data chunking, deduplication, compression, and encryption
+- **Metadata Layer (Meta)**: Manages metadata information of objects, chunks, and blocks
+- **Storage Layer (Storage)**: Provides underlying storage interfaces, supports multiple storage backends, and supports data compression and encryption
 
-### 3. 存储后端
+### 3. Storage Backends
 
-Boulder 支持以下存储后端：
+Boulder supports the following storage backends:
 
-- **磁盘存储(DiskStore)**: 将数据存储在本地文件系统
-- **S3 存储(S3Store)**: 将数据存储在兼容 S3 API 的存储服务中
+- **Disk Storage (DiskStore)**: Stores data in the local file system
+- **S3 Storage (S3Store)**: Stores data in S3 API-compatible storage services
 
-### 4. 元数据存储
+### 4. Metadata Storage
 
-- **单机模式**: 使用 BadgerDB（基于 RocksDB）存储元数据
-- **集群模式**: 使用 TiKV（基于 RocksDB + Raft）存储元数据
+- **Single-node Mode**: Uses BadgerDB (based on RocksDB) to store metadata
+- **Cluster Mode**: Uses TiKV (based on RocksDB + Raft) to store metadata
 
-## 支持的 S3 API
+## Supported S3 APIs
 
-Boulder 支持以下 S3 API 操作：
+Boulder supports the following S3 API operations:
 
-### 存储桶操作
-- `CreateBucket`: 创建新的存储桶
-- `HeadBucket`: 检查存储桶是否存在
-- `ListBuckets`: 列出用户所有存储桶
-- `DeleteBucket`: 删除存储桶
+### Bucket Operations
+- `CreateBucket`: Create a new bucket
+- `HeadBucket`: Check if a bucket exists
+- `ListBuckets`: List all buckets of a user
+- `DeleteBucket`: Delete a bucket
 
-### 对象操作
-- `HeadObject`: 获取对象元数据
-- `PutObject`: 上传对象
-- `CopyObject`: 复制对象
-- `GetObject`: 下载对象
-- `ListObjects`: 列出存储桶中的对象 (V1)
-- `ListObjectsV2`: 列出存储桶中的对象 (V2)
-- `DeleteObject`: 删除单个对象
-- `DeleteObjects`: 批量删除对象
+### Object Operations
+- `HeadObject`: Get object metadata
+- `PutObject`: Upload an object
+- `CopyObject`: Copy an object
+- `GetObject`: Download an object
+- `ListObjects`: List objects in a bucket (V1)
+- `ListObjectsV2`: List objects in a bucket (V2)
+- `DeleteObject`: Delete a single object
+- `DeleteObjects`: Delete multiple objects in bulk
 
-### 分段上传操作
-- `CreateMultipartUpload`: 初始化分段上传
-- `AbortMultipartUpload`: 中止分段上传
-- `UploadPart`: 上传分段数据
-- `UploadPartCopy`: 复制分段数据
-- `CompleteMultipartUpload`: 完成分段上传
-- `ListParts`: 列出已上传的分段
-- `ListMultipartUploads`: 列出正在进行的分段上传
+### Multipart Upload Operations
+- `CreateMultipartUpload`: Initialize a multipart upload
+- `AbortMultipartUpload`: Abort a multipart upload
+- `UploadPart`: Upload a part of data
+- `UploadPartCopy`: Copy a part of data
+- `CompleteMultipartUpload`: Complete a multipart upload
+- `ListParts`: List uploaded parts
+- `ListMultipartUploads`: List in-progress multipart uploads
 
-## 性能优化与调优
+## Performance Optimization and Tuning
 
-### 数据去重与压缩优化
+### Data Deduplication and Compression Optimization
 
-1. **调整分块参数**: 根据数据特点调整 fastcdc 的分块参数以获得最佳去重效果
-   - 对于大量小文件: 可考虑减小最小分块大小
-   - 对于大文件或单一类型数据: 可增大标准分块大小
+1. **Adjusting Chunking Parameters**: Adjust the chunking parameters of fastcdc based on data characteristics to achieve optimal deduplication effects
+   - For a large number of small files: consider reducing the minimum chunk size
+   - For large files or single-type data: increase the standard chunk size
 
-2. **优化压缩策略**: 根据数据类型和性能需求调整压缩参数
-   - 高压缩率模式: 适合备份数据、归档数据等对存储空间敏感的场景
-   - 高性能模式: 适合对访问性能要求高的热数据
-   - 自动模式: 系统根据数据类型自动选择最优压缩级别
+2. **Optimizing Compression Strategy**: Adjust compression parameters based on data type and performance requirements
+   - High compression ratio mode: suitable for scenarios sensitive to storage space, such as backup data and archive data
+   - High-performance mode: suitable for hot data with high access performance requirements
+   - Auto mode: the system automatically selects the optimal compression level based on data type
 
-3. **去重缓存优化**: 适当调整去重缓存大小，平衡内存占用和去重效率
-   - 增加缓存大小可提高热点数据的去重识别速度
+3. **Deduplication Cache Optimization**: Properly adjust the deduplication cache size to balance memory usage and deduplication efficiency
+   - Increasing cache size can improve the deduplication recognition speed of hot data
 
-### 存储与I/O优化
+### Storage and I/O Optimization
 
-1. **存储后端选择**: 根据数据访问模式和成本需求选择合适的存储后端
-   - 热数据: 选择高性能的本地磁盘或SSD存储
-   - 冷数据: 选择成本优化的S3或归档存储
-   - 混合部署: 根据数据生命周期配置多种存储后端
+1. **Storage Backend Selection**: Select an appropriate storage backend based on data access patterns and cost requirements
+   - Hot data: choose high-performance local disks or SSD storage
+   - Cold data: choose cost-optimized S3 or archive storage
+   - Hybrid deployment: configure multiple storage backends based on data lifecycle
 
-2. **并发参数调整**: 根据硬件资源和负载情况调整并发参数
-   - 增加并发可提高吞吐量，但会增加CPU和内存占用
+2. **Concurrency Parameter Adjustment**: Adjust concurrency parameters based on hardware resources and load conditions
+   - Increasing concurrency can improve throughput but will increase CPU and memory usage
 
-3. **元数据存储优化**: 根据部署规模选择合适的元数据存储方案
-   - 单机部署: 默认使用BadgerDB，性能优秀且配置简单
-   - 集群部署: 推荐使用TiKV，提供分布式、高可用的元数据存储
+3. **Metadata Storage Optimization**: Select an appropriate metadata storage solution based on deployment scale
+   - Single-node deployment: BadgerDB is used by default, with excellent performance and simple configuration
+   - Cluster deployment: TiKV is recommended, providing distributed, highly available metadata storage
 
-## 许可证
+## License
 
-Boulder 项目基于 **GNU General Public License v3.0** 开源，允许自由使用、修改和分发，但必须保持开源和相同的许可条款。
+The Boulder project is open-sourced under the **GNU General Public License v3.0**, allowing free use, modification, and distribution, but must maintain open-source status and the same license terms.
 
-### 主要许可条款
+### Main License Terms
 
-- **自由使用**: 任何人都可以免费使用 Boulder 服务
-- **自由修改**: 可以根据需要修改源代码以适应特定需求
-- **自由分发**: 可以复制和分发软件的原始或修改版本
-- **开源要求**: 任何分发的修改版本必须以相同许可证开源
-- **版权声明保留**: 必须保留原始版权和许可证声明
+- **Free Use**: Anyone can use the Boulder service for free
+- **Free Modification**: Source code can be modified as needed to adapt to specific requirements
+- **Free Distribution**: Original or modified versions of the software can be copied and distributed
+- **Open Source Requirements**: Any distributed modified version must be open-sourced under the same license
+- **Copyright Notice Retention**: Original copyright and license notices must be retained
 
-## 鸣谢
+## Acknowledgments
 
-Boulder 项目的开发得益于以下开源项目：
+The development of the Boulder project has benefited from the following open-source projects:
 
-- [BadgerDB](https://github.com/dgraph-io/badger) - 高效的键值存储
-- [TiKV](https://github.com/tikv/tikv) - 分布式事务型键值存储
-- [fastcdc](https://github.com/PlakarKorp/go-cdc-chunkers) - 内容定义分块算法
-- [AWS SDK for Go](https://github.com/aws/aws-sdk-go-v2) - AWS 服务 SDK
+- [BadgerDB](https://github.com/dgraph-io/badger) - Efficient key-value storage
+- [TiKV](https://github.com/tikv/tikv) - Distributed transactional key-value storage
+- [fastcdc](https://github.com/PlakarKorp/go-cdc-chunkers) - Content-defined chunking algorithm
+- [AWS SDK for Go](https://github.com/aws/aws-sdk-go-v2) - AWS service SDK
 
 ---
