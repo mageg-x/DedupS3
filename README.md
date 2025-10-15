@@ -1,7 +1,7 @@
 # Boulder - High-Performance Open Source S3-Compatible Storage Service
 
 <p align="left">
-  <a href="./README.md">中文</a> | <a href="./README_EN.md">English</a>
+  <a href="./README_ZH.md">中文</a> | <a href="./README.md">English</a>
 </p>
 
 Boulder is an open-source S3-compatible storage service focused on **efficient storage utilization** and **high performance**, designed for large-scale object storage scenarios. It not only provides a fully compatible interface with Amazon S3 API but also significantly reduces storage costs through innovative data deduplication, compression, and organization methods while maintaining excellent read and write performance.

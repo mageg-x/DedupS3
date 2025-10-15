@@ -1,7 +1,7 @@
 # Boulder - 高性能开源S3兼容存储服务
 
 <p align="left">
-  <a href="./README.md">中文</a> | <a href="./README_EN.md">English</a>
+  <a href="./README_ZH.md">中文</a> | <a href="./README.md">English</a>
 </p>
 
 Boulder 是一个专注于**高效存储利用率**和**高性能**的开源 S3 兼容存储服务，专为大规模对象存储场景设计。它不仅提供与 Amazon S3 API 完全兼容的接口，还通过创新的数据去重、压缩和组织方式，显著降低存储成本，同时保持出色的读写性能。
