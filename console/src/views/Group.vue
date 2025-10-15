@@ -155,7 +155,7 @@
         <div class="p-5 border-t border-gray-100 flex items-center justify-end gap-3">
           <button @click="closeDialog"
             class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
-            {{ t('group.cancel') }}
+            {{ t('common.cancel') }}
           </button>
           <button @click="submitForm"
             class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">

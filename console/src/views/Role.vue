@@ -71,7 +71,7 @@
                 </button>
                 <button @click="openEditRoleDialog(role)"
                   class="text-blue-600 hover:text-blue-900 transition-colors mr-3">
-                  <i class="fas fa-edit mr-1"></i>{{ t('role.edit') }}
+                  <i class="fas fa-edit mr-1"></i>{{ t('common.edit') }}
                 </button>
                 <button @click="openDeleteRoleDialog(role.name)" class="text-red-600 hover:text-red-900 transition-colors">
                   <i class="fas fa-trash-alt mr-1"></i>{{ t('role.delete') }}
@@ -139,7 +139,7 @@
         <div class="p-5 border-t border-gray-100 flex items-center justify-end gap-3">
           <button @click="closeDialog"
             class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
-            {{ t('role.cancel') }}
+            {{ t('common.cancel') }}
           </button>
           <button @click="submitRoleForm"
             class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">

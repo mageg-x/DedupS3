@@ -120,7 +120,7 @@
 
         <div class="form-actions">
           <button type="button" @click="cancelEdit" class="cancel-btn">
-            {{ t('chunk.cancel') }}
+            {{ t('common.cancel') }}
           </button>
           <button type="submit" class="save-btn">
             {{ t('chunk.saveConfiguration') }}
@@ -311,7 +311,7 @@ onMounted(loadConfigs);
 .chunk-config-container {
   background-color: #f5f7fa;
   min-height: calc(100vh - 120px);
-  padding: 2rem;
+  padding: 0rem;
   max-width: 1200px;
   margin: 0 auto;
 }
@@ -512,9 +512,9 @@ onMounted(loadConfigs);
 }
 
 .switch-label {
+  gap: 1rem;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   font-size: 0.875rem;
   color: #374151;
 }
@@ -584,7 +584,7 @@ onMounted(loadConfigs);
 /* 响应式样式 */
 @media (max-width: 768px) {
   .chunk-config-container {
-    padding: 1rem;
+    padding: 0rem;
   }
   
   .config-card {
