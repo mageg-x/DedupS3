@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -584,6 +585,12 @@ func (fs *TieredFs) Remove(storageID, blockID string) error {
 	_path := fs.diskPath(storageID, blockID)
 	if _path != "" {
 		_ = os.Remove(_path)
+		//递归删除空目录
+		_dir := _path
+		for i := 0; i < 3; i++ {
+			_dir = path.Dir(_dir)
+			_ = os.Remove(_dir)
+		}
 	}
 	return nil
 }

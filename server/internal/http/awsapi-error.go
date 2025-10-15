@@ -538,6 +538,7 @@ const (
 	ErrGroupAlreadyExists
 	ErrNoSuchGroup
 	ErrInvalidName
+	ErrInvalidPassword
 	ErrUserAlreadyExists
 	apiErrCodeEnd // This is used only for the testing code
 )
@@ -2683,5 +2684,10 @@ var errorCodes = errorCodeMap{
 		Code:           "ErrUserAlreadyExists",
 		Description:    "The specified user is already exists.",
 		HTTPStatusCode: http.StatusConflict,
+	},
+	ErrInvalidPassword: {
+		Code:           "ErrInvalidPassword",
+		Description:    "invalid password format",
+		HTTPStatusCode: http.StatusBadRequest,
 	},
 }

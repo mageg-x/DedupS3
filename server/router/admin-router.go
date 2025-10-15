@@ -126,7 +126,7 @@ func registerAdminRouter(mr *mux.Router) {
 
 	// 处理静态资源路由
 	ar.Methods(http.MethodGet).Path("/{path:.*}").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		logger.GetLogger("dedups3").Errorf("serving static: %s", r.URL.Path)
+		logger.GetLogger("dedups3").Debugf("serving static: %s", r.URL.Path)
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			http.NotFound(w, r)
 			return

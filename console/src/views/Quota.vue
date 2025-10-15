@@ -155,7 +155,7 @@
         <div class="form-actions flex justify-end gap-4 pt-4 border-t border-gray-100">
           <button type="button" @click="cancelEditing"
             class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
-            {{ t('quota.cancel') }}
+            {{ t('common.cancel') }}
           </button>
           <button type="submit"
             class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md hover:shadow-lg transition-all duration-300">
@@ -179,7 +179,7 @@
         </div>
         <div class="p-5 border-t border-gray-100 flex items-center justify-end gap-3">
           <button @click="closeConfirmDialog" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
-            {{ t('quota.cancel') }}
+            {{ t('common.cancel') }}
           </button>
           <button @click="confirmDialogAction" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
             {{ t('quota.confirm') }}
@@ -387,7 +387,6 @@ export default {
 .quota-container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 20px;
 }
 
 .storage-points-header {
@@ -420,7 +419,7 @@ export default {
 
 @media (max-width: 768px) {
   .quota-container {
-    padding: 16px;
+    padding: 0px;
   }
 
   .config-card {

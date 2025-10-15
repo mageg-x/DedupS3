@@ -112,7 +112,7 @@ func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64, minMsgSiz
 
 	go d.ioLoop()
 
-	logger.GetLogger("dedups3").Errorf("success creating queue %s in %s", name, dataPath)
+	logger.GetLogger("dedups3").Debugf("success creating queue %s in %s", name, dataPath)
 	return &d
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	xconf "github.com/mageg-x/dedups3/internal/config"
 	"net/http"
+	"regexp"
 	"time"
 
 	xhttp "github.com/mageg-x/dedups3/internal/http"
@@ -220,6 +221,8 @@ func getResource(traceCtxt *xhttp.TraceCtxt) []Resource {
 			}
 
 			if arn != "" {
+				// 将多个连续的 / 替换成一个 /
+				arn = regexp.MustCompile("/+").ReplaceAllString(arn, "/")
 				resource := Resource{
 					ARN:  arn,
 					Type: resType,

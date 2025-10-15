@@ -1096,9 +1096,15 @@ func AdminCreateUserHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		logger.GetLogger("dedups3").Errorf("failed to create policy: %v", err)
 		if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidName)) {
-			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid name", nil, http.StatusBadRequest)
+			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid name format", nil, http.StatusBadRequest)
 			return
 		}
+
+		if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidPassword)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid password format", nil, http.StatusBadRequest)
+			return
+		}
+
 		if errors.Is(err, xhttp.ToError(xhttp.ErrUserAlreadyExists)) {
 			xhttp.AdminWriteJSONError(w, r, http.StatusConflict, "user already exists", nil, http.StatusConflict)
 			return
@@ -1146,10 +1152,13 @@ func AdminUpdateUserHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to create user: %v", err)
 		if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidName)) {
-			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid name", nil, http.StatusBadRequest)
+			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid name format", nil, http.StatusBadRequest)
 			return
 		}
-
+		if errors.Is(err, xhttp.ToError(xhttp.ErrInvalidPassword)) {
+			xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid password format", nil, http.StatusBadRequest)
+			return
+		}
 		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
 			xhttp.AdminWriteJSONError(w, r, http.StatusForbidden, "access denied", nil, http.StatusForbidden)
 			return

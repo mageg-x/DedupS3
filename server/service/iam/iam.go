@@ -347,7 +347,7 @@ func (s *IamService) UpdateUser(accountID, username, targetusername, password st
 	if password != "" {
 		if err := meta.ValidatePassword(password, targetusername); err != nil {
 			logger.GetLogger("dedups3").Errorf("password for user %s is invalid: %v", targetusername, err)
-			return nil, xhttp.ToError(xhttp.ErrInvalidRequest)
+			return nil, xhttp.ToError(xhttp.ErrInvalidPassword)
 		}
 		user.Password = password
 	}

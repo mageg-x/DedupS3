@@ -226,7 +226,7 @@ func (a *IamAccount) CreateUser(username, password string, groups, roles, polici
 
 	if err := ValidatePassword(password, username); err != nil {
 		logger.GetLogger("dedups3").Errorf("password for user %s is invalid: %v", username, err)
-		return nil, xhttp.ToError(xhttp.ErrInvalidRequest)
+		return nil, xhttp.ToError(xhttp.ErrInvalidPassword)
 	}
 
 	user := &IamUser{

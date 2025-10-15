@@ -198,12 +198,22 @@
             </div>
             <div class="form-group">
               <label class="form-label block text-sm font-medium text-gray-700 mb-1"> {{ t('accessKey.secretKey') }} </label>
-              <input 
-                v-model="formData.secretKey" 
-                type="password" 
-                :placeholder="t('accessKey.enterSecretKey')"
-                class="form-input w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" 
-              />
+              <div class="relative">
+                <input 
+                  v-model="formData.secretKey" 
+                  :type="showPassword ? 'text' : 'password'" 
+                  :placeholder="t('accessKey.enterSecretKey')"
+                  class="form-input w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" 
+                />
+                <button 
+                  type="button" 
+                  @click="showPassword = !showPassword" 
+                  class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                  :aria-label="showPassword ? t('accessKey.hidePassword') : t('accessKey.showPassword')"
+                >
+                  <i :class="showPassword ? 'fas fa-eye-slash' : 'fas fa-eye'" />
+                </button>
+              </div>
               <p v-if="editingKey" class="mt-1 text-xs text-gray-500">* 输入新的密钥内容进行修改，留空则保持不变</p>
             </div>
             <div class="form-group">
@@ -410,10 +420,29 @@ const editingKey = ref(null);
 const keyToDelete = ref(null);
 const formData = ref({ accessKey: '', secretKey: '', expiresAt: '', enabled: true });
 const newKey = ref({ accessKey: '', secretKey: '' });
+const showPassword = ref(false);
+
+// 生成随机字符串的辅助函数
+const generateRandomString = (length) => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  const charsLength = chars.length;
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * charsLength));
+  }
+  return result;
+};
 
 // 操作处理
 const handleCreateAccessKey = () => {
   resetForm();
+  // 默认生成20位AccessKey和40位secretKey
+  formData.value.accessKey = generateRandomString(20);
+  formData.value.secretKey = generateRandomString(40);
+  // 默认设置过期时间为1年后
+  const nextYear = new Date();
+  nextYear.setFullYear(nextYear.getFullYear() + 1);
+  formData.value.expiresAt = nextYear.toISOString().split('T')[0];
   dialogVisible.value = true;
 };
 
@@ -524,6 +553,7 @@ const handleSubmit = async () => {
 const resetForm = () => {
   editingKey.value = null;
   formData.value = { accessKey: '', secretKey: '', expiresAt: '', enabled: true };
+  showPassword.value = false;
   dialogVisible.value = false;
 };
 
