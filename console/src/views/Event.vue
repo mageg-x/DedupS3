@@ -563,7 +563,7 @@ onMounted(() => {
   loadEventData();
 });
 
-watch([searchKeyword, eventTypeFilter, startDate, endDate], () => {
+watch([startDate, endDate], () => {
   currentPage.value = 1;
   loadEventData();
 });

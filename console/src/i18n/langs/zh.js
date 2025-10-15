@@ -167,6 +167,7 @@ const zh = {
   login: {
     title: "安全连接",
     subtitle: "选择登录方式继续",
+    github: "GitHub",
     brandName: "磐石存储 (S3兼容存储)",
     tagline: "高级云存储管理平台",
     subtitleDescription:

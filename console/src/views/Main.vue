@@ -125,12 +125,14 @@
 
           <!-- 右侧工具栏 -->
           <div class="flex items-center gap-5">
-            <!-- 通知图标 -->
-            <button
+            <!-- GitHub 链接 -->
+            <a
+              href="https://github.com/mageg-x/DedupS3"
+              target="_blank"
+              rel="noopener noreferrer"
               class="relative p-2 text-gray-600 hover:text-blue-500 transition-all duration-300 rounded-full hover:bg-gray-100">
-              <i class="fas fa-bell text-lg"></i>
-              <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-            </button>
+              <i class="fab fa-github text-lg mr-2"></i>{{ t('login.github') }}
+            </a>
 
             <!-- 语言切换 -->
             <LanguageSwitch :sidebar-collapsed="sidebarCollapsed" />

@@ -163,6 +163,7 @@ const en = {
   login: {
     title: "Secure Connection",
     subtitle: "Select login method to continue",
+    github: "GitHub",
     brandName: "Boulder (S3 Compatible Storage)",
     tagline: "Advanced Cloud Storage Management Platform",
     subtitleDescription:

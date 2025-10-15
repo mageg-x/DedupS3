@@ -13,17 +13,23 @@
         </div>
 
         <div class="content-wrapper">
-            <!-- 关于链接 -->
+            <!-- 关于链接和GitHub链接 -->
             <div class="about-link-container mr-16 mt-8 z-10">
                 <a href="#" @click.prevent="goToAbout" class="about-link mr-4">
                     <i class="fas fa-info-circle mr-1"></i>{{ t('login.about') }}
+                </a>
+            </div>
+            <div class="github-link-container mr-16 mt-8 z-10">
+                <a href="https://github.com/mageg-x/DedupS3" target="_blank" rel="noopener noreferrer"
+                    class="about-link">
+                    <i class="fab fa-github mr-1"></i>{{ t('login.github') }}
                 </a>
             </div>
             <!-- 语言切换 -->
             <div class="language-switch-container mr-16 mt-8 z-10">
                 <LanguageSwitch :sidebar-collapsed="false" />
             </div>
-            
+
             <!-- 介绍区域 -->
             <div class="intro-section">
                 <div class="logo">
@@ -78,7 +84,7 @@
                         <input type="password" name="password" v-model="loginForm.password" autocomplete="password">
                         <input type="password" name="secretKey" v-model="loginForm.secretKey" autocomplete="password">
                     </form>
-                    
+
                     <div class="login-header">
                         <div class="login-icon">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
@@ -103,127 +109,91 @@
 
                     <!-- 登录表单 -->
                     <form @submit.prevent="handleLogin" autocomplete="on" id="login-form">
-                    <el-form ref="loginFormRef" :model="loginForm" :rules="rules"
-                        label-position="top">
-                        <!-- S3凭证登录表单 -->
-                        <div v-if="loginMethod === 's3'">
-                            <el-form-item :label="t('login.accessKeyId')" prop="accessKeyId">
-                                <el-input 
-                                    v-model="loginForm.accessKeyId" 
-                                    :placeholder="t('login.accessKeyPlaceholder')"
-                                    size="large" 
-                                    autocomplete="username" 
-                                    id="accessKeyId" 
-                                    name="accessKeyId" 
-                                    @input="onInput"
-                                />
-                            </el-form-item>
+                        <el-form ref="loginFormRef" :model="loginForm" :rules="rules" label-position="top">
+                            <!-- S3凭证登录表单 -->
+                            <div v-if="loginMethod === 's3'">
+                                <el-form-item :label="t('login.accessKeyId')" prop="accessKeyId">
+                                    <el-input v-model="loginForm.accessKeyId"
+                                        :placeholder="t('login.accessKeyPlaceholder')" size="large"
+                                        autocomplete="username" id="accessKeyId" name="accessKeyId" @input="onInput" />
+                                </el-form-item>
 
-                            <el-form-item :label="t('login.secretKey')" prop="secretKey">
-                                <el-input 
-                                    v-model="loginForm.secretKey" 
-                                    type="password"
-                                    :placeholder="t('login.secretKeyPlaceholder')" 
-                                    size="large" 
-                                    show-password 
-                                    autocomplete="password" 
-                                    id="secretKey" 
-                                    name="secretKey"
-                                    @input="onInput"
-                                />
-                            </el-form-item>
+                                <el-form-item :label="t('login.secretKey')" prop="secretKey">
+                                    <el-input v-model="loginForm.secretKey" type="password"
+                                        :placeholder="t('login.secretKeyPlaceholder')" size="large" show-password
+                                        autocomplete="password" id="secretKey" name="secretKey" @input="onInput" />
+                                </el-form-item>
 
-                            <!-- 分割线 -->
-                            <div class="section-divider"></div>
+                                <!-- 分割线 -->
+                                <div class="section-divider"></div>
 
-                            <!-- 可扩展的存储点和区域设置 -->
-                            <div class="expandable-section">
-                                <div class="expandable-header" @click="toggleExpand">
-                                    <span class="expandable-title">{{ t('login.expandSettings') }}</span>
-                                    <i :class="['fas', expandVisible ? 'fa-chevron-up' : 'fa-chevron-down']"></i>
-                                </div>
-
-                                <transition name="slide-fade">
-                                    <div v-if="expandVisible" class="expandable-content">
-                                        <el-form-item :label="t('login.endpoint')" prop="endpoint">
-                                            <el-input v-model="loginForm.endpoint"
-                                                :placeholder="t('login.endpointPlaceholder')" size="large" />
-                                            <div class="form-item-hint">{{ t('login.endpointHint') }}</div>
-                                        </el-form-item>
-
-                                        <el-form-item :label="t('login.region')" prop="region">
-                                            <el-input v-model="loginForm.region"
-                                                :placeholder="t('login.regionPlaceholder')" size="large" />
-                                            <div class="form-item-hint">{{ t('login.regionHint') }}</div>
-                                        </el-form-item>
+                                <!-- 可扩展的存储点和区域设置 -->
+                                <div class="expandable-section">
+                                    <div class="expandable-header" @click="toggleExpand">
+                                        <span class="expandable-title">{{ t('login.expandSettings') }}</span>
+                                        <i :class="['fas', expandVisible ? 'fa-chevron-up' : 'fa-chevron-down']"></i>
                                     </div>
-                                </transition>
-                            </div>
 
-                            <div class="s3-universal-browser-note">
-                                <i class="fas fa-info-circle"></i>
-                                <span>{{ t('login.s3AKLoginNote') }}</span>
-                            </div>
-                        </div>
+                                    <transition name="slide-fade">
+                                        <div v-if="expandVisible" class="expandable-content">
+                                            <el-form-item :label="t('login.endpoint')" prop="endpoint">
+                                                <el-input v-model="loginForm.endpoint"
+                                                    :placeholder="t('login.endpointPlaceholder')" size="large" />
+                                                <div class="form-item-hint">{{ t('login.endpointHint') }}</div>
+                                            </el-form-item>
 
-                        <!-- 用户名密码登录表单 -->
-                        <div v-if="loginMethod === 'iam'">
-                            <el-form-item :label="t('login.username')" prop="username">
-                                <el-input 
-                                    v-model="loginForm.username" 
-                                    :placeholder="t('login.usernamePlaceholder',{ at: '@' })"
-                                    size="large" 
-                                    autocomplete="username" 
-                                    id="username" 
-                                    name="username"
-                                    @input="onInput"
-                                />
-                            </el-form-item>
-
-                            <el-form-item :label="t('login.password')" prop="password">
-                                <el-input 
-                                    v-model="loginForm.password" 
-                                    type="password"
-                                    :placeholder="t('login.passwordPlaceholder')" 
-                                    size="large" 
-                                    show-password 
-                                    autocomplete="password" 
-                                    id="password" 
-                                    name="password"
-                                    @input="onInput"
-                                />
-                            </el-form-item>
-
-                            <div class="remember-forgot">
-                                <div class="remember-me">
-                                    <input 
-                                        type="checkbox" 
-                                        id="remember" 
-                                        v-model="loginForm.remember"
-                                        @change="onRememberChange"
-                                    >
-                                    <label for="remember">{{ t('login.rememberMe') }}</label>
+                                            <el-form-item :label="t('login.region')" prop="region">
+                                                <el-input v-model="loginForm.region"
+                                                    :placeholder="t('login.regionPlaceholder')" size="large" />
+                                                <div class="form-item-hint">{{ t('login.regionHint') }}</div>
+                                            </el-form-item>
+                                        </div>
+                                    </transition>
                                 </div>
-                                <a href="#" class="forgot-password">{{ t('login.forgotPassword') }}</a>
-                            </div>
-                        </div>
 
-                        <el-form-item>
-                            <el-button 
-                                type="primary" 
-                                @click="handleLogin" 
-                                :loading="loading" 
-                                size="large" 
-                                native-type="submit">
-                                {{ loading ? t('login.connecting') :
+                                <div class="s3-universal-browser-note">
+                                    <i class="fas fa-info-circle"></i>
+                                    <span>{{ t('login.s3AKLoginNote') }}</span>
+                                </div>
+                            </div>
+
+                            <!-- 用户名密码登录表单 -->
+                            <div v-if="loginMethod === 'iam'">
+                                <el-form-item :label="t('login.username')" prop="username">
+                                    <el-input v-model="loginForm.username"
+                                        :placeholder="t('login.usernamePlaceholder',{ at: '@' })" size="large"
+                                        autocomplete="username" id="username" name="username" @input="onInput" />
+                                </el-form-item>
+
+                                <el-form-item :label="t('login.password')" prop="password">
+                                    <el-input v-model="loginForm.password" type="password"
+                                        :placeholder="t('login.passwordPlaceholder')" size="large" show-password
+                                        autocomplete="password" id="password" name="password" @input="onInput" />
+                                </el-form-item>
+
+                                <div class="remember-forgot">
+                                    <div class="remember-me">
+                                        <input type="checkbox" id="remember" v-model="loginForm.remember"
+                                            @change="onRememberChange">
+                                        <label for="remember">{{ t('login.rememberMe') }}</label>
+                                    </div>
+                                    <a href="#" class="forgot-password">{{ t('login.forgotPassword') }}</a>
+                                </div>
+                            </div>
+
+                            <el-form-item>
+                                <el-button type="primary" @click="handleLogin" :loading="loading" size="large"
+                                    native-type="submit">
+                                    {{ loading ? t('login.connecting') :
                                     loginMethod === 's3' ? t('login.connectToS3') : t('login.loginSystem') }}
-                            </el-button>
-                        </el-form-item>
-                    </el-form>
+                                </el-button>
+                            </el-form-item>
+                        </el-form>
                     </form>
 
                     <!-- 隐藏表单，专用于触发浏览器密码保存提示 -->
-                    <form id="hidden-password-form" style="position: absolute; left: -9999px; opacity: 0; pointer-events: none;">
+                    <form id="hidden-password-form"
+                        style="position: absolute; left: -9999px; opacity: 0; pointer-events: none;">
                         <input type="text" id="hidden-username" name="hidden-username" autocomplete="username">
                         <input type="password" id="hidden-password" name="hidden-password" autocomplete="password">
                         <input type="submit" id="hidden-submit">
@@ -980,6 +950,12 @@ const handleLogin = async () => {
     right: 0;
 }
 
+.github-link-container {
+    position: absolute;
+    top: 0;
+    right: 160px;
+}
+
 .about-link-container {
     position: absolute;
     top: 0;
@@ -1268,11 +1244,13 @@ const handleLogin = async () => {
     }
 
     .login-section {
+        margin: 0 auto;
         width: 100%;
         max-width: 500px;
     }
 
     .login-card {
+        margin-top: 2rem;
         padding: 30px;
     }
 }
@@ -1283,6 +1261,7 @@ const handleLogin = async () => {
     }
 
     .login-card {
+        margin-top: 4rem;
         padding: 25px 20px;
     }
 
