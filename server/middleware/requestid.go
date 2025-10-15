@@ -19,12 +19,11 @@ package middleware
 
 import (
 	"context"
-	"github.com/mageg-x/dedups3/internal/config"
 	"net/http"
 
-	"github.com/mageg-x/dedups3/internal/logger"
-
+	"github.com/mageg-x/dedups3/internal/config"
 	xhttp "github.com/mageg-x/dedups3/internal/http"
+	"github.com/mageg-x/dedups3/internal/logger"
 	"github.com/mageg-x/dedups3/internal/utils"
 )
 
@@ -36,21 +35,24 @@ func RequestIDMiddleware(next http.Handler) http.Handler {
 		// 可以使用UUID或时间戳+随机数的组合
 		requestID := utils.GenUUID()
 
+		nr, tc := TraceContext(r)
+		tc.Attributes["requestID"] = requestID
+
 		// 将Request ID添加到请求上下文
-		ctx := context.WithValue(r.Context(), xhttp.AWSRequestID{}, requestID)
+		ctx := context.WithValue(nr.Context(), xhttp.AmzRequestID, requestID)
 
 		// 直接设置请求头，避免克隆整个请求对象
-		if r.Header == nil {
+		if nr.Header == nil {
 			r.Header = make(http.Header)
 		}
-		r.Header.Set("x-amz-request-id", requestID)
+		nr.Header.Set(xhttp.AmzRequestID, requestID)
 
 		// 将Request ID添加到响应头
-		w.Header().Set("x-amz-request-id", requestID)
+		w.Header().Set(xhttp.AmzRequestID, requestID)
 
-		w.Header().Set("x-amz-id-2", config.GlobalNodeID)
+		w.Header().Set(xhttp.AmzRequestHostID, config.GlobalNodeID)
 
 		// 继续处理请求，使用带有新上下文的原始请求
-		next.ServeHTTP(w, r.WithContext(ctx))
+		next.ServeHTTP(w, nr.WithContext(ctx))
 	})
 }

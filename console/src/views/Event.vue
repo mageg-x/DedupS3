@@ -611,7 +611,7 @@ onMounted(() => {
 .events-container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 2rem 1rem;
 }
 
 .page-header {

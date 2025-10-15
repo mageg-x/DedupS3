@@ -201,7 +201,7 @@ const fetchStats = async () => {
       stats.value.bucketCount = accountStats.bucketCount || 0;
       stats.value.objectCount = accountStats.objectCount || 0;
       stats.value.blockCount = accountStats.blockCount || 0;
-      stats.value.chunkCount = accountStats.chunkCount || 0;
+      stats.value.chunkCount = accountStats.chunkCountOfDedup || 0;
       stats.value.originalSize = accountStats.sizeOfObject || 0;
       stats.value.actualSize = accountStats.sizeOfBlock2 || 0;
 
@@ -211,7 +211,7 @@ const fetchStats = async () => {
         ? (stats.value.originalSize / stats.value.actualSize).toFixed(1) 
         : 0;
 
-      stats.value.reusedChunkCount = Math.max(0, stats.value.chunkCount - (accountStats.chunkCountOfDedup || 0));
+      stats.value.reusedChunkCount = Math.max(0, accountStats.chunkCount - (accountStats.chunkCountOfDedup || 0));
       stats.value.reusedSize = stats.value.savedSize;
       stats.value.reuseRatio = stats.value.chunkCount > 0 
         ? ((stats.value.reusedChunkCount / stats.value.chunkCount) * 100).toFixed(1) 

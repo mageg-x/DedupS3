@@ -171,10 +171,10 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 		}
 
 		// 计算签名
-		computedSignature := calculateSignature(ak.SecretAccessKey, date, region, service, stringToSign)
+		computedSignature := calculateSignature(ak.SecretKey, date, region, service, stringToSign)
 
 		if !hmac.Equal([]byte(computedSignature), []byte(signature)) {
-			logger.GetLogger("dedups3").Warnf("signature mismatch %s : %s with ak %v ", computedSignature, signature, ak)
+			logger.GetLogger("dedups3").Warnf("signature mismatch %s : %s with ak %#v ", computedSignature, signature, ak)
 			xhttp.WriteAWSErr(w, r, xhttp.ErrSignatureDoesNotMatch)
 			return
 		}
@@ -190,14 +190,19 @@ func AWS4SigningMiddleware(next http.Handler) http.Handler {
 			// 仅记录日志，不执行任何验证操作
 			logger.GetLogger("dedups3").Debugf("Using client-provided content hash: %s", payloadHash)
 		}
+
+		nr, tc := TraceContext(r)
+		tc.Attributes["accessKeyId"] = accessKeyID
+		tc.Attributes["region"] = region
+
 		// 签名验证成功，将解析的变量添加到请求上下文
-		ctx := r.Context()
+		ctx := nr.Context()
 		ctx = context.WithValue(ctx, "accesskey", accessKeyID)
 		ctx = context.WithValue(ctx, "region", region)
 
 		// 签名验证成功，继续处理请求
 		logger.GetLogger("dedups3").Debugf("Success auth header %s %#v", r.URL.Path, r.Header)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		next.ServeHTTP(w, nr.WithContext(ctx))
 	})
 }
 
@@ -314,9 +319,9 @@ func buildStringToSign(amzDate, date, region, service, canonicalRequest string) 
 }
 
 // 辅助函数：计算签名
-func calculateSignature(secretAccessKey, date, region, service, stringToSign string) string {
+func calculateSignature(secretKey, date, region, service, stringToSign string) string {
 	// 派生签名密钥
-	kDate := utils.HmacSHA256([]byte("AWS4"+secretAccessKey), date)
+	kDate := utils.HmacSHA256([]byte("AWS4"+secretKey), date)
 	kRegion := utils.HmacSHA256(kDate, region)
 	kService := utils.HmacSHA256(kRegion, service)
 	kSigning := utils.HmacSHA256(kService, "aws4_request")

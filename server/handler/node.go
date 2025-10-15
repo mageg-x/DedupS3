@@ -3,7 +3,6 @@ package handler
 import (
 	"errors"
 	"fmt"
-	"github.com/mageg-x/dedups3/plugs/block"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	xhttp "github.com/mageg-x/dedups3/internal/http"
 	"github.com/mageg-x/dedups3/internal/logger"
 	"github.com/mageg-x/dedups3/internal/utils"
+	"github.com/mageg-x/dedups3/plugs/block"
 	"github.com/mageg-x/dedups3/service/node"
 )
 
@@ -74,9 +74,9 @@ func ReadBlockHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 获取请求ID并添加到响应头
 	requestID := xhttp.GetRequestID(r.Context())
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(data)))
-	w.Header().Set("x-amz-request-id", requestID)
+	w.Header().Set(xhttp.ContentType, "application/octet-stream")
+	w.Header().Set(xhttp.ContentLength, fmt.Sprintf("%d", len(data)))
+	w.Header().Set(xhttp.AmzRequestID, requestID)
 	w.WriteHeader(http.StatusOK)
 
 	_, err = w.Write(data)

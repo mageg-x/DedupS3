@@ -85,8 +85,15 @@ func S3AuthorizationMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		nr, tc := TraceContext(r)
+		tc.Attributes["accountId"] = ak.AccountID
+		tc.Attributes["username"] = ak.Username
+		tc.Attributes["bucketName"] = bucketName
+		tc.Attributes["objectKey"] = objectKey
+		tc.Attributes["apiName"] = s3Action
+
 		// 鉴权通过，继续处理请求
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, nr)
 	})
 }
 

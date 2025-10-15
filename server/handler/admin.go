@@ -7,11 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/mageg-x/dedups3/plugs/audit/target"
 	"io"
 	"net/http"
 	"net/url"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +26,7 @@ import (
 	"github.com/mageg-x/dedups3/middleware"
 	block2 "github.com/mageg-x/dedups3/plugs/block"
 	"github.com/mageg-x/dedups3/plugs/kv"
+	"github.com/mageg-x/dedups3/service/audit"
 	sb "github.com/mageg-x/dedups3/service/bucket"
 	iam2 "github.com/mageg-x/dedups3/service/iam"
 	"github.com/mageg-x/dedups3/service/object"
@@ -62,6 +65,7 @@ func Prepare4Iam(w http.ResponseWriter, r *http.Request) *PrepareEnv {
 		xhttp.AdminWriteJSONError(w, r, http.StatusUnauthorized, "invalid username", nil, http.StatusUnauthorized)
 		return nil
 	}
+	xhttp.SetTraceAttr(r.Context(), "username", username)
 
 	account, _ := r.Context().Value("account").(string)
 	if account == "" {
@@ -71,6 +75,9 @@ func Prepare4Iam(w http.ResponseWriter, r *http.Request) *PrepareEnv {
 
 	// 获取访问密钥
 	accountID := meta.GenerateAccountID(account)
+	xhttp.SetTraceAttr(r.Context(), "accountId", accountID)
+	xhttp.SetTraceAttr(r.Context(), "principalId", accountID)
+
 	iamService := iam2.GetIamService()
 	if iamService == nil {
 		logger.GetLogger("dedups3").Errorf("failed to get iam service")
@@ -94,6 +101,7 @@ func Prepare4Iam(w http.ResponseWriter, r *http.Request) *PrepareEnv {
 
 	accessKeyIDs := utils.MapKeys(user.AccessKeys)
 	logger.GetLogger("dedups3").Debug("account %s  user %s has access key %s", accountID, username, accessKeyIDs[0])
+
 	return &PrepareEnv{
 		username:  username,
 		accountID: accountID,
@@ -151,13 +159,13 @@ func Prepare4S3(w http.ResponseWriter, r *http.Request, bucketName string) *Prep
 
 func AdminLoginHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		AccessKeyId     string `json:"accessKeyId,omitempty"`
-		SecretAccessKey string `json:"secretAccessKey,omitempty"`
-		Username        string `json:"username,omitempty"`
-		Password        string `json:"password,omitempty"`
-		Remember        bool   `json:"remember,omitempty"`
-		Endpoint        string `json:"endpoint,omitempty"`
-		Region          string `json:"region,omitempty"`
+		AccessKeyId string `json:"accessKeyId,omitempty"`
+		SecretKey   string `json:"secretKey,omitempty"`
+		Username    string `json:"username,omitempty"`
+		Password    string `json:"password,omitempty"`
+		Remember    bool   `json:"remember,omitempty"`
+		Endpoint    string `json:"endpoint,omitempty"`
+		Region      string `json:"region,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		logger.GetLogger("dedups3").Errorf("failed decoding request: %v", err)
@@ -256,6 +264,7 @@ func AdminGetStatsHandler(w http.ResponseWriter, r *http.Request) {
 	if pe == nil {
 		return
 	}
+	xhttp.SetTraceAttr(r.Context(), "iamStats", pe.accountID)
 
 	ss := stats.GetStatsService()
 	_stats, err := ss.GetAccountStats(pe.accountID)
@@ -281,6 +290,8 @@ func AdminListBucketsHandler(w http.ResponseWriter, r *http.Request) {
 		xhttp.AdminWriteJSONError(w, r, http.StatusServiceUnavailable, "internal server error", nil, http.StatusServiceUnavailable)
 		return
 	}
+
+	xhttp.SetTraceAttr(r.Context(), "bucketName", "/")
 
 	buckets, _, err := bs.ListBuckets(&sb.BaseBucketParams{
 		AccessKeyID: pe.accessKey,
@@ -336,6 +347,8 @@ func AdminCreateBucketHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	xhttp.SetTraceAttr(r.Context(), "bucketName", req.Name)
+
 	bs := sb.GetBucketService()
 	if bs == nil {
 		logger.GetLogger("dedups3").Errorf("bucket service is nil")
@@ -349,6 +362,9 @@ func AdminCreateBucketHandler(w http.ResponseWriter, r *http.Request) {
 		ObjectLockEnabled: false,
 		AccessKeyID:       pe.accessKey,
 	})
+
+	xhttp.SetTraceAttr(r.Context(), "region", cfg.Node.Region)
+
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed create bucket err: %v", err)
 
@@ -380,6 +396,11 @@ func AdminDeleteBucketHandler(w http.ResponseWriter, r *http.Request) {
 		AccessKeyID: pe.accessKey,
 	})
 
+	// 设置trace 信息
+	cfg := xconf.Get()
+	xhttp.SetTraceAttr(r.Context(), "bucketName", bucketName)
+	xhttp.SetTraceAttr(r.Context(), "region", cfg.Node.Region)
+
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed create bucket err: %v", err)
 
@@ -404,6 +425,12 @@ func AdminListObjectsHandler(w http.ResponseWriter, r *http.Request) {
 	query := utils.DecodeQuerys(r.URL.Query())
 	bucketName := query.Get("bucket")
 	bucketName = strings.TrimSpace(bucketName)
+
+	// 设置trace 信息
+	cfg := xconf.Get()
+	xhttp.SetTraceAttr(r.Context(), "bucketName", bucketName)
+	xhttp.SetTraceAttr(r.Context(), "region", cfg.Node.Region)
+
 	prefix := query.Get("prefix")
 	prefix = strings.TrimSpace(prefix)
 	// 将多个连续的 / 替换成一个 /
@@ -503,6 +530,12 @@ func AdminCreateFolderHandler(w http.ResponseWriter, r *http.Request) {
 	req.BucketName = strings.TrimSpace(req.BucketName)
 	req.FolderName = strings.TrimSpace(req.FolderName)
 
+	// 设置trace 信息
+	cfg := xconf.Get()
+	xhttp.SetTraceAttr(r.Context(), "bucketName", req.BucketName)
+	xhttp.SetTraceAttr(r.Context(), "objectKey", req.FolderName)
+	xhttp.SetTraceAttr(r.Context(), "region", cfg.Node.Region)
+
 	if req.BucketName == "" || req.FolderName == "" {
 		logger.GetLogger("dedups3").Errorf("invalid bucket or folder")
 		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid bucket or folder", nil, http.StatusBadRequest)
@@ -570,6 +603,12 @@ func AdminPutObjectHandler(w http.ResponseWriter, r *http.Request) {
 	bucketName = strings.TrimSpace(bucketName)
 	objectName = strings.TrimSpace(objectName)
 	objectName = path.Clean(objectName)
+
+	// 设置trace 信息
+	cfg := xconf.Get()
+	xhttp.SetTraceAttr(r.Context(), "bucketName", bucketName)
+	xhttp.SetTraceAttr(r.Context(), "objectKey", objectName)
+	xhttp.SetTraceAttr(r.Context(), "region", cfg.Node.Region)
 
 	logger.GetLogger("dedups3").Debugf(" bucket: %s, object: %s, contenttype: %s", bucketName, objectName, contentType)
 	if err := utils.CheckValidObjectName(objectName); err != nil || bucketName == "" || objectName == "" {
@@ -712,6 +751,13 @@ func AdminDelObjectHandler(w http.ResponseWriter, r *http.Request) {
 			allObjectKeys = append(allObjectKeys, key)
 		}
 	}
+
+	// 设置trace 信息
+	cfg := xconf.Get()
+	xhttp.SetTraceAttr(r.Context(), "bucketName", req.BucketName)
+	xhttp.SetTraceAttr(r.Context(), "region", cfg.Node.Region)
+	xhttp.SetTraceAttr(r.Context(), "objectKey", allObjectKeys)
+
 	logger.GetLogger("dedups3").Debugf("Prepare4S3 to delete key %#v", allObjectKeys)
 	deleteKeys := make([]string, 0, len(allObjectKeys))
 	for _, objkey := range allObjectKeys {
@@ -778,6 +824,12 @@ func AdminGetObjectHandler(w http.ResponseWriter, r *http.Request) {
 			req.Filename = "download.zip"
 		}
 	}
+
+	// 设置trace 信息
+	cfg := xconf.Get()
+	xhttp.SetTraceAttr(r.Context(), "bucketName", req.BucketName)
+	xhttp.SetTraceAttr(r.Context(), "region", cfg.Node.Region)
+
 	logger.GetLogger("dedups3").Errorf("download object list : %#v", objectKeys)
 
 	pe := Prepare4S3(w, r, req.BucketName)
@@ -827,6 +879,8 @@ func AdminGetObjectHandler(w http.ResponseWriter, r *http.Request) {
 		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
 		return
 	}
+
+	xhttp.SetTraceAttr(r.Context(), "objectKey", allObjectKeys)
 
 	if len(allObjectKeys) == 1 {
 		// 打开对象读取器
@@ -923,6 +977,8 @@ func AdminListUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	xhttp.SetTraceAttr(r.Context(), "iamUser", "/")
+
 	userList := make([]*IamUserInfo, 0)
 
 	for uname, _ := range pe.ac.Users {
@@ -950,6 +1006,7 @@ func AdminListUserHandler(w http.ResponseWriter, r *http.Request) {
 	// 返回成功响应
 	xhttp.AdminWriteJSONError(w, r, 0, "success", userList, http.StatusOK)
 }
+
 func AdminGetUserHandler(w http.ResponseWriter, r *http.Request) {
 	logger.GetLogger("dedups3").Debugf("[call adminGetUserHandler] %#v", r.URL)
 	pe := Prepare4Iam(w, r)
@@ -967,6 +1024,8 @@ func AdminGetUserHandler(w http.ResponseWriter, r *http.Request) {
 		Enabled:        pe.user.Enabled,
 		CreatedAt:      pe.user.CreatedAt,
 	}
+
+	xhttp.SetTraceAttr(r.Context(), "iamUser", pe.username)
 
 	allPolices, _ := pe.iam.ListUserAllPolicies(pe.accountID, pe.username)
 	policyFilter := make(map[string]bool)
@@ -1025,6 +1084,8 @@ func AdminCreateUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	xhttp.SetTraceAttr(r.Context(), "iamUser", req.Username)
+
 	_, err := pe.iam.CreateUser(pe.accountID, pe.username, req.Username, req.Password, req.Groups, req.Roles, req.AttachPolicies, req.Enabled)
 	if err != nil {
 		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
@@ -1077,6 +1138,8 @@ func AdminUpdateUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	xhttp.SetTraceAttr(r.Context(), "iamUser", req.Username)
+
 	_, err := pe.iam.UpdateUser(pe.accountID, pe.username, req.Username, req.Password, req.Groups, req.Roles, req.AttachPolicies, req.Enabled)
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to create user: %v", err)
@@ -1116,6 +1179,8 @@ func AdminDeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	username := query.Get("username")
 	username = strings.TrimSpace(username)
 
+	xhttp.SetTraceAttr(r.Context(), "iamUser", username)
+
 	err := pe.iam.DeleteUser(pe.accountID, pe.username, username)
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to delete user: %v", err)
@@ -1141,6 +1206,9 @@ func AdminListPolicyHandler(w http.ResponseWriter, r *http.Request) {
 	if pe == nil {
 		return
 	}
+
+	xhttp.SetTraceAttr(r.Context(), "iamPolicy", "/")
+
 	policies := make([]*meta.IamPolicy, 0)
 	if pe.ac.Policies != nil {
 		for pname, _ := range pe.ac.Policies {
@@ -1172,6 +1240,8 @@ func AdminGetPolicyHandler(w http.ResponseWriter, r *http.Request) {
 	query := utils.DecodeQuerys(r.URL.Query())
 	name := query.Get("name")
 	name = strings.TrimSpace(name)
+
+	xhttp.SetTraceAttr(r.Context(), "iamPolicy", name)
 
 	if _, exists := pe.ac.Policies[name]; !exists {
 		logger.GetLogger("dedups3").Errorf("policy %s does not exist", name)
@@ -1207,6 +1277,8 @@ func AdminUpdatePolicyHandler(w http.ResponseWriter, r *http.Request) {
 		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "invalid policy document", nil, http.StatusInternalServerError)
 		return
 	}
+
+	xhttp.SetTraceAttr(r.Context(), "iamPolicy", req.Name)
 
 	_, err := pe.iam.UpdatePolicy(pe.accountID, pe.username, req.Name, req.Desc, req.Doc)
 	if err != nil {
@@ -1251,6 +1323,9 @@ func AdminCreatePolicyHandler(w http.ResponseWriter, r *http.Request) {
 		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
 		return
 	}
+
+	xhttp.SetTraceAttr(r.Context(), "iamPolicy", req.Name)
+
 	_, err := pe.iam.CreatePolicy(pe.accountID, pe.username, req.Name, req.Desc, req.Doc)
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to create policy: %v", err)
@@ -1288,6 +1363,8 @@ func AdminDeletePolicyHandler(w http.ResponseWriter, r *http.Request) {
 	name := query.Get("name")
 	name = strings.TrimSpace(name)
 
+	xhttp.SetTraceAttr(r.Context(), "iamPolicy", name)
+
 	err := pe.iam.DeletePolicy(pe.accountID, pe.username, name)
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to delete policy: %v", err)
@@ -1313,6 +1390,9 @@ func AdminListRoleHandler(w http.ResponseWriter, r *http.Request) {
 	if pe == nil || pe.ac == nil {
 		return
 	}
+
+	xhttp.SetTraceAttr(r.Context(), "iamRole", "/")
+
 	roles := make([]*meta.IamRole, 0)
 	for rolename, _ := range pe.ac.Roles {
 		if role, err := pe.iam.GetRole(pe.accountID, pe.username, rolename); err == nil && role != nil {
@@ -1332,6 +1412,9 @@ func AdminGetRoleHandler(w http.ResponseWriter, r *http.Request) {
 	query := utils.DecodeQuerys(r.URL.Query())
 	name := query.Get("name")
 	name = strings.TrimSpace(name)
+
+	xhttp.SetTraceAttr(r.Context(), "iamRole", name)
+
 	role, err := pe.iam.GetRole(pe.accountID, pe.username, name)
 	if role == nil || err != nil {
 		logger.GetLogger("dedups3").Errorf("role %s does not exist", name)
@@ -1363,6 +1446,8 @@ func AdminCreateRoleHandler(w http.ResponseWriter, r *http.Request) {
 		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
 		return
 	}
+
+	xhttp.SetTraceAttr(r.Context(), "iamRole", req.Name)
 
 	_, err := pe.iam.CreateRole(pe.accountID, pe.username, req.Name, req.Desc, "", req.AttachPolicies)
 	if err != nil {
@@ -1412,6 +1497,8 @@ func AdminUpdateRoleHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	xhttp.SetTraceAttr(r.Context(), "iamRole", req.Name)
+
 	_, err := pe.iam.UpdateRole(pe.accountID, pe.username, req.Name, req.Desc, "", req.AttachPolicies)
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to update role: %v", err)
@@ -1445,6 +1532,8 @@ func AdminDeleteRoleHandler(w http.ResponseWriter, r *http.Request) {
 	name := query.Get("name")
 	name = strings.TrimSpace(name)
 
+	xhttp.SetTraceAttr(r.Context(), "iamRole", name)
+
 	if err := pe.iam.DeleteRole(pe.accountID, pe.username, name); err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to delete role: %v", err)
 		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
@@ -1468,6 +1557,9 @@ func AdminListGroupHandler(w http.ResponseWriter, r *http.Request) {
 	if pe == nil {
 		return
 	}
+
+	xhttp.SetTraceAttr(r.Context(), "iamGroup", "/")
+
 	groups := make([]*meta.IamGroup, 0)
 	if pe.ac.Groups != nil {
 		for groupname, _ := range pe.ac.Groups {
@@ -1493,6 +1585,8 @@ func AdminGetGroupHandler(w http.ResponseWriter, r *http.Request) {
 	query := utils.DecodeQuerys(r.URL.Query())
 	name := query.Get("name")
 	name = strings.TrimSpace(name)
+
+	xhttp.SetTraceAttr(r.Context(), "iamGroup", name)
 
 	group, err := pe.iam.GetGroup(pe.accountID, pe.username, name)
 	if err != nil || group == nil {
@@ -1526,6 +1620,8 @@ func AdminCreateGroupHandler(w http.ResponseWriter, r *http.Request) {
 		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
 		return
 	}
+
+	xhttp.SetTraceAttr(r.Context(), "iamGroup", req.Name)
 
 	_, err := pe.iam.CreateGroup(pe.accountID, pe.username, req.Name, req.Desc, req.Users, req.AttachPolicies)
 	if err != nil {
@@ -1572,6 +1668,8 @@ func AdminUpdateGroupHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	xhttp.SetTraceAttr(r.Context(), "iamGroup", req.Name)
+
 	_, err := pe.iam.UpdateGroup(pe.accountID, pe.username, req.Name, req.Desc, req.Users, req.AttachPolicies)
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to create group: %v", err)
@@ -1602,6 +1700,8 @@ func AdminDeleteGroupHandler(w http.ResponseWriter, r *http.Request) {
 	name := query.Get("name")
 	name = strings.TrimSpace(name)
 
+	xhttp.SetTraceAttr(r.Context(), "iamGroup", name)
+
 	if err := pe.iam.DeleteGroup(pe.accountID, pe.username, name); err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to delete group: %v", err)
 		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
@@ -1626,12 +1726,14 @@ func AdminListAccessKeyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type AkItem struct {
-		AccessKeyID     string    `json:"accessKeyId"`
-		SecretAccessKey string    `json:"secretAccessKey"`
-		Enable          bool      `json:"enable"`
-		ExpiredAt       time.Time `json:"expiredAt"`
-		Creater         string    `json:"creater"`
+		AccessKeyID string    `json:"accessKeyId"`
+		SecretKey   string    `json:"secretKey"`
+		Enable      bool      `json:"enable"`
+		ExpiredAt   time.Time `json:"expiredAt"`
+		Creater     string    `json:"creater"`
 	}
+
+	xhttp.SetTraceAttr(r.Context(), "iamAccessKey", "/")
 
 	akList := make([]AkItem, 0)
 	for username, _ := range pe.ac.Users {
@@ -1648,11 +1750,11 @@ func AdminListAccessKeyHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			akList = append(akList, AkItem{
-				AccessKeyID:     ak.AccessKeyID,
-				SecretAccessKey: ak.SecretAccessKey,
-				Enable:          ak.Status,
-				ExpiredAt:       ak.ExpiredAt,
-				Creater:         user.Username,
+				AccessKeyID: ak.AccessKeyID,
+				SecretKey:   ak.SecretKey,
+				Enable:      ak.Status,
+				ExpiredAt:   ak.ExpiredAt,
+				Creater:     user.Username,
 			})
 		}
 	}
@@ -1682,6 +1784,8 @@ func AdminCreateAccessKeyHandler(w http.ResponseWriter, r *http.Request) {
 		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
 		return
 	}
+
+	xhttp.SetTraceAttr(r.Context(), "iamAccessKey", req.AccessKey)
 
 	if _, err := pe.iam.CreateAccessKey(pe.accountID, pe.username, req.AccessKey, req.SecretKey, req.ExpiredAt, req.Enabled); err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to create accesskey: %v", err)
@@ -1731,6 +1835,8 @@ func AdminUpdateAccessKeyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	xhttp.SetTraceAttr(r.Context(), "iamAccessKey", req.AccessKey)
+
 	if _, err := pe.iam.UpdateAccessKey(pe.accountID, req.AccessKey, req.SecretKey, req.ExpiredAt, req.Enabled); err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to create access key: %v", err)
 		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
@@ -1767,6 +1873,8 @@ func AdminDeleteAccessKeyHandler(w http.ResponseWriter, r *http.Request) {
 	accessKey := query.Get("accessKey")
 	accessKey = strings.TrimSpace(accessKey)
 
+	xhttp.SetTraceAttr(r.Context(), "iamAccessKey", accessKey)
+
 	if err := pe.iam.DeleteAccessKey(pe.accountID, accessKey); err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to delete accessKey: %v", err)
 		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
@@ -1790,7 +1898,7 @@ func AdminListQuotaHandler(w http.ResponseWriter, r *http.Request) {
 	if pe == nil || pe.ac == nil {
 		return
 	}
-	logger.GetLogger("dedups3").Errorf("quota list  %#v", pe.ac.Quota)
+	logger.GetLogger("dedups3").Debugf("quota list  %#v", pe.ac.Quota)
 
 	type Resp struct {
 		AccountID      string `json:"accountID"`
@@ -1798,6 +1906,8 @@ func AdminListQuotaHandler(w http.ResponseWriter, r *http.Request) {
 		MaxObjectCount int    `json:"maxObjectCount"`
 		Enable         bool   `json:"enable"`
 	}
+
+	xhttp.SetTraceAttr(r.Context(), "iamQuota", pe.accountID)
 
 	quotaList := make([]*Resp, 0)
 	if pe.ac.Quota != nil {
@@ -1834,6 +1944,8 @@ func AdminCreateQuotaHandler(w http.ResponseWriter, r *http.Request) {
 		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid request body", nil, http.StatusBadRequest)
 		return
 	}
+
+	xhttp.SetTraceAttr(r.Context(), "iamQuota", req.AccountID)
 
 	if pe.accountID != meta.GenerateAccountID(req.AccountID) {
 		logger.GetLogger("dedups3").Errorf("invalid account id: %v", pe.accountID)
@@ -1888,6 +2000,8 @@ func AdminUpdateQuotaHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	xhttp.SetTraceAttr(r.Context(), "iamQuota", req.AccountID)
+
 	err := pe.iam.SetQuota(pe.accountID, &meta.QuotaConfig{
 		MaxSpaceSize:   req.MaxSpaceSize,
 		MaxObjectCount: req.MaxObjectCount,
@@ -1916,7 +2030,14 @@ func AdminDeleteQuotaHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := pe.iam.DeleteQuota(pe.accountID)
+	query := utils.DecodeQuerys(r.URL.Query())
+	account := query.Get("accountID")
+	account = strings.TrimSpace(account)
+	accountID := meta.GenerateAccountID(account)
+
+	xhttp.SetTraceAttr(r.Context(), "iamQuota", accountID)
+
+	err := pe.iam.DeleteQuota(accountID)
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to delete quota config: %v", err)
 		if errors.Is(err, xhttp.ToError(xhttp.ErrAccessDenied)) {
@@ -1944,6 +2065,8 @@ func AdminListChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	xhttp.SetTraceAttr(r.Context(), "iamStorage", "")
+
 	ss := storage.GetStorageService()
 	if ss == nil {
 		logger.GetLogger("dedups3").Debugf("[Call adminListChunkConfigHandler] storage service is nil")
@@ -1970,6 +2093,9 @@ func AdminGetChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	query := utils.DecodeQuerys(r.URL.Query())
 	storageID := query.Get("storageID")
+	storageID = strings.TrimSpace(storageID)
+
+	xhttp.SetTraceAttr(r.Context(), "iamStorage", storageID)
 
 	ss := storage.GetStorageService()
 	if ss == nil {
@@ -2018,6 +2144,8 @@ func AdminSetChunkConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	xhttp.SetTraceAttr(r.Context(), "iamStorage", req.StorageID)
+
 	ss := storage.GetStorageService()
 	if ss == nil {
 		logger.GetLogger("dedups3").Debugf("[Call adminListChunkConfigHandler] storage service is nil")
@@ -2053,6 +2181,9 @@ func AdminListStorageHandler(w http.ResponseWriter, r *http.Request) {
 	if pe == nil || pe.ac == nil {
 		return
 	}
+
+	xhttp.SetTraceAttr(r.Context(), "iamStorage", "")
+
 	bs := storage.GetStorageService()
 	if bs == nil {
 		logger.GetLogger("dedups3").Errorf("storage service not initial")
@@ -2125,6 +2256,8 @@ func AdminCreateStorageHandler(w http.ResponseWriter, r *http.Request) {
 	req.StorageID = strings.TrimSpace(req.StorageID)
 	req.StorageType = strings.TrimSpace(req.StorageType)
 	req.StorageClass = strings.TrimSpace(req.StorageClass)
+
+	xhttp.SetTraceAttr(r.Context(), "iamStorage", req.StorageID)
 
 	if !meta.IsValidIAMName(req.StorageID) ||
 		(req.StorageClass != meta.STANDARD_CLASS_STORAGE && req.StorageClass != meta.STANDARD_IA_CLASS_STORAGE && req.StorageClass != meta.GLACIER_IR_CLASS_STORAGE) ||
@@ -2232,6 +2365,8 @@ func AdminTestStorageHandler(w http.ResponseWriter, r *http.Request) {
 	req.StorageType = strings.TrimSpace(req.StorageType)
 	req.StorageClass = strings.TrimSpace(req.StorageClass)
 
+	xhttp.SetTraceAttr(r.Context(), "iamStorage", req.StorageID)
+
 	if !meta.IsValidIAMName(req.StorageID) ||
 		(req.StorageClass != meta.STANDARD_CLASS_STORAGE && req.StorageClass != meta.STANDARD_IA_CLASS_STORAGE && req.StorageClass != meta.GLACIER_IR_CLASS_STORAGE) ||
 		(req.StorageType != meta.DISK_TYPE_STORAGE && req.StorageType != meta.S3_TYPE_STORAGE) {
@@ -2285,6 +2420,9 @@ func AdminDeleteStorageHandler(w http.ResponseWriter, r *http.Request) {
 
 	query := utils.DecodeQuerys(r.URL.Query())
 	storageID := query.Get("storageID")
+	storageID = strings.TrimSpace(storageID)
+
+	xhttp.SetTraceAttr(r.Context(), "iamStorage", storageID)
 
 	bs := storage.GetStorageService()
 	if bs == nil {
@@ -2313,6 +2451,8 @@ func AdminDebugObjectInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if pe == nil || pe.ac == nil {
 		return
 	}
+
+	xhttp.SetTraceAttr(r.Context(), "iamDebug", objectID)
 
 	objkey := "aws:object:" + pe.accountID + ":" + objectID
 
@@ -2349,6 +2489,8 @@ func AdminDebugBlockInfoHandler(w http.ResponseWriter, r *http.Request) {
 
 	blockkey := "aws:block:" + blockID
 
+	xhttp.SetTraceAttr(r.Context(), "iamDebug", blockID)
+
 	var _block meta.Block
 	exist, err := kvstore.Get(blockkey, &_block)
 	if err != nil {
@@ -2380,6 +2522,8 @@ func AdminDebugChunkInfoHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	xhttp.SetTraceAttr(r.Context(), "iamDebug", chunkID)
+
 	chunkkey := "aws:chunk:" + chunkID
 
 	var _chunk meta.Chunk
@@ -2395,4 +2539,91 @@ func AdminDebugChunkInfoHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	xhttp.AdminWriteJSONError(w, r, 0, "success", &_chunk, http.StatusOK)
+}
+
+func AdminListAuditLogHandler(w http.ResponseWriter, r *http.Request) {
+	query := utils.DecodeQuerys(r.URL.Query())
+
+	// 解析查询参数
+	startTimeStr := query.Get("startTime") //10 位数字时间戳格式
+	endTimeStr := query.Get("endTime")     //10 位数字时间戳格式
+	eventName := query.Get("eventName")
+	eventName = strings.TrimSpace(eventName)
+	offsetStr := query.Get("offset")
+
+	if startTimeStr == "" || endTimeStr == "" {
+		logger.GetLogger("dedups3").Errorf("invalid query params")
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid query params", nil, http.StatusBadRequest)
+		return
+	}
+
+	_startTime, err1 := strconv.ParseInt(startTimeStr, 10, 64)
+	_endTime, err2 := strconv.ParseInt(endTimeStr, 10, 64)
+	if err1 != nil || err2 != nil {
+		logger.GetLogger("dedups3").Errorf("invalid query time format")
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid query time format", nil, http.StatusBadRequest)
+		return
+	}
+	startTime := time.Unix(_startTime, 0)
+	endTime := time.Unix(_endTime, 0)
+
+	offset := 0
+	if offsetStr != "" {
+		n, err := strconv.ParseInt(offsetStr, 10, 64)
+		if err != nil || n < 1 {
+			logger.GetLogger("dedups3").Errorf("invalid offset number: %v", err)
+		} else {
+			offset = int(n)
+		}
+	}
+
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+
+	// 构建查询条件
+	condition := &target.QueryCondition{
+		StartTime: &startTime,
+		EndTime:   &endTime,
+		EventName: &eventName,
+		UserID:    &pe.accountID,
+	}
+
+	// 构建查询选项
+	option := &target.QueryOption{
+		Offset: offset,
+	}
+
+	// 获取审计服务
+	as := audit.GetAuditService()
+	if as == nil {
+		logger.GetLogger("dedups3").Errorf("audit service not initialized")
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "audit service not initialized", nil, http.StatusInternalServerError)
+		return
+	}
+
+	xhttp.SetTraceAttr(r.Context(), "iamAudit", pe.accountID)
+
+	// 执行查询
+	result, err := as.Query(r.Context(), condition, option)
+	if err != nil {
+		logger.GetLogger("dedups3").Errorf("query audit log failed: %v", err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "query audit log failed", nil, http.StatusInternalServerError)
+		return
+	}
+
+	// 构建响应
+	resp := map[string]interface{}{
+		"entries": result.Entries,
+		"hasMore": result.HasMore,
+		"total":   result.Total,
+		"offset":  offset,
+	}
+
+	xhttp.AdminWriteJSONError(w, r, 0, "success", resp, http.StatusOK)
+}
+
+func AdminListEventLogHandler(w http.ResponseWriter, r *http.Request) {
+
 }

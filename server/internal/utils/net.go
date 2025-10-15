@@ -5,6 +5,10 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+
+	"github.com/gorilla/mux"
+
+	xhttp "github.com/mageg-x/dedups3/internal/http"
 )
 
 func GetSourceIP(r *http.Request) string {
@@ -59,4 +63,48 @@ func GetSourceIP(r *http.Request) string {
 		return "[" + raddr + "]"
 	}
 	return raddr
+}
+
+// Extract request params to be sent with event notification.
+func ExtractReqParams(r *http.Request, filterKeys map[string]struct{}) map[string]string {
+	if r == nil {
+		return nil
+	}
+
+	// Success.
+	m := map[string]string{}
+	query := DecodeQuerys(r.URL.Query())
+	for key, _ := range r.URL.Query() {
+		if _, ok := filterKeys[key]; ok {
+			continue
+		}
+		val := query.Get(key)
+		m[key] = val
+	}
+
+	vars := DecodeVars(mux.Vars(r))
+	for key, val := range vars {
+		m[key] = val
+	}
+
+	return m
+}
+
+// Extract response elements to be sent with event notification.
+func ExtractRespElements(w http.ResponseWriter) map[string]string {
+	if w == nil {
+		return map[string]string{}
+	}
+
+	m := make(map[string]string)
+	if v := w.Header().Get(xhttp.AmzRequestID); v != "" {
+		m["requestId"] = v
+	}
+	if v := w.Header().Get(xhttp.AmzRequestHostID); v != "" {
+		m["nodeId"] = v
+	}
+	if v := w.Header().Get(xhttp.ContentLength); v != "" {
+		m["content-length"] = v
+	}
+	return m
 }

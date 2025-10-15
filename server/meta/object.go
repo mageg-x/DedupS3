@@ -101,7 +101,7 @@ type Owner struct {
 }
 
 func FormatObjectARN(accountID, bucketName, ObjKey string) string {
-	return "arn:aws:s3:::" + bucketName + "/" + ObjKey
+	return "arn:aws:s3::" + bucketName + "/" + ObjKey
 }
 
 func ObjectToBaseObject(obj *Object) *BaseObject {

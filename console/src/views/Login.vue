@@ -76,7 +76,7 @@
                     <form v-show="false" id="autofill-form">
                         <input type="text" name="username" v-model="loginForm.username" autocomplete="username">
                         <input type="password" name="password" v-model="loginForm.password" autocomplete="password">
-                        <input type="password" name="secretAccessKey" v-model="loginForm.secretAccessKey" autocomplete="password">
+                        <input type="password" name="secretKey" v-model="loginForm.secretKey" autocomplete="password">
                     </form>
                     
                     <div class="login-header">
@@ -119,16 +119,16 @@
                                 />
                             </el-form-item>
 
-                            <el-form-item :label="t('login.secretAccessKey')" prop="secretAccessKey">
+                            <el-form-item :label="t('login.secretKey')" prop="secretKey">
                                 <el-input 
-                                    v-model="loginForm.secretAccessKey" 
+                                    v-model="loginForm.secretKey" 
                                     type="password"
                                     :placeholder="t('login.secretKeyPlaceholder')" 
                                     size="large" 
                                     show-password 
                                     autocomplete="password" 
-                                    id="secretAccessKey" 
-                                    name="secretAccessKey"
+                                    id="secretKey" 
+                                    name="secretKey"
                                     @input="onInput"
                                 />
                             </el-form-item>
@@ -258,7 +258,7 @@ const loginMethod = ref('iam'); // 's3' 或 'iam'
 // 登录表单数据
 const loginForm = reactive({
     accessKeyId: '',
-    secretAccessKey: '',
+    secretKey: '',
     endpoint: '',
     region: '',
     username: 'boulder',
@@ -323,9 +323,9 @@ const checkAutofill = () => {
         }
         
         // 检查S3密钥字段
-        const secretInput = document.getElementById('secretAccessKey');
-        if (secretInput && secretInput.value && !loginForm.secretAccessKey) {
-            loginForm.secretAccessKey = secretInput.value;
+        const secretInput = document.getElementById('secretKey');
+        if (secretInput && secretInput.value && !loginForm.secretKey) {
+            loginForm.secretKey = secretInput.value;
         }
     });
 };
@@ -339,8 +339,8 @@ const onInput = () => {
     if (loginForm.password) {
         document.getElementById('password').value = loginForm.password;
     }
-    if (loginForm.secretAccessKey) {
-        document.getElementById('secretAccessKey').value = loginForm.secretAccessKey;
+    if (loginForm.secretKey) {
+        document.getElementById('secretKey').value = loginForm.secretKey;
     }
 };
 
@@ -417,8 +417,8 @@ const rules = reactive({
     accessKeyId: [
         { required: true, message: t('login.pleaseEnterAccessKeyId'), trigger: 'blur' }
     ],
-    secretAccessKey: [
-        { required: true, message: t('login.pleaseEnterSecretAccessKey'), trigger: 'blur' }
+    secretKey: [
+        { required: true, message: t('login.pleaseEnterSecretKey'), trigger: 'blur' }
     ],
     endpoint: [
         {
@@ -503,7 +503,7 @@ const handleLogin = async () => {
                 } else if (loginMethod.value === 's3') {
                     response = await login({
                         accessKeyId: loginForm.accessKeyId,
-                        secretAccessKey: loginForm.secretAccessKey,
+                        secretKey: loginForm.secretKey,
                         endpoint: loginForm.endpoint || '',
                         region: loginForm.region || '',
                         remember: loginForm.remember

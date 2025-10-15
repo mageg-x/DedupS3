@@ -2,15 +2,10 @@ package event
 
 import (
 	"fmt"
-	"github.com/gorilla/mux"
-	"github.com/mageg-x/dedups3/internal/aws"
-	xhttp "github.com/mageg-x/dedups3/internal/http"
-	"github.com/mageg-x/dedups3/internal/utils"
-	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/mageg-x/dedups3/internal/event/target"
+	xhttp "github.com/mageg-x/dedups3/internal/http"
 )
 
 type ObjectInfo struct {
@@ -40,8 +35,8 @@ func (args EventArgs) ToEvent() target.Event {
 	}
 
 	respElements := map[string]string{
-		"x-amz-request-id": args.RespElements["requestId"],
-		"x-amz-id-2":       args.RespElements["nodeId"],
+		xhttp.AmzRequestID:     args.RespElements["requestId"],
+		xhttp.AmzRequestHostID: args.RespElements["nodeId"],
 	}
 
 	if args.RespElements["content-length"] != "" {
@@ -102,58 +97,4 @@ func (args EventArgs) ToEvent() target.Event {
 	return target.Event{
 		Records: []target.Record{record},
 	}
-}
-
-// Extract request params to be sent with event notification.
-func ExtractReqParams(r *http.Request) map[string]string {
-	if r == nil {
-		return nil
-	}
-
-	accessKey := aws.GetReqAccess(r)
-
-	// Success.
-	m := map[string]string{
-		"accessKey":       accessKey,
-		"sourceIPAddress": utils.GetSourceIP(r),
-	}
-
-	for key, values := range r.URL.Query() {
-		for _, value := range values {
-			if decoded, err := url.QueryUnescape(value); err == nil {
-				m[key] = decoded
-			} else {
-				// 可选：解码失败时保留原始值，或记录日志
-				m[key] = decoded
-			}
-		}
-	}
-
-	vars := mux.Vars(r)
-	for key, value := range vars {
-		if decoded, err := url.QueryUnescape(value); err == nil {
-			m[key] = decoded
-		}
-	}
-
-	return m
-}
-
-// Extract response elements to be sent with event notification.
-func ExtractRespElements(w http.ResponseWriter) map[string]string {
-	if w == nil {
-		return map[string]string{}
-	}
-
-	m := make(map[string]string)
-	if v := w.Header().Get(xhttp.AmzRequestID); v != "" {
-		m["requestId"] = v
-	}
-	if v := w.Header().Get(xhttp.AmzRequestHostID); v != "" {
-		m["nodeId"] = v
-	}
-	if v := w.Header().Get(xhttp.ContentLength); v != "" {
-		m["content-length"] = v
-	}
-	return m
 }

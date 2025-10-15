@@ -20,10 +20,20 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"net/http"
 
 	"github.com/mageg-x/dedups3/internal/logger"
 )
+
+const (
+	ContextTraceKey = "ctx-trace-info"
+)
+
+// TraceCtxt holds related tracing data of a http request.
+type TraceCtxt struct {
+	Attributes map[string]interface{} `json:"attributes,omitempty"`
+}
 
 // 通用响应结构
 type AdminResponse struct {
@@ -40,6 +50,10 @@ func AdminWriteJSONError(w http.ResponseWriter, r *http.Request, code int, msg s
 		Msg:  msg,
 		Data: data,
 	}
+
+	// 写入trace
+	SetTraceAttr(r.Context(), "errorCode", fmt.Sprint(code))
+	SetTraceAttr(r.Context(), "errorMessage", msg)
 
 	// 使用 json.NewEncoder 避免缓冲，更高效
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -82,9 +96,13 @@ func WriteAWSError(w http.ResponseWriter, r *http.Request, code, message string,
 		XMLNS:     "http://s3.amazonaws.com/doc/2006-03-01/", // 设置AWS S3 XML命名空间
 	}
 
+	// 写入trace
+	SetTraceAttr(r.Context(), "errorCode", code)
+	SetTraceAttr(r.Context(), "errorMessage", message)
+
 	// 写入响应
-	w.Header().Set("Content-Type", "application/xml")
-	w.Header().Set("x-amz-request-id", requestID)
+	w.Header().Set(ContentType, "application/xml")
+	w.Header().Set(AmzRequestID, requestID)
 	w.WriteHeader(status)
 
 	// 添加XML声明
@@ -115,9 +133,13 @@ func WriteAWSSuc(w http.ResponseWriter, r *http.Request, data interface{}) {
 	// 获取请求ID
 	requestID := GetRequestID(r.Context())
 
+	// 写入trace
+	SetTraceAttr(r.Context(), "errorCode", "0")
+	SetTraceAttr(r.Context(), "errorMessage", "success")
+
 	// 写入响应头
-	w.Header().Set("Content-Type", "application/xml")
-	w.Header().Set("x-amz-request-id", requestID)
+	w.Header().Set(ContentType, "application/xml")
+	w.Header().Set(AmzRequestID, requestID)
 	w.WriteHeader(http.StatusOK)
 
 	// 添加XML声明
@@ -150,9 +172,13 @@ func WriteAWSJSONError(w http.ResponseWriter, r *http.Request, code, message str
 		RequestID: requestID,
 	}
 
+	// 写入trace
+	SetTraceAttr(r.Context(), "errorCode", code)
+	SetTraceAttr(r.Context(), "errorMessage", message)
+
 	// 写入响应头
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("x-amz-request-id", requestID)
+	w.Header().Set(ContentType, "application/json")
+	w.Header().Set(AmzRequestID, requestID)
 	w.WriteHeader(status)
 
 	// 序列化数据为JSON
@@ -177,9 +203,13 @@ func WriteAWSJSONSuc(w http.ResponseWriter, r *http.Request, data interface{}) {
 	// 获取请求ID
 	requestID := GetRequestID(r.Context())
 
+	// 写入trace
+	SetTraceAttr(r.Context(), "errorCode", "0")
+	SetTraceAttr(r.Context(), "errorMessage", "success")
+
 	// 写入响应头
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("x-amz-request-id", requestID)
+	w.Header().Set(ContentType, "application/json")
+	w.Header().Set(AmzRequestID, requestID)
 	w.WriteHeader(http.StatusOK)
 
 	// 序列化数据为JSON
@@ -190,5 +220,13 @@ func WriteAWSJSONSuc(w http.ResponseWriter, r *http.Request, data interface{}) {
 		// 序列化失败时回退到错误响应
 		WriteAWSError(w, r, "InternalError", "Failed to generate JSON response", http.StatusInternalServerError)
 		return
+	}
+}
+
+func SetTraceAttr(ctx context.Context, key string, value interface{}) {
+	if val := ctx.Value(ContextTraceKey); val != nil {
+		if tc, ok := val.(*TraceCtxt); ok {
+			tc.Attributes[key] = value
+		}
 	}
 }

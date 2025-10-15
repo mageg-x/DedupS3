@@ -2,10 +2,12 @@ package middleware
 
 import (
 	"context"
+	"github.com/gorilla/mux"
 	"github.com/mageg-x/dedups3/internal/config"
 	xhttp "github.com/mageg-x/dedups3/internal/http"
 	"github.com/mageg-x/dedups3/internal/logger"
 	"github.com/mageg-x/dedups3/internal/utils"
+	"github.com/mageg-x/dedups3/meta"
 	"net/http"
 	"strings"
 )
@@ -25,6 +27,15 @@ func AdminAuthMiddleware(next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 			w.WriteHeader(http.StatusNoContent)
 			return
+		}
+
+		r, _ = TraceContext(r)
+
+		// 获取 S3 API操作名称
+		route := mux.CurrentRoute(r)
+		if route != nil {
+			action := route.GetName()
+			xhttp.SetTraceAttr(r.Context(), "apiName", action)
 		}
 
 		// 白名单：跳过登录等公开接口
@@ -65,10 +76,14 @@ func AdminAuthMiddleware(next http.Handler) http.Handler {
 			logger.GetLogger("dedups3").Errorf("failed get account name %s", loginname)
 			xhttp.AdminWriteJSONError(w, r, http.StatusUnauthorized, "invalid token", nil, http.StatusUnauthorized)
 		}
+
 		ctx := r.Context()
 		ctx = context.WithValue(ctx, "username", username)
 		ctx = context.WithValue(ctx, "account", account)
 		r = r.WithContext(ctx)
+
+		xhttp.SetTraceAttr(r.Context(), "username", username)
+		xhttp.SetTraceAttr(r.Context(), "accountId", meta.GenerateAccountID(account))
 
 		// 如果有新 token，通过响应头返回 ===
 		if newToken != "" {
@@ -76,6 +91,7 @@ func AdminAuthMiddleware(next http.Handler) http.Handler {
 			if config.IsDev {
 				sameSite = http.SameSiteLaxMode
 			}
+
 			// 设置 Cookie
 			c := &http.Cookie{
 				Name:     "access_token", // Cookie 名字
@@ -108,5 +124,6 @@ func ParseLoginUsername(input string) (username, account string) {
 		username = input // 或者 username = input （如果是主账号用户）
 		account = input
 	}
+
 	return username, account
 }

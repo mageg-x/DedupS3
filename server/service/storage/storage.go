@@ -57,9 +57,9 @@ func GetStorageService() *StorageService {
 		logger.GetLogger("dedups3").Infof("initializing storage service")
 		cfg := xconf.Get()
 		c, err := pconf.NewKVConfig(&pconf.Args{
-			Driver:    cfg.Database.Driver,
-			DSN:       cfg.Database.DSN,
-			AuthToken: cfg.Database.AuthToken,
+			Driver:    cfg.Conf.Driver,
+			DSN:       cfg.Conf.DSN,
+			AuthToken: cfg.Conf.AuthToken,
 		})
 		if err != nil || c == nil {
 			logger.GetLogger("dedups3").Errorf("failed to get kv config : %v", err)

@@ -11,6 +11,7 @@ import (
 	"math/rand"
 	"os"
 	"path"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -75,6 +76,17 @@ type diskQueue struct {
 // NewDiskQueue instantiates a new instance of diskQueue, retrieving metadata
 // from the filesystem and starting the read ahead goroutine
 func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64, minMsgSize int32, maxMsgSize int32, syncEvery int64, syncTimeout time.Duration) Queue {
+	if abspath, err := filepath.Abs(dataPath); err != nil {
+		logger.GetLogger("dedups3").Errorf("invalid dataPath %s", dataPath)
+		return nil
+	} else {
+		dataPath = abspath
+		if err = os.MkdirAll(dataPath, 0755); err != nil {
+			logger.GetLogger("dedups3").Errorf("failed permission to create dir %s", dataPath)
+			return nil
+		}
+	}
+
 	d := diskQueue{
 		name:              name,
 		dataPath:          dataPath,
@@ -100,6 +112,7 @@ func NewDiskQueue(name string, dataPath string, maxBytesPerFile int64, minMsgSiz
 
 	go d.ioLoop()
 
+	logger.GetLogger("dedups3").Errorf("success creating queue %s in %s", name, dataPath)
 	return &d
 }
 

@@ -309,7 +309,7 @@
               </div>
             </div>
             <div class="detail-item">
-              <label class="detail-label block text-sm font-medium text-gray-700 mb-1"> {{ t('accessKey.secretAccessKey') }} </label>
+              <label class="detail-label block text-sm font-medium text-gray-700 mb-1"> {{ t('accessKey.secretKey') }} </label>
               <div class="detail-value bg-gray-50 px-4 py-2 rounded-lg text-sm font-mono break-all">
                 ******** (密钥内容已隐藏) 
               </div>
@@ -365,7 +365,7 @@ const loadAccessKeys = async () => {
       accessKeys.value = res.data.map(item => ({
         id: item.accessKeyId,
         accessKey: item.accessKeyId,
-        secretKey: item.secretAccessKey,
+        secretKey: item.secretKey,
         creater: item.creater,
         enabled: item.enable,
         expiresAt: item.expiredAt ? new Date(item.expiredAt).toISOString() : null,
@@ -497,7 +497,7 @@ const handleSubmit = async () => {
         console.log('API response data:', res); // 添加调试日志
         newKey.value = {
           accessKey: res?.accessKeyId || res?.data?.accessKeyId || res?.data?.accessKey || tempFormData.accessKey || '',
-          secretKey: res?.secretAccessKey || res?.data?.secretAccessKey || res?.data?.secretKey || tempFormData.secretKey || ''
+          secretKey: res?.secretKey || res?.data?.secretKey || res?.data?.secretKey || tempFormData.secretKey || ''
         };
         
         // 立即显示密钥详情对话框

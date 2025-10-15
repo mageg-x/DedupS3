@@ -48,7 +48,7 @@ var (
 	IsDev        = isDevelopment()
 )
 
-type IAMConfig struct {
+type IAMAccountConfig struct {
 	Username string `json:"username" mapstructure:"username" env:"IAM_USERNAME" default:"boulder"`
 	Password string `json:"password" mapstructure:"password" env:"IAM_PASSWORD" default:"Abcd@1234"`
 	AK       string `json:"access_key" mapstructure:"access_key" env:"IAM_ACCESS_KEY" default:"GGP5NTUY9WRH5NS78UVU"`
@@ -257,6 +257,7 @@ type BlockConfig struct {
 	ShardNum         int           `mapstructure:"shard_num" json:"shardNum" env:"DEDUPS3_BLOCK_SHARD_NUM" default:"10"`
 	MaxSize          int           `mapstructure:"max_size" json:"maxSize" env:"DEDUPS3_BLOCK_MAX_SIZE" default:"67108864"`
 	MaxHeadSize      int           `mapstructure:"max_head_size" json:"maxHeadSize" env:"DEDUPS3_BLOCK_MAX_HEAD_SIZE" default:"204800"`
+	CacheSize        int           `mapstructure:"cache_size" json:"cacheSize" env:"DEDUPS3_BLOCK_CACHE_SIZE" default:"2147483648"`
 }
 
 type NodeConfig struct {
@@ -265,21 +266,23 @@ type NodeConfig struct {
 	Region    string `mapstructure:"region" json:"region" env:"DEDUPS3_REGION" default:"us-east-1"`
 }
 
-type DataBaseConfig struct {
-	Driver    string `mapstructure:"driver" json:"driver" env:"DEDUPS3_DATABASE_DRIVER" default:"sqlite"`
-	DSN       string `mapstructure:"dsn" json:"dsn" env:"DEDUPS3_DSN" default:"./data/sqlite/dedups3.db"`
-	AuthToken string `mapstructure:"auth_token" json:"authToken" env:"DEDUPS3_AUTH_TOKEN" default:""`
+type PlugConfig struct {
+	Driver    string `mapstructure:"driver" json:"driver"  default:"sqlite"`
+	DSN       string `mapstructure:"dsn" json:"dsn"  default:"./data/sqlite/dedups3.db"`
+	AuthToken string `mapstructure:"auth_token" json:"authToken"  default:""`
 }
 
 type Config struct {
-	Server   ServerConfig   `mapstructure:"server" json:"server"`
-	Log      LogConfig      `mapstructure:"log" json:"log"`
-	KV       KVConfig       `mapstructure:"kv" json:"kv"`
-	Cache    CacheConfig    `mapstructure:"cache" json:"cache"`
-	Iam      IAMConfig      `mapstructure:"iam" json:"iam"`
-	Block    BlockConfig    `mapstructure:"block" json:"block"`
-	Node     NodeConfig     `mapstructure:"node" json:"node"`
-	Database DataBaseConfig `mapstructure:"database" json:"database"`
+	Server ServerConfig     `mapstructure:"server" json:"server"`
+	Log    LogConfig        `mapstructure:"log" json:"log"`
+	KV     KVConfig         `mapstructure:"kv" json:"kv"`
+	Cache  CacheConfig      `mapstructure:"cache" json:"cache"`
+	Admin  IAMAccountConfig `mapstructure:"admin" json:"admin"`
+	Block  BlockConfig      `mapstructure:"block" json:"block"`
+	Node   NodeConfig       `mapstructure:"node" json:"node"`
+	Conf   PlugConfig       `mapstructure:"Config" json:"Config"`
+	Audit  PlugConfig       `mapstructure:"audit" json:"audit"`
+	Event  PlugConfig       `mapstructure:"event" json:"event"`
 }
 
 // DefaultConfig 创建带默认值的配置实例

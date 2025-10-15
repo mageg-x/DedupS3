@@ -27,10 +27,10 @@ type BucketTarget struct {
 // Credentials 表示认证信息
 // 临时凭证结构
 type Credentials struct {
-	AccessKeyID     string    `json:"accessKeyId"`
-	SecretAccessKey string    `json:"secretAccessKey"`
-	SessionToken    string    `json:"sessionToken"`
-	Expiration      time.Time `json:"expiration"`
+	AccessKeyID  string    `json:"accessKeyId"`
+	SecretKey    string    `json:"secretKey"`
+	SessionToken string    `json:"sessionToken"`
+	Expiration   time.Time `json:"expiration"`
 }
 
 // AddTarget 添加新的存储桶目标
@@ -55,7 +55,7 @@ func (b *BucketTargets) AddTarget(target BucketTarget) error {
 		return errors.New("target region is required")
 	}
 
-	if target.Credentials.AccessKeyID == "" || target.Credentials.SecretAccessKey == "" {
+	if target.Credentials.AccessKeyID == "" || target.Credentials.SecretKey == "" {
 		return errors.New("credentials are required")
 	}
 

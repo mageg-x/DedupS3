@@ -17,75 +17,49 @@
 package middleware
 
 import (
-	"encoding/json"
+	"context"
 	"net/http"
-	"time"
 
 	xhttp "github.com/mageg-x/dedups3/internal/http"
 	"github.com/mageg-x/dedups3/internal/logger"
-	"github.com/mageg-x/dedups3/internal/utils"
-
-	"github.com/gorilla/mux"
+	"github.com/mageg-x/dedups3/plugs/audit"
+	AS "github.com/mageg-x/dedups3/service/audit"
 )
 
 func AuditMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.GetLogger("dedups3").Tracef("get req %s %s %#v", r.Method, r.URL.Path, r.Header)
-		start := time.Now().UTC()
 
-		// 创建响应写入器以捕获状态码
-		rw := &responseWriter{ResponseWriter: w}
-
+		// Wrap the original ResponseWriter
+		rw := &xhttp.RespWriter{ResponseWriter: w}
 		// 处理请求
 		next.ServeHTTP(rw, r)
 
-		// 获取请求上下文中的 Request ID
-		requestID := xhttp.GetRequestID(r.Context())
-
-		// 获取当前路由信息
-		route := mux.CurrentRoute(r)
-		var apiName, apiPattern string
-
-		if route != nil {
-			// 获取路由名称
-			apiName = route.GetName()
-
-			// 获取路由模式（如 "/{bucket}/{key}"）
-			if pattern, err := route.GetPathTemplate(); err == nil {
-				apiPattern = pattern
-			}
+		filterKeys := map[string]struct{}{
+			"password":  {},
+			"secretKey": {},
 		}
 
-		// 获取路径变量（bucket 和 key）
-		vars := utils.DecodeVars(mux.Vars(r))
-		bucket := vars["bucket"]
-		key := vars["key"]
-
-		// 记录日志
-		txt, _ := json.Marshal(map[string]interface{}{
-			"amz_request_id": requestID,
-			"api_name":       apiName,    // API 名称（如 "PutObject"）
-			"api_pattern":    apiPattern, // API 模式（如 "/{bucket}/{key}"）
-			"method":         r.Method,
-			"path":           r.URL.Path,
-			"status":         rw.status,
-			"duration":       time.Since(start).String(),
-			"remote_addr":    r.RemoteAddr,
-			"user_agent":     r.UserAgent(),
-			"bucket":         bucket,
-			"key":            key,
-		})
-		logger.GetLogger("audit").Tracef(string(txt))
+		// 记录审计日志
+		as := AS.GetAuditService()
+		audit.AuditLog(r, rw, filterKeys, as)
 	})
 }
 
-// 自定义 ResponseWriter 以捕获状态码
-type responseWriter struct {
-	http.ResponseWriter
-	status int
-}
+func TraceContext(r *http.Request) (*http.Request, *xhttp.TraceCtxt) {
+	ctx := r.Context()
 
-func (rw *responseWriter) WriteHeader(status int) {
-	rw.status = status
-	rw.ResponseWriter.WriteHeader(status)
+	// Try to get existing
+	if val := ctx.Value(xhttp.ContextTraceKey); val != nil {
+		if tc, ok := val.(*xhttp.TraceCtxt); ok {
+			logger.GetLogger("dedups3").Tracef("get exist ctx %#v and tc %#v", ctx, tc)
+			return r, tc
+		}
+	}
+
+	// Create new
+	tc := &xhttp.TraceCtxt{Attributes: make(map[string]interface{})}
+	newCtx := context.WithValue(ctx, xhttp.ContextTraceKey, tc)
+	logger.GetLogger("dedups3").Tracef("get new trace context: %#v", newCtx)
+	return r.WithContext(newCtx), tc
 }

@@ -74,6 +74,10 @@ func GetReqVar(r *http.Request) (string, string, string, string) {
 		logger.GetLogger("dedups3").Tracef("region from context: %s", region)
 	}
 
+	// 写入trace
+	xhttp.SetTraceAttr(r.Context(), "objectKey", object)
+	xhttp.SetTraceAttr(r.Context(), "bucketName", bucket)
+
 	return bucket, object, region, accessKeyID
 }
 

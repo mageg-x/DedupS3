@@ -2,7 +2,7 @@
   <div class="main-layout min-h-screen bg-gray-50 text-gray-900">
     <!-- 侧边栏 -->
     <aside
-      :class="['sidebar bg-white shadow-md transition-all duration-300 ease-in-out fixed top-0 left-0 z-30 h-full', sidebarCollapsed ? 'w-20' : 'w-72']">
+      :class="['sidebar bg-white shadow-md transition-all duration-300 ease-in-out fixed top-0 left-0 z-30 h-full', sidebarCollapsed ? 'w-20' : 'w-67']">
       <!-- 品牌Logo -->
       <div :class="['sidebar-header p-5 flex items-center justify-between', sidebarCollapsed ? 'justify-center' : '']">
         <div v-if="!sidebarCollapsed" class="flex items-center gap-3 animate-fadeIn">

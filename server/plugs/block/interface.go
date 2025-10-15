@@ -76,7 +76,7 @@ func GetTieredFs() (*vfs.TieredFs, error) {
 	}
 	// 创建配置
 	config := &vfs.Config{
-		MmapSize: 2 << 30, // 2GB
+		MmapSize: int64(cfg.Block.CacheSize), // 2GB
 		DiskDir:  cacheDir,
 	}
 

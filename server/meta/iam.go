@@ -115,13 +115,13 @@ type IamUser struct {
 
 // AccessKey 表示访问密钥
 type AccessKey struct {
-	AccessKeyID     string    `json:"accessKeyId"`
-	SecretAccessKey string    `json:"secretAccessKey"`
-	Status          bool      `json:"status"` // Active | Inactive
-	CreatedAt       time.Time `json:"createdAt"`
-	ExpiredAt       time.Time `json:"expiredAt"`
-	AccountID       string    `json:"accountId"`
-	Username        string    `json:"username"` // 创建者
+	AccessKeyID string    `json:"accessKeyId"`
+	SecretKey   string    `json:"secretKey"`
+	Status      bool      `json:"status"` // Active | Inactive
+	CreatedAt   time.Time `json:"createdAt"`
+	ExpiredAt   time.Time `json:"expiredAt"`
+	AccountID   string    `json:"accountId"`
+	Username    string    `json:"username"` // 创建者
 }
 
 // IamGroup 表示 IAM 用户组

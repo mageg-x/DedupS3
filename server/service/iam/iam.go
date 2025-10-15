@@ -20,9 +20,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"gorm.io/gorm"
 	"sync"
 	"time"
+
+	"gorm.io/gorm"
 
 	xconf "github.com/mageg-x/dedups3/internal/config"
 	xhttp "github.com/mageg-x/dedups3/internal/http"
@@ -61,9 +62,9 @@ func GetIamService() *IamService {
 	if instance == nil || instance.conf == nil {
 		cfg := xconf.Get()
 		c, err := pconf.NewKVConfig(&pconf.Args{
-			Driver:    cfg.Database.Driver,
-			DSN:       cfg.Database.DSN,
-			AuthToken: cfg.Database.AuthToken,
+			Driver:    cfg.Conf.Driver,
+			DSN:       cfg.Conf.DSN,
+			AuthToken: cfg.Conf.AuthToken,
 		})
 		if err != nil || c == nil {
 			logger.GetLogger("dedups3").Errorf("failed to get kv config : %v", err)
@@ -548,13 +549,13 @@ func (s *IamService) CreateAccessKey(accountID, username string, ak, sk string, 
 		return nil, xhttp.ToError(xhttp.ErrAdminConfigDuplicateKeys)
 	}
 	accessKey := meta.AccessKey{
-		AccessKeyID:     ak,
-		SecretAccessKey: sk,
-		CreatedAt:       time.Now().UTC(),
-		ExpiredAt:       expiredAt,
-		Username:        username,
-		AccountID:       accountID,
-		Status:          enable,
+		AccessKeyID: ak,
+		SecretKey:   sk,
+		CreatedAt:   time.Now().UTC(),
+		ExpiredAt:   expiredAt,
+		Username:    username,
+		AccountID:   accountID,
+		Status:      enable,
 	}
 
 	if err := s.conf.TxnSetKv(txn, akKey, &accessKey); err != nil {
@@ -629,7 +630,7 @@ func (s *IamService) UpdateAccessKey(accountID, ak, sk string, expiredAt time.Ti
 	}
 	accessKey.Status = enable
 	accessKey.ExpiredAt = expiredAt
-	accessKey.SecretAccessKey = sk
+	accessKey.SecretKey = sk
 
 	if err := s.conf.TxnSetKv(txn, akKey, &accessKey); err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to set access key to kv config: %v", err)

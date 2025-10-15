@@ -317,7 +317,7 @@ export default {
       this.confirmDialogMessage = this.t('quota.confirmDeleteMessage');
       this.confirmDialogAction = async () => {
         try {
-          const response = await delquota({ accountId: quota.accountId });
+          const response = await delquota({ accountID: quota.accountId });
           if (response.code !== 0) throw new Error(response.msg || '删除失败');
           this.showToastMessage(this.t('quota.deleteSuccess'), 'success');
           await this.fetchQuotas();
