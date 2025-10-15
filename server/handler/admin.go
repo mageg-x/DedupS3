@@ -7,7 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/mageg-x/dedups3/plugs/audit/target"
+	audit_target "github.com/mageg-x/dedups3/plugs/audit/target"
+	event_target "github.com/mageg-x/dedups3/plugs/event/target"
 	"io"
 	"net/http"
 	"net/url"
@@ -28,6 +29,7 @@ import (
 	"github.com/mageg-x/dedups3/plugs/kv"
 	"github.com/mageg-x/dedups3/service/audit"
 	sb "github.com/mageg-x/dedups3/service/bucket"
+	"github.com/mageg-x/dedups3/service/event"
 	iam2 "github.com/mageg-x/dedups3/service/iam"
 	"github.com/mageg-x/dedups3/service/object"
 	"github.com/mageg-x/dedups3/service/stats"
@@ -2570,7 +2572,7 @@ func AdminListAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 	offset := 0
 	if offsetStr != "" {
 		n, err := strconv.ParseInt(offsetStr, 10, 64)
-		if err != nil || n < 1 {
+		if err != nil || n < 0 {
 			logger.GetLogger("dedups3").Errorf("invalid offset number: %v", err)
 		} else {
 			offset = int(n)
@@ -2583,7 +2585,7 @@ func AdminListAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 构建查询条件
-	condition := &target.QueryCondition{
+	condition := &audit_target.QueryCondition{
 		StartTime: &startTime,
 		EndTime:   &endTime,
 		EventName: &eventName,
@@ -2591,7 +2593,7 @@ func AdminListAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 构建查询选项
-	option := &target.QueryOption{
+	option := &audit_target.QueryOption{
 		Offset: offset,
 	}
 
@@ -2625,5 +2627,84 @@ func AdminListAuditLogHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminListEventLogHandler(w http.ResponseWriter, r *http.Request) {
+	query := utils.DecodeQuerys(r.URL.Query())
 
+	// 解析查询参数
+	startTimeStr := query.Get("startTime") //10 位数字时间戳格式
+	endTimeStr := query.Get("endTime")     //10 位数字时间戳格式
+	eventName := query.Get("eventName")
+	eventName = strings.TrimSpace(eventName)
+	offsetStr := query.Get("offset")
+
+	if startTimeStr == "" || endTimeStr == "" {
+		logger.GetLogger("dedups3").Errorf("invalid query params")
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid query params", nil, http.StatusBadRequest)
+		return
+	}
+
+	_startTime, err1 := strconv.ParseInt(startTimeStr, 10, 64)
+	_endTime, err2 := strconv.ParseInt(endTimeStr, 10, 64)
+	if err1 != nil || err2 != nil {
+		logger.GetLogger("dedups3").Errorf("invalid query time format")
+		xhttp.AdminWriteJSONError(w, r, http.StatusBadRequest, "invalid query time format", nil, http.StatusBadRequest)
+		return
+	}
+	startTime := time.Unix(_startTime, 0)
+	endTime := time.Unix(_endTime, 0)
+
+	offset := 0
+	if offsetStr != "" {
+		n, err := strconv.ParseInt(offsetStr, 10, 64)
+		if err != nil || n < 0 {
+			logger.GetLogger("dedups3").Errorf("invalid offset number %s : %v", offsetStr, err)
+		} else {
+			offset = int(n)
+		}
+	}
+
+	pe := Prepare4Iam(w, r)
+	if pe == nil || pe.ac == nil {
+		return
+	}
+
+	// 构建查询条件
+	condition := &event_target.QueryCondition{
+		StartTime: &startTime,
+		EndTime:   &endTime,
+		EventName: &eventName,
+		UserID:    &pe.accountID,
+	}
+
+	// 构建查询选项
+	option := &event_target.QueryOption{
+		Offset: offset,
+	}
+
+	// 获取事件服务
+	es := event.GetEventService()
+	if es == nil {
+		logger.GetLogger("dedups3").Errorf("event service not initialized")
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "event service not initialized", nil, http.StatusInternalServerError)
+		return
+	}
+
+	xhttp.SetTraceAttr(r.Context(), "iamEvent", pe.accountID)
+
+	// 执行查询
+	result, err := es.Query(r.Context(), condition, option)
+	if err != nil {
+		logger.GetLogger("dedups3").Errorf("query event log failed: %v", err)
+		xhttp.AdminWriteJSONError(w, r, http.StatusInternalServerError, "query event log failed", nil, http.StatusInternalServerError)
+		return
+	}
+
+	// 构建响应
+	resp := map[string]interface{}{
+		"records": result.Records,
+		"hasMore": result.HasMore,
+		"total":   result.Total,
+		"offset":  offset,
+	}
+
+	xhttp.AdminWriteJSONError(w, r, 0, "success", resp, http.StatusOK)
 }

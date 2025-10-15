@@ -60,7 +60,7 @@ func registerAdminRouter(mr *mux.Router) {
 
 	api_router.Use(middleware.RequestIDMiddleware)
 	api_router.Use(middleware.AdminAuthMiddleware)
-	api_router.Use(middleware.AuditMiddleware)
+	api_router.Use(middleware.TraceMiddleware)
 
 	// 显式注册 OPTIONS 路由，让请求能“匹配”上
 	api_router.Methods(http.MethodOptions).Path("/{rest:.*}").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

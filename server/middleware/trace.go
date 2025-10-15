@@ -18,15 +18,17 @@ package middleware
 
 import (
 	"context"
+	"github.com/mageg-x/dedups3/plugs/audit"
+	"github.com/mageg-x/dedups3/plugs/event"
 	"net/http"
 
 	xhttp "github.com/mageg-x/dedups3/internal/http"
 	"github.com/mageg-x/dedups3/internal/logger"
-	"github.com/mageg-x/dedups3/plugs/audit"
 	AS "github.com/mageg-x/dedups3/service/audit"
+	ES "github.com/mageg-x/dedups3/service/event"
 )
 
-func AuditMiddleware(next http.Handler) http.Handler {
+func TraceMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.GetLogger("dedups3").Tracef("get req %s %s %#v", r.Method, r.URL.Path, r.Header)
 
@@ -42,7 +44,15 @@ func AuditMiddleware(next http.Handler) http.Handler {
 
 		// 记录审计日志
 		as := AS.GetAuditService()
-		audit.AuditLog(r, rw, filterKeys, as)
+		if as != nil {
+			audit.AuditLog(r, rw, filterKeys, as)
+		}
+
+		//记录事件日志
+		es := ES.GetEventService()
+		if es != nil {
+			event.EventLog(r, rw, filterKeys, es)
+		}
 	})
 }
 

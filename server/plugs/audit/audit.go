@@ -3,6 +3,7 @@ package audit
 import (
 	"encoding/json"
 	"fmt"
+	xconf "github.com/mageg-x/dedups3/internal/config"
 	"net/http"
 	"time"
 
@@ -84,6 +85,10 @@ func AuditLog(r *http.Request, w *xhttp.RespWriter, filterKeys map[string]struct
 	if apiName == "" {
 		return
 	}
+	if region == "" {
+		cfg := xconf.Get()
+		region = cfg.Node.Region
+	}
 
 	arn := fmt.Sprintf("arn:aws:iam::%s:user/%s", accountID, username)
 	if accountID == "" || username == "" {
@@ -152,7 +157,7 @@ func AuditLog(r *http.Request, w *xhttp.RespWriter, filterKeys map[string]struct
 		logger.GetLogger("dedups3").Errorf("Failed to send audit entry: %v", err)
 	}
 	// 记录到日志文件
-	logger.GetLogger("dedups3").Errorf("AUDIT: %s", string(entryJSON))
+	logger.GetLogger("dedups3").Debugf("AUDIT: %s", string(entryJSON))
 }
 
 func getResource(traceCtxt *xhttp.TraceCtxt) []Resource {

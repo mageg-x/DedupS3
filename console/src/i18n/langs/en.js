@@ -156,6 +156,7 @@ const en = {
     endpoint: "Endpoint",
     quota: "Quota",
     chunk: "Chunk",
+    about: "About Boulder",
   },
 
   // 登录页面
@@ -714,6 +715,14 @@ const en = {
     object: "Object",
     user: "User Management",
     policy: "Policy Management",
+    group: "Group Operations",
+    role: "Role Operations",
+    accessKey: "Access Key Operations",
+    quota: "Quota Operations",
+    chunk: "Chunk Config Operations",
+    storage: "Storage Operations",
+    debug: "Debug Operations",
+    system: "System Operations",
     allTypes: "All Types",
     loginEvents: "Login Events",
     bucketOperations: "Bucket Operations",

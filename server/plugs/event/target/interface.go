@@ -3,15 +3,10 @@ package target
 import (
 	"context"
 	"fmt"
+	"github.com/mageg-x/dedups3/internal/logger"
 	"time"
 
-	"github.com/mageg-x/dedups3/internal/logger"
-	"github.com/mageg-x/dedups3/plugs/audit"
-)
-
-const (
-	AuditTargetPrefix        = "aws:audit:target:"
-	AUDIT_TARGET_TYPE_SQLITE = "sqlite-target"
+	"github.com/mageg-x/dedups3/plugs/event"
 )
 
 // Args 审计目标创建参数
@@ -37,42 +32,47 @@ type QueryOption struct {
 
 // QueryResult 查询结果
 type QueryResult struct {
-	Entries []*audit.Entry
+	Records []*event.Record
 	HasMore bool  // 是否还有更多
 	Total   int64 // 符合条件的总记录数（用于分页）
 }
 
 // Target 审计存储接口
-type AuditTarget interface {
+type EventTarget interface {
 	// Send 写入单条审计日志
-	Send(ctx context.Context, entry *audit.Entry) error
+	Send(ctx context.Context, entry *event.Record) error
 	// Query 按条件查询审计日志
 	Query(ctx context.Context, cond *QueryCondition, opts *QueryOption) (*QueryResult, error)
 }
 
-// NewAudit 工厂函数，根据不同配置创建不同的审计目标
-func NewAuditTarget(args *Args) (AuditTarget, error) {
+const (
+	EventTargetPrefix        = "aws:event:target:"
+	EVENT_TARGET_TYPE_SQLITE = "sqlite-target"
+)
+
+// NewEventTarget 工厂函数，根据不同配置创建不同的事件目标
+func NewEventTarget(args *Args) (EventTarget, error) {
 	if args == nil {
-		return nil, fmt.Errorf("audit args cannot be nil")
+		return nil, fmt.Errorf("event args cannot be nil")
 	}
 
-	logger.GetLogger("dedups3").Infof("Creating audit target of type %s", args.Driver)
+	logger.GetLogger("dedups3").Infof("Creating event target of type %s", args.Driver)
 
-	// 根据类型创建不同的审计目标
+	// 根据类型创建不同的事件目标
 	switch args.Driver {
 	case "sqlite":
-		// 创建SQLite审计目标
+		// 创建SQLite事件目标
 		if args.DSN == "" {
 			args.DSN = "./data/sqlite/dedups3.db"
 		}
 		return NewSQLiteTarget(args)
 	case "http":
-		// 创建HTTP审计目标
+		// 创建HTTP事件目标
 		if args.DSN == "" {
-			return nil, fmt.Errorf("http audit target requires DSN (service URL)")
+			return nil, fmt.Errorf("http event target requires DSN (service URL)")
 		}
 		return NewHTTPTarget(args.DSN, args.AuthToken)
 	default:
-		return nil, fmt.Errorf("unsupported audit target driver: %s", args.Driver)
+		return nil, fmt.Errorf("unsupported event target driver: %s", args.Driver)
 	}
 }

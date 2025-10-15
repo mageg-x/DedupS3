@@ -311,7 +311,7 @@
           :class="currentPage === page ? 'bg-blue-100 text-blue-800' : 'hover:bg-gray-100'">
           {{ page }}
         </button>
-        <button @click="changePage(currentPage + 1)" :disabled="currentPage === totalPages"
+        <button @click="changePage(currentPage + 1)" :disabled="!hasMore && currentPage === totalPages"
           class="px-3 py-1 text-sm border rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
           <i class="fas fa-chevron-right"></i>
         </button>
@@ -432,6 +432,7 @@ const { t } = useI18n();
 // ======================
 const auditsList = ref([]);
 const currentAudit = ref({});
+const hasMore = ref(false);
 
 // ======================
 // 响应式状态 - 筛选与搜索
@@ -564,6 +565,8 @@ const loadAuditData = async () => {
     const response = await listauditlog(params);
     if (response.code === 0) {
       auditsList.value = response.data.entries.map(mapApiDataToFrontend);
+      // 处理hasMore字段
+      hasMore.value = response.data.hasMore || false;
     } else {
       showToastMessage(`加载审计数据失败: ${response.msg}`, 'error');
     }

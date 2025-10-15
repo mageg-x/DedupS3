@@ -248,7 +248,7 @@ const menuItems = [
       { path: '/debugtool', label: t('mainMenu.debugTool'), icon: 'fa-bug', permission: 'console:Debug' },
     ]
   },
-  { path: '/about', label: '关于 Boulder', icon: 'fa-info-circle', permission: 'console:About' }
+  { path: '/about', label: t('mainMenu.about'), icon: 'fa-info-circle', permission: 'console:About' }
 ];
 
 // ==================== 计算属性 ====================

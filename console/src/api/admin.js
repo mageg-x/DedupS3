@@ -312,3 +312,4 @@ export const objectinfo= apicall.get("/debug/object", "Failed to get object info
 export const blockinfo= apicall.get("/debug/block", "Failed to get block info");
 export const chunkinfo= apicall.get("/debug/chunk", "Failed to get chunk info");
 export const listauditlog= apicall.get("/audit/list", "Failed to list audit logs info");
+export const listeventlog= apicall.get("/event/list", "Failed to list event logs info");

@@ -53,7 +53,7 @@ func SetupS3Router() *mux.Router {
 	// 添加请求ID中间件（应放在首位）
 	mr.Use(mux.CORSMethodMiddleware(mr))
 	mr.Use(middleware.RequestIDMiddleware)
-	mr.Use(middleware.AuditMiddleware)
+	mr.Use(middleware.TraceMiddleware)
 	mr.Use(middleware.RateLimitMiddleware(middleware.RateLimitConfig{
 		RequestsPerSecond: 10,
 		BurstSize:         20,

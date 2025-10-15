@@ -161,6 +161,7 @@ const zh = {
     endpoint: "存储点",
     quota: "配额管理",
     chunk: "数据切片",
+    about: "关于 Boulder",
   },
   // 登录页面
   login: {
@@ -633,7 +634,7 @@ const zh = {
   quota: {
     pageTitle: "配额管理",
     pageDescription: "管理账户的存储和对象配额",
-    addQuota: "添加配额",
+    addQuota: "添加配额限制",
     cancelEditing: "取消编辑",
     noQuotas: "没有找到配额配置",
     accountId: "账号ID",
@@ -696,6 +697,14 @@ const zh = {
     object: "对象",
     user: "用户管理",
     policy: "策略管理",
+    group: "群组操作",
+    role: "角色操作",
+    accessKey: "访问密钥操作",
+    quota: "配额操作",
+    chunk: "分块配置操作",
+    storage: "存储操作",
+    debug: "调试操作",
+    system: "控制台操作",
     allTypes: "全部类型",
     loginEvents: "登录事件",
     bucketOperations: "存储桶操作",

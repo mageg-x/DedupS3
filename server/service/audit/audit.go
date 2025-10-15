@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/mageg-x/dedups3/plugs/audit"
 	"path/filepath"
 	"sync"
 	"time"
@@ -12,13 +11,9 @@ import (
 	xconf "github.com/mageg-x/dedups3/internal/config"
 	"github.com/mageg-x/dedups3/internal/logger"
 	"github.com/mageg-x/dedups3/internal/queue"
+	"github.com/mageg-x/dedups3/plugs/audit"
 	"github.com/mageg-x/dedups3/plugs/audit/target"
 )
-
-type AuditService struct {
-	queue  queue.Queue
-	target target.AuditTarget
-}
 
 const (
 	maxBytesPerFile = 256 << 20 // 256MB // 64MB
@@ -27,6 +22,11 @@ const (
 	syncEvery       = 100     // 每条都 fsync（性能低但安全）
 	syncTimeout     = 1 * time.Second
 )
+
+type AuditService struct {
+	queue  queue.Queue
+	target target.AuditTarget
+}
 
 var (
 	instance *AuditService
@@ -50,7 +50,7 @@ func GetAuditService() *AuditService {
 	}
 
 	// 创建target
-	t, err := target.NewAudit(&target.Args{
+	t, err := target.NewAuditTarget(&target.Args{
 		Driver:    cfg.Audit.Driver,
 		DSN:       cfg.Audit.DSN,
 		AuthToken: cfg.Audit.AuthToken,
@@ -60,6 +60,7 @@ func GetAuditService() *AuditService {
 		_ = dq.Close()
 		return nil
 	}
+
 	instance = &AuditService{
 		queue:  dq,
 		target: t,
@@ -92,13 +93,18 @@ func (a *AuditService) doSyncAudit(ctx context.Context) {
 					}
 				}
 			default:
-				// 正常的处理逻辑
+				// 添加适当的延迟避免CPU占用过高
+				time.Sleep(10 * time.Millisecond)
 			}
 		}
 	}()
 }
 
 func (a *AuditService) Send(data []byte) error {
+	if a.queue == nil {
+		return fmt.Errorf("audit queue has not been initialized")
+	}
+
 	err := a.queue.Put(data)
 	if err != nil {
 		logger.GetLogger("dedups3").Errorf("failed to put audit.Entry to disk: %v", err)
