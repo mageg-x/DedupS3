@@ -9,6 +9,7 @@ const zh = {
     tagline: "S3兼容 • 全局去重 • 高性能压缩",
     navFeatures: "核心特点",
     navArchitecture: "技术架构",
+    navPlugins: "插件架构",
     navAPI: "API支持",
     navPerformance: "性能优化",
     navLicense: "许可证",
@@ -39,6 +40,20 @@ const zh = {
     architectureBlockLayer: "块层",
     architectureBlockDesc: "将多个切片聚合为固定大小的块，进行zstd压缩和加密后存储",
     architectureDiagramAlt: "系统架构图",
+    
+    // 插件架构
+    pluginsTitle: "灵活插件式设计",
+    pluginsDescription: "本系统采用插件式设计，灵活支持从单机部署到大规模生产集群的部署：",
+    pluginConfigCenter: "配置中心模块",
+    pluginConfigCenterDesc: "存放系统全局配置、IAM配置数据。单机版使用内置的sqlite数据库插件版。集群版使用用户自己实现的云配置插件服务。只要实现了插件接口（几个简单的restful读写接口），就可以替换为自己的配置中心。",
+    pluginEventLog: "事件日志模块",
+    pluginEventLogDesc: "把S3的事件模块独立一个外部插件，用户可以自己灵活处理这些事件数据。单机版默认使用内置的sqlite数据库插件版。集群版使用用户自己实现的云服务。只要实现了插件接口（2个restful接口，一个用于写入事件日志，一个用于查询事件日志），就可以替换为自己的事件日志插件。",
+    pluginAuditLog: "审计日志模块",
+    pluginAuditLogDesc: "和事件日志模块类似，把审计日志也独立一个外部插件。用户可以自己灵活处理这些审计日志数据。单机版默认使用内置的sqlite数据库插件版。集群版使用用户自己实现的云服务。只要实现了插件接口（2个restful接口，一个用于写入审计日志，一个用于查询审计日志），就可以替换为自己的审计日志插件。",
+    pluginMetadataStore: "元数据存储模块",
+    pluginMetadataStoreDesc: "负责存储系统的元数据，包括对象、切片、块的元数据信息。单机版默认使用badgerDB数据库存储元数据，集群版只要支持用户自己定制的kv存储系统，只要支持系统定义的kv接口即可，系统已经实现了基于tikv数据库的元数据存储插件。",
+    pluginBlockStore: "块存储模块",
+    pluginBlockStoreDesc: "负责实际数据的存储。单机版默认使用本地磁盘存储，集群版可以根据需求配置自定义的块存储服务。系统已经实现了基于S3的块存储插件。",
     
     // API支持
     apiTitle: "支持的S3 API",

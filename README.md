@@ -13,6 +13,7 @@ Boulder is an open-source S3-compatible storage service focused on **efficient s
 - [Technical Architecture](#technical-architecture)
 - [Supported S3 APIs](#supported-s3-apis)
 - [Configuration Instructions](#configuration-instructions)
+- [Installation and Deployment](#installation-and-deployment)
 - [Quick Start](#quick-start)
 - [Performance Optimization and Tuning](#performance-optimization-and-tuning)
 - [License](#license)
@@ -175,25 +176,143 @@ Boulder supports the following S3 API operations:
    - Single-node deployment: BadgerDB is used by default, with excellent performance and simple configuration
    - Cluster deployment: TiKV is recommended, providing distributed, highly available metadata storage
 
+## Configuration Instructions
+
+Boulder configures system parameters through the configuration file `config.yaml`. Here are explanations of the main configuration items:
+
+### Basic Configuration
+
+```yaml
+server:
+  address: ":3000"
+  console_address: "3002"
+config:
+  driver: "sqlite"
+  dsn: "./data/sqlite/dedups3.db"
+audit:
+  driver: "sqlite"
+  dsn: "./data/sqlite/dedups3.db"
+event:
+  driver: "sqlite"
+  dsn: "./data/sqlite/dedups3.db"
+admin:
+  username: "boulder"
+  password: "Abcd@1234"
+  access_key: "GGP5NTUY9WRH5NS78UVU"
+  secret_key: "5oj6y3Jy7MO4Y2FTI5dOUvCbnOZf8mQGvbCqGN4I"
+```
+
+For detailed configuration instructions, please refer to the example configuration file in the project.
+
+## Installation and Deployment
+
+### Prerequisites
+
+Before starting the installation and deployment, please ensure your environment meets the following requirements:
+
+- **Frontend Build Environment**: Node.js 14+ and npm 6+
+- **Backend Build Environment**: Go 1.16+ development environment
+- **Runtime Environment**: Supports mainstream operating systems such as Windows, Linux, macOS, etc.
+
+### Build Steps
+
+#### 1. Build Frontend Code
+
+```bash
+# Enter the console directory
+cd console
+
+# Install dependencies
+npm install
+
+# Build frontend code
+npm run build
+
+# After building, static resources will be generated in the console/dist directory
+```
+
+#### 2. Copy Frontend Resources to Backend Directory
+
+```bash
+# On Windows systems
+copy /y console\dist server\web\dist
+
+# On Linux/macOS systems
+cp -r console/dist server/web/dist
+```
+
+#### 3. Build Backend Code
+
+```bash
+# Enter the server directory
+cd server
+
+# Install Go dependencies
+go mod download
+
+# Build backend code
+go build -o dedups3
+
+# After building, the dedups3 binary executable file will be generated
+```
+
+### Deployment Methods
+
+#### Single-node Deployment (Default Mode)
+
+Single-node deployment is the simplest deployment method, suitable for development testing and small-scale application scenarios:
+
+```bash
+# Run the compiled binary file directly in the server directory
+./dedups3
+
+# On Windows systems
+./dedups3.exe
+```
+
+After startup, the service will start the S3 service on port 3000 by default, which can be accessed using S3 client tools. The console service will be started on port 30002, and you can access the management interface through `http://localhost:30002` in your browser.
+
+#### Cluster Deployment
+
+For production environments and large-scale deployments, cluster mode is recommended. Cluster deployment requires configuration of the following components:
+
+1. **Metadata Storage**: Deploy TiKV cluster as metadata storage
+2. **Configuration Center**: Implement custom configuration center plugin
+3. **Event Log**: Configure external event log service
+4. **Audit Log**: Configure external audit log service
+5. **Load Balancing**: Use Nginx or other load balancers to distribute requests
+
+For detailed cluster deployment configuration, please refer to the relevant instructions in the configuration file.
+
 ## License
 
-The Boulder project is open-sourced under the **GNU General Public License v3.0**, allowing free use, modification, and distribution, but must maintain open-source status and the same license terms.
+Boulder project is open-sourced under the **GNU General Public License v3.0**, allowing free use, modification, and distribution, but must maintain open-source and the same license terms.
 
 ### Main License Terms
 
-- **Free Use**: Anyone can use the Boulder service for free
-- **Free Modification**: Source code can be modified as needed to adapt to specific requirements
-- **Free Distribution**: Original or modified versions of the software can be copied and distributed
-- **Open Source Requirements**: Any distributed modified version must be open-sourced under the same license
-- **Copyright Notice Retention**: Original copyright and license notices must be retained
+- **Free Use**: Anyone can use Boulder service for free
+- **Free Modification**: Can modify source code to adapt to specific needs
+- **Free Distribution**: Can copy and distribute original or modified versions of the software
+- **Open Source Requirement**: Any distributed modified version must be open-sourced with the same license
+- **Copyright Notice Retention**: Must retain original copyright and license notices
 
-## Acknowledgments
+## Acknowledgements
 
-The development of the Boulder project has benefited from the following open-source projects:
+The development of Boulder project has benefited from the following excellent open-source projects:
 
 - [BadgerDB](https://github.com/dgraph-io/badger) - Efficient key-value storage
 - [TiKV](https://github.com/tikv/tikv) - Distributed transactional key-value storage
 - [fastcdc](https://github.com/PlakarKorp/go-cdc-chunkers) - Content-defined chunking algorithm
 - [AWS SDK for Go](https://github.com/aws/aws-sdk-go-v2) - AWS service SDK
+
+## Contributing
+
+Community contributions are welcome, whether they are code contributions, issue reports, or improvement suggestions!
+
+1. Fork the project repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ---

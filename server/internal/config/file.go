@@ -280,7 +280,7 @@ type Config struct {
 	Admin  IAMAccountConfig `mapstructure:"admin" json:"admin"`
 	Block  BlockConfig      `mapstructure:"block" json:"block"`
 	Node   NodeConfig       `mapstructure:"node" json:"node"`
-	Conf   PlugConfig       `mapstructure:"Config" json:"Config"`
+	Conf   PlugConfig       `mapstructure:"config" json:"config"`
 	Audit  PlugConfig       `mapstructure:"audit" json:"audit"`
 	Event  PlugConfig       `mapstructure:"event" json:"event"`
 }

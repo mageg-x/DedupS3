@@ -8,6 +8,7 @@ const en = {
     tagline: "S3 Compatible • Global Deduplication • High Performance Compression",
     navFeatures: "Core Features",
     navArchitecture: "Architecture",
+    navPlugins: "Plugin Architecture",
     navAPI: "API Support",
     navPerformance: "Performance",
     navLicense: "License",
@@ -38,6 +39,20 @@ const en = {
     architectureBlockLayer: "Block Layer",
     architectureBlockDesc: "Aggregating multiple slices into fixed-size blocks, storing them after zstd compression and encryption",
     architectureDiagramAlt: "System Architecture Diagram",
+    
+    // Plugin Architecture
+    pluginsTitle: "Flexible Plugin Architecture",
+    pluginsDescription: "Boulder adopts a modular plugin design, providing flexible support from standalone deployment to large-scale production clusters:",
+    pluginConfigCenter: "Configuration Center Plugin",
+    pluginConfigCenterDesc: "Stores system global configuration and IAM configuration data. The standalone version uses built-in SQLite database, while the cluster version supports custom cloud configuration services through a simple RESTful API interface.",
+    pluginEventLog: "Event Log Plugin",
+    pluginEventLogDesc: "Independently externalizes S3 event handling, allowing flexible event data processing. The standalone version uses built-in SQLite database, while the cluster version supports custom event log services through two RESTful interfaces.",
+    pluginAuditLog: "Audit Log Plugin",
+    pluginAuditLogDesc: "Similar to event logs, audit logs are also designed as external plugins for flexible audit data processing and storage, with both built-in SQLite and custom RESTful API options.",
+    pluginMetadataStore: "Metadata Storage Plugin",
+    pluginMetadataStoreDesc: "Responsible for storing system metadata including objects, slices, and blocks information. The standalone version uses BadgerDB, while the cluster version supports custom KV storage systems with TiKV implementation available.",
+    pluginBlockStore: "Block Storage Plugin",
+    pluginBlockStoreDesc: "Handles actual data storage. The standalone version uses local disk storage, while the cluster version supports custom block storage services. S3-based block storage plugin is already implemented.",
     
     // API Support
     apiTitle: "Supported S3 APIs",

@@ -23,6 +23,7 @@
           <div class="container nav-container">
             <a href="#features" class="nav-link active">{{ $t('about.navFeatures') }}</a>
             <a href="#architecture" class="nav-link">{{ $t('about.navArchitecture') }}</a>
+            <a href="#plugins" class="nav-link">{{ $t('about.navPlugins') }}</a>
             <a href="#api" class="nav-link">{{ $t('about.navAPI') }}</a>
             <a href="#performance" class="nav-link">{{ $t('about.navPerformance') }}</a>
             <a href="#license" class="nav-link">{{ $t('about.navLicense') }}</a>
@@ -93,6 +94,42 @@
                   <h3 class="feature-title">{{ $t('about.architectureBlockLayer') }}</h3>
                   <p class="feature-desc">{{ $t('about.architectureBlockDesc') }}</p>
                 </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Plugin Architecture -->
+        <section id="plugins" class="about-section">
+          <div class="container">
+            <h2 class="section-title">{{ $t('about.pluginsTitle') }}</h2>
+            <p>{{ $t('about.pluginsDescription') }}</p>
+            
+            <div class="features-grid">
+              <div class="feature-card">
+                <div class="feature-icon">⚙️</div>
+                <h3 class="feature-title">{{ $t('about.pluginConfigCenter') }}</h3>
+                <p class="feature-desc">{{ $t('about.pluginConfigCenterDesc') }}</p>
+              </div>
+              <div class="feature-card">
+                <div class="feature-icon">📝</div>
+                <h3 class="feature-title">{{ $t('about.pluginEventLog') }}</h3>
+                <p class="feature-desc">{{ $t('about.pluginEventLogDesc') }}</p>
+              </div>
+              <div class="feature-card">
+                <div class="feature-icon">🔍</div>
+                <h3 class="feature-title">{{ $t('about.pluginAuditLog') }}</h3>
+                <p class="feature-desc">{{ $t('about.pluginAuditLogDesc') }}</p>
+              </div>
+              <div class="feature-card">
+                <div class="feature-icon">💾</div>
+                <h3 class="feature-title">{{ $t('about.pluginMetadataStore') }}</h3>
+                <p class="feature-desc">{{ $t('about.pluginMetadataStoreDesc') }}</p>
+              </div>
+              <div class="feature-card">
+                <div class="feature-icon">📦</div>
+                <h3 class="feature-title">{{ $t('about.pluginBlockStore') }}</h3>
+                <p class="feature-desc">{{ $t('about.pluginBlockStoreDesc') }}</p>
               </div>
             </div>
           </div>
