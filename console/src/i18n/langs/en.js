@@ -1,4 +1,7 @@
 const en = {
+  notice: {
+    "demoWarning": "This site is for demonstration purposes only. Data will be cleared on a daily basis. For production deployment, please obtain the binary package and deploy it on your own server."
+  },
   // About page
   about: {
     pageTitle: "About Boulder",

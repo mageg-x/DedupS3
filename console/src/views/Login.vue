@@ -1,5 +1,11 @@
 <template>
     <div class="login-page">
+        <!-- 跑马灯提示条 -->
+        <div class="marquee-notice fixed top-0 left-0 w-full z-50 overflow-hidden pointer-events-none">
+            <div class="animate-marquee whitespace-nowrap text-gray-700 bg-gradient-to-r from-orange-300 to-orange-400 py-1.5 px-4 text-sm font-medium shadow-lg">
+                📢 {{ t('notice.demoWarning') }}
+            </div>
+        </div>
         <!-- 背景装饰元素 -->
         <div class="background-elements">
             <div class="grid-pattern"></div>
@@ -577,6 +583,28 @@ const handleLogin = async () => {
     background: linear-gradient(135deg, #f0f5ff 0%, #f8fafc 100%);
     font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
 }
+
+/* 跑马灯动画 */
+@keyframes marquee {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.animate-marquee {
+  display: inline-block;
+  animation: marquee 20s linear infinite;
+  min-width: max-content;
+}
+
+/* 如果希望鼠标悬停暂停动画（可选） */
+.marquee-notice .animate-marquee:hover {
+  animation-play-state: paused;
+}
+
 
 /* 背景效果 */
 .background-elements {

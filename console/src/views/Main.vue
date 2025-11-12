@@ -1,5 +1,11 @@
 <template>
   <div class="main-layout min-h-screen bg-gray-50 text-gray-900">
+    <!-- 跑马灯提示条 -->
+    <div class="marquee-notice fixed top-0 left-0 w-full z-50 overflow-hidden pointer-events-none">
+      <div class="animate-marquee whitespace-nowrap text-gray-700 bg-gradient-to-r from-orange-300 to-orange-400  py-1.5 px-4 text-sm font-medium shadow-lg">
+        📢 {{ t('notice.demoWarning') }}
+      </div>
+    </div>
     <!-- 侧边栏 -->
     <aside
       :class="['sidebar bg-white shadow-md transition-all duration-300 ease-in-out fixed top-0 left-0 z-30 h-full', sidebarCollapsed ? 'w-20' : 'w-67']">
@@ -456,6 +462,27 @@ onMounted(() => {
   display: flex;
   overflow: hidden;
   background: linear-gradient(135deg, #f5f7fa 0%, #e4e8f0 100%);
+}
+
+/* 跑马灯动画 */
+@keyframes marquee {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.animate-marquee {
+  display: inline-block;
+  animation: marquee 20s linear infinite;
+  min-width: max-content;
+}
+
+/* 如果希望鼠标悬停暂停动画（可选） */
+.marquee-notice:hover .animate-marquee {
+  animation-play-state: paused;
 }
 
 /* 侧边栏样式 */

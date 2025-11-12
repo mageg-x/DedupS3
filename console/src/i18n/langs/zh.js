@@ -1,5 +1,8 @@
 // 中文翻译
 const zh = {
+  notice: {
+    "demoWarning": "本网站仅作为演示功能，数据在隔天会清理掉，生产部署请获取二进制包自行服务器部署"
+  },
   // About页面
   about: {
     pageTitle: "关于 Boulder",

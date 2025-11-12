@@ -50,7 +50,7 @@ type BaseObject struct {
 	Key          string    `json:"key" xml:"Key"`                   // 对象键
 	ETag         Etag      `json:"etag" xml:"ETag"`                 // 分段ETag
 	Size         int64     `json:"size" xml:"Size"`                 // 分段大小
-	Chunks       []string  `json:"chunks" xml:"Chunks>Chunk"`       // chunk 索引（数组嵌套）
+	Chunks       []string  `json:"chunks" xml:"Chunks"`             // chunk 索引（数组嵌套）
 	LastModified time.Time `json:"lastModified" xml:"LastModified"` // 最后修改时间
 	CreatedAt    time.Time `json:"createdAt" xml:"CreatedAt"`       // 创建时间
 	// 数据位置（实际存储系统中使用）
